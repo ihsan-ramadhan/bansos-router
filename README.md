@@ -21,6 +21,8 @@ bansos start --bg       # detached daemon on 127.0.0.1:17070
 bansos setup opencode   # writes the config for your harness
 ```
 
+Open `http://127.0.0.1:17070` in your browser to access the Web UI dashboard (explore models, probe live latency, generate harness configs, manage relay egress, and test completions).
+
 Any OpenAI-compatible or Anthropic-compatible client can now use
 `http://127.0.0.1:17070` (chat at `/v1/chat/completions`, Claude Code at
 `/v1/messages`). `bansos setup <harness>` merges or appends config blocks, and
@@ -146,13 +148,14 @@ For contributors working from source:
 git clone https://github.com/ihsan-ramadhan/bansos-router
 cd bansos-router
 npm install
-npm run build      # esbuild, outputs dist/ (bins: bansos, bansosd)
+npm run build      # builds Web UI (Vite) + CLI (esbuild), outputs dist/
 npm link           # make `bansos`/`bansosd` available globally
 npm run typecheck  # tsc --noEmit
 npm test           # node:test
 
 npm run dev        # run the bansos CLI from source
 npm run dev:daemon # run the daemon from source
+npm run dev:ui     # run Vite dev server for Web UI
 ```
 
 ## Docs
