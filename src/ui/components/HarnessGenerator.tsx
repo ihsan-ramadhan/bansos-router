@@ -35,7 +35,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
   const [modelDropdownOpen, setModelDropdownOpen] = useState<boolean>(false);
   const [modelSearchQuery, setModelSearchQuery] = useState<string>("");
 
-  // Load available adapters
+  // Load adapters
   useEffect(() => {
     async function loadAdapters() {
       try {
@@ -54,7 +54,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
     loadAdapters();
   }, []);
 
-  // Render selected adapter whenever adapter or model changes
+  // Render selected adapter
   useEffect(() => {
     if (!selectedAdapterId) return;
 
@@ -83,7 +83,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
     return adapters.find((a) => a.id === selectedAdapterId);
   }, [adapters, selectedAdapterId]);
 
-  // Filter adapters by search query
+  // Filter adapters
   const filteredAdapters = useMemo(() => {
     if (!adapterSearchQuery.trim()) return adapters;
     const q = adapterSearchQuery.toLowerCase();
@@ -92,14 +92,14 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
     );
   }, [adapters, adapterSearchQuery]);
 
-  // Filter models in custom dropdown
+  // Filter models
   const filteredModels = useMemo(() => {
     if (!modelSearchQuery.trim()) return models;
     const q = modelSearchQuery.toLowerCase();
     return models.filter((m) => m.id.toLowerCase().includes(q) || m.name?.toLowerCase().includes(q));
   }, [models, modelSearchQuery]);
 
-  // Copy CLI command
+  // Copy CLI command string
   const cliCommand = selectedModel
     ? `bansos setup ${selectedAdapterId} --model ${selectedModel}`
     : `bansos setup ${selectedAdapterId}`;
@@ -124,7 +124,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
     }
   }
 
-  // Get human friendly harness instructions/badge
+  // Protocol badge helper
   function getWireBadge(wire?: string) {
     switch (wire) {
       case "anthropic":
@@ -143,7 +143,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-[#202026] text-[#8b8b96]">
+              <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20">
                 <Wrench className="h-4 w-4" />
               </div>
               <h2 className="text-base font-bold text-white tracking-tight">
@@ -192,7 +192,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-          {/* Target Harness Dropdown */}
+          {/* Target Harness */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8b96]">
@@ -233,7 +233,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
                     onClick={() => setAdapterDropdownOpen(false)}
                   />
                   <div className="absolute left-0 right-0 top-full mt-1.5 rounded-xl bg-[#16161a] border border-[#282832] shadow-2xl p-2 z-30 space-y-2 max-h-64 flex flex-col">
-                    {/* Search inside adapter dropdown */}
+            {/* Search inside adapter dropdown */}
                     <div className="relative shrink-0">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#71717a]" />
                       <input
@@ -279,7 +279,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
             </div>
           </div>
 
-          {/* Model Pinning Dropdown */}
+          {/* Model Pinning */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8b96]">
@@ -315,7 +315,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
                     onClick={() => setModelDropdownOpen(false)}
                   />
                   <div className="absolute left-0 right-0 top-full mt-1.5 rounded-xl bg-[#16161a] border border-[#282832] shadow-2xl p-2 z-30 space-y-2 max-h-64 flex flex-col">
-                    {/* Search inside model dropdown */}
+            {/* Search inside model dropdown */}
                     <div className="relative shrink-0">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#71717a]" />
                       <input
@@ -328,7 +328,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
                     </div>
 
                     <div className="overflow-y-auto space-y-1 pr-1 flex-1">
-                      {/* Auto option */}
+            {/* Default / all models option */}
                       <button
                         type="button"
                         onClick={() => {
@@ -371,9 +371,9 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
         </div>
       </div>
 
-      {/* Setup & Config Viewer */}
+      {/* Setup & Config */}
       <div className="space-y-4">
-        {/* 1-Click Terminal Setup */}
+        {/* Terminal setup */}
         <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-5 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -411,7 +411,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
           </div>
         </div>
 
-        {/* Rendered Config File Viewer */}
+        {/* Generated config files */}
         <div className="rounded-xl border border-[#23232a] bg-[#16161a] overflow-hidden shadow-sm">
           <div className="bg-[#121215] border-b border-[#23232a] px-4 py-3 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2.5">
@@ -481,7 +481,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
             )}
           </div>
 
-          {/* Footer tips */}
+          {/* Tips */}
           <div className="bg-[#121215] border-t border-[#23232a] px-4 py-2.5 text-[11px] text-[#71717a] flex items-center justify-between">
             <span>💡 You can undo changes anytime with <code>bansos setup {selectedAdapterId} --undo</code></span>
           </div>

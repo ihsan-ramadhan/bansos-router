@@ -55,15 +55,11 @@ export function ModelCatalog({
   const [sortAsc, setSortAsc] = useState<boolean>(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Custom Dropdown Open States
   const [providerDropdownOpen, setProviderDropdownOpen] = useState<boolean>(false);
   const [pageSizeDropdownOpen, setPageSizeDropdownOpen] = useState<boolean>(false);
-
-  // Pagination states
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
 
-  // Copy model ID helper
   async function handleCopy(id: string) {
     try {
       await navigator.clipboard.writeText(id);
@@ -72,11 +68,11 @@ export function ModelCatalog({
         setCopiedId((curr) => (curr === id ? null : curr));
       }, 2000);
     } catch {
-      // fallback
+      // Ignore clipboard write failures
     }
   }
 
-  // Extract upstream providers from models
+  // Upstream providers from live models
   const providers = useMemo(() => {
     const list = new Set<string>();
     for (const m of models) {
@@ -86,11 +82,10 @@ export function ModelCatalog({
     return Array.from(list);
   }, [models]);
 
-  // Filtered and Sorted models
+  // Filter and sort models
   const filteredModels = useMemo(() => {
     const list = models.filter((m) => {
       const provider = m.source || m.owned_by || "";
-      // Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchesId = m.id.toLowerCase().includes(q);
@@ -98,11 +93,9 @@ export function ModelCatalog({
         const matchesProvider = provider.toLowerCase().includes(q);
         if (!matchesId && !matchesName && !matchesProvider) return false;
       }
-      // Provider filter
       if (selectedProvider !== "all" && provider.toLowerCase() !== selectedProvider.toLowerCase()) {
         return false;
       }
-      // Health filter via chips
       const ping = pingResults[m.id];
       if (activeHealthChip === "ok") {
         if (!ping || ping.status !== "ok") return false;
@@ -115,7 +108,6 @@ export function ModelCatalog({
       return true;
     });
 
-    // Column Header Sorting
     if (sortField === "model") {
       list.sort((a, b) => (sortAsc ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id)));
     } else if (sortField === "reasoning") {
@@ -164,7 +156,6 @@ export function ModelCatalog({
     }
   }
 
-  // Reset to page 1 whenever filters/search change
   const totalPages = Math.max(1, Math.ceil(filteredModels.length / pageSize));
   const activePage = Math.min(currentPage, totalPages);
 
@@ -173,12 +164,10 @@ export function ModelCatalog({
     return filteredModels.slice(start, start + pageSize);
   }, [filteredModels, activePage, pageSize]);
 
-  // Count reasoning models
   const reasoningCount = useMemo(() => {
     return models.filter((m) => m.reasoning).length;
   }, [models]);
 
-  // Ping statistics
   const pingStats = useMemo(() => {
     const entries = Object.values(pingResults);
     const ok = entries.filter((r) => r.status === "ok").length;
@@ -188,7 +177,6 @@ export function ModelCatalog({
     return { total: entries.length, ok, rateLimited, error, probing };
   }, [pingResults]);
 
-  // Helper formatting context/output tokens
   function formatTokens(tokens?: number): string {
     if (!tokens) return "-";
     if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(tokens % 1_000_000 === 0 ? 0 : 1)}M`;
@@ -196,7 +184,6 @@ export function ModelCatalog({
     return String(tokens);
   }
 
-  // Helper formatting provider label
   function formatProviderLabel(provider: string): string {
     switch (provider.toLowerCase()) {
       case "zen":
@@ -209,7 +196,7 @@ export function ModelCatalog({
         return provider.toUpperCase();
     }
   }
-    // Helper styling for provider badges
+
   function getProviderBadgeColor(provider: string): string {
     switch (provider.toLowerCase()) {
       case "opencode":
@@ -227,9 +214,9 @@ export function ModelCatalog({
 
   return (
     <div className="space-y-4">
-      {/* Controls & Filter Bar */}
+      {/* Controls & filters */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-[#16161a] border border-[#23232a] rounded-xl p-3.5 shadow-sm">
-        {/* Left: Search input */}
+        {/* Search */}
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#71717a]" />
           <input
@@ -256,9 +243,9 @@ export function ModelCatalog({
           )}
         </div>
 
-        {/* Right: Filters & Action Buttons */}
+        {/* Actions & provider filter */}
         <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
-          {/* Provider Filter Dropdown */}
+          {/* Provider dropdown */}
           <div className="relative">
             <button
               type="button"
@@ -365,7 +352,7 @@ export function ModelCatalog({
         </div>
       </div>
 
-      {/* Ping Probe Summary */}
+      {/* Ping summary */}
       {pingStats.total > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 bg-[#16161a] border border-[#23232a] rounded-xl text-xs shadow-sm">
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
@@ -373,7 +360,7 @@ export function ModelCatalog({
               Ping Filter:
             </span>
 
-            {/* Filter Chip: All */}
+            {/* Filter: All */}
             <button
               onClick={() => {
                 setActiveHealthChip("all");
@@ -388,7 +375,7 @@ export function ModelCatalog({
               All ({pingStats.total})
             </button>
 
-            {/* Filter Chip: 200 OK */}
+            {/* Filter: OK */}
             <button
               onClick={() => {
                 setActiveHealthChip(activeHealthChip === "ok" ? "all" : "ok");
@@ -405,7 +392,7 @@ export function ModelCatalog({
               <span>{pingStats.ok} OK (Usable)</span>
             </button>
 
-            {/* Filter Chip: 429 Rate Limited */}
+            {/* Filter: 429 */}
             {pingStats.rateLimited > 0 && (
               <button
                 onClick={() => {
@@ -424,7 +411,7 @@ export function ModelCatalog({
               </button>
             )}
 
-            {/* Filter Chip: Errors */}
+            {/* Filter: Error */}
             {pingStats.error > 0 && (
               <button
                 onClick={() => {
@@ -443,7 +430,7 @@ export function ModelCatalog({
               </button>
             )}
 
-            {/* Pinging State */}
+            {/* Probing state */}
             {pingStats.probing > 0 && (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[#60a5fa]">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -468,13 +455,13 @@ export function ModelCatalog({
         </div>
       )}
 
-      {/* Model Catalog Table */}
+      {/* Model table */}
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-[#121215] border-b border-[#23232a] text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider select-none">
               <tr>
-                {/* Model Column Header (Sortable) */}
+                {/* Model column */}
                 <th
                   onClick={() => handleSort("model")}
                   className="py-3 px-4 hover:text-white transition cursor-pointer"
@@ -489,7 +476,7 @@ export function ModelCatalog({
                   </div>
                 </th>
 
-                {/* Reasoning Column Header (Sortable) */}
+                {/* Reasoning column */}
                 <th
                   onClick={() => handleSort("reasoning")}
                   className="py-3 px-4 hover:text-white transition cursor-pointer"
@@ -505,7 +492,7 @@ export function ModelCatalog({
                   </div>
                 </th>
 
-                {/* Context Column Header (Sortable) */}
+                {/* Context column */}
                 <th
                   onClick={() => handleSort("context")}
                   className="py-3 px-4 hover:text-white transition cursor-pointer"
@@ -520,7 +507,7 @@ export function ModelCatalog({
                   </div>
                 </th>
 
-                {/* Max Output Column Header (Sortable) */}
+                {/* Max output column */}
                 <th
                   onClick={() => handleSort("maxOutput")}
                   className="py-3 px-4 hover:text-white transition cursor-pointer"
@@ -535,7 +522,7 @@ export function ModelCatalog({
                   </div>
                 </th>
 
-                {/* Live Latency Column Header */}
+                {/* Latency column */}
                 <th
                   onClick={() => {
                     if (pingStats.total === 0) {
@@ -597,7 +584,7 @@ export function ModelCatalog({
                       key={model.id}
                       className="hover:bg-[#1a1a20] transition-colors duration-150 group"
                     >
-                      {/* Model & Provider */}
+                      {/* Model info */}
                       <td className="py-3.5 px-4">
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-2">
@@ -649,14 +636,14 @@ export function ModelCatalog({
                         </span>
                       </td>
 
-                      {/* Max Output */}
+                      {/* Max output */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
                         <span className="font-mono text-[#a1a1aa]">
                           {formatTokens(outputLimit)}
                         </span>
                       </td>
 
-                      {/* Live Latency Status */}
+                      {/* Latency status */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
                         {!ping || ping.status === "idle" ? (
                           <span className="text-[11px] text-[#52525b] font-mono">Not pinged</span>
@@ -710,9 +697,8 @@ export function ModelCatalog({
           </table>
         </div>
 
-        {/* Table Footer & Pagination */}
+        {/* Pagination */}
         <div className="bg-[#121215] border-t border-[#23232a] px-4 py-3 flex flex-col sm:flex-row items-center justify-between text-xs text-[#71717a] gap-3">
-          {/* Left: Item Counter and Page Size Select */}
           <div className="flex items-center gap-3">
             <div>
               Showing{" "}
@@ -731,7 +717,7 @@ export function ModelCatalog({
               )}
             </div>
 
-            {/* Custom Page Size Dropdown */}
+            {/* Page size dropdown */}
             <div className="relative flex items-center gap-1.5 pl-2 border-l border-[#23232a]">
               <span className="text-[11px] text-[#71717a]">Per page:</span>
               <button
@@ -777,7 +763,7 @@ export function ModelCatalog({
             </div>
           </div>
 
-          {/* Right: Pagination Controls */}
+          {/* Page navigation */}
           {totalPages > 1 && (
             <div className="flex items-center gap-1.5">
               <button

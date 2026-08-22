@@ -56,7 +56,6 @@ export function App() {
       setError(err instanceof Error ? err.message : "Failed to connect to daemon");
     } finally {
       if (manual) {
-        // Enforce a minimum visual spin duration so the user clearly feels the interaction
         setTimeout(() => setLoadingStatus(false), 500);
       } else {
         setLoadingStatus(false);
@@ -99,11 +98,11 @@ export function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#111113] text-[#f4f4f6]">
-      {/* Top Header Navbar */}
+      {/* Header */}
       <header className="border-b border-[#232329] bg-[#16161a]/90 backdrop-blur sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="h-16 flex items-center justify-between">
-            {/* Logo and Brand */}
+            {/* Logo */}
             <div className="flex items-center gap-3">
               <div className="h-9 w-9 rounded-lg bg-[#232329] border border-[#2e2e38] flex items-center justify-center text-[#3b82f6] shadow-sm">
                 <Zap className="h-5 w-5 fill-[#3b82f6]/20 text-[#3b82f6]" />
@@ -121,9 +120,9 @@ export function App() {
               </div>
             </div>
 
-            {/* Right Status Actions */}
+            {/* Status */}
             <div className="flex items-center gap-2.5 sm:gap-3">
-              {/* Connected / Daemon Pill */}
+              {/* Daemon status badge */}
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1a1a20] border border-[#282832] text-xs">
                 <span className="relative flex h-2 w-2">
                   <span
@@ -147,7 +146,7 @@ export function App() {
                 )}
               </div>
 
-              {/* Quick Refresh Status Button */}
+              {/* Refresh button */}
               <button
                 onClick={() => loadStatus(true)}
                 disabled={loadingStatus}
@@ -172,7 +171,7 @@ export function App() {
             </div>
           </div>
 
-          {/* Sub-header Navigation Tabs */}
+          {/* Navigation tabs */}
           <nav className="flex space-x-1 sm:space-x-2 -mb-px pt-1 overflow-x-auto scroll-smooth">
             <button
               onClick={() => setActiveTab("catalog")}
@@ -230,12 +229,12 @@ export function App() {
         </div>
       </header>
 
-      {/* Main Content View */}
+      {/* Main content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        {/* Top Metric Cards */}
+        {/* Metrics */}
         <MetricCards status={status} loading={loadingStatus} />
 
-        {/* Models & Health */}
+        {/* Catalog */}
         {activeTab === "catalog" && (
           <ModelCatalog
             models={models}
@@ -250,7 +249,7 @@ export function App() {
           />
         )}
 
-        {/* Harness Setup */}
+        {/* Harness */}
         {activeTab === "harness" && (
           <HarnessGenerator
             models={models}
@@ -258,7 +257,7 @@ export function App() {
           />
         )}
 
-        {/* Relay Egress */}
+        {/* Relay */}
         {activeTab === "relay" && (
           <RelayManager
             daemonPort={status?.port ?? 17070}
@@ -266,7 +265,7 @@ export function App() {
           />
         )}
 
-        {/* Live Test Playground */}
+        {/* Playground */}
         {activeTab === "playground" && (
           <Playground
             models={models}

@@ -163,8 +163,12 @@ test("404 returns HTML for browser navigation and JSON for API requests", async 
 });
 
 test("POST /bansos/relay/probe tests target reachability and latency", async () => {
+  const originalState = loadRelayState();
   const { baseUrl, close } = await setupTestServer();
   try {
+    // Ensure clean state without active relay for step 2
+    saveRelayState({ enabled: false, url: "", relays: [] });
+
     // 1. Probe valid local endpoint
     const res = await fetch(`${baseUrl}/bansos/relay/probe`, {
       method: "POST",
@@ -196,6 +200,7 @@ test("POST /bansos/relay/probe tests target reachability and latency", async () 
     assert.equal(dataUnreachable.ok, false);
     assert.ok(dataUnreachable.error);
   } finally {
+    saveRelayState(originalState);
     await close();
   }
 });

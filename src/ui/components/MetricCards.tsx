@@ -10,7 +10,7 @@ interface MetricCardsProps {
 export function MetricCards({ status, loading }: MetricCardsProps) {
   const isOnline = Boolean(status);
 
-  // Live ticking uptime counter synced with daemon
+    // Live uptime ticker
   const [liveUptime, setLiveUptime] = useState<number>(status?.uptimeSeconds ?? 0);
 
   useEffect(() => {
@@ -35,13 +35,13 @@ export function MetricCards({ status, loading }: MetricCardsProps) {
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      {/* Daemon Status Card */}
+      {/* Daemon Status */}
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 transition-all duration-200 hover:border-[#2e2e38] shadow-sm">
         <div className="flex items-center justify-between mb-2">
           <span className="text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider">
             Daemon Status
           </span>
-          <div className="p-1.5 rounded-lg bg-[#202026] text-[#8b8b96]">
+          <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20">
             <Server className="h-4 w-4" />
           </div>
         </div>
@@ -60,13 +60,13 @@ export function MetricCards({ status, loading }: MetricCardsProps) {
         </div>
       </div>
 
-      {/* Active Models Card */}
+      {/* Active Models */}
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 transition-all duration-200 hover:border-[#2e2e38] shadow-sm">
         <div className="flex items-center justify-between mb-2">
           <span className="text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider">
             Active Models
           </span>
-          <div className="p-1.5 rounded-lg bg-[#202026] text-[#8b8b96]">
+          <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
             <Cpu className="h-4 w-4" />
           </div>
         </div>
@@ -78,13 +78,13 @@ export function MetricCards({ status, loading }: MetricCardsProps) {
         </div>
       </div>
 
-      {/* Uptime Card */}
+      {/* Uptime */}
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 transition-all duration-200 hover:border-[#2e2e38] shadow-sm">
         <div className="flex items-center justify-between mb-2">
           <span className="text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider">
             Daemon Uptime
           </span>
-          <div className="p-1.5 rounded-lg bg-[#202026] text-[#8b8b96]">
+          <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
             <Clock className="h-4 w-4" />
           </div>
         </div>
@@ -96,13 +96,17 @@ export function MetricCards({ status, loading }: MetricCardsProps) {
         </div>
       </div>
 
-      {/* Egress Mode Card */}
+      {/* Egress Mode */}
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 transition-all duration-200 hover:border-[#2e2e38] shadow-sm">
         <div className="flex items-center justify-between mb-2">
           <span className="text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider">
             Egress Mode
           </span>
-          <div className="p-1.5 rounded-lg bg-[#202026] text-[#8b8b96]">
+          <div className={`p-1.5 rounded-lg border ${
+            status?.relay?.enabled
+              ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+              : "bg-teal-500/10 text-teal-400 border-teal-500/20"
+          }`}>
             {status?.relay?.enabled ? (
               <ShieldAlert className="h-4 w-4" />
             ) : (

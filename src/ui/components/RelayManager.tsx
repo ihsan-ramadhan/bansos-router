@@ -14,6 +14,8 @@ import {
   Info,
   Lock,
   Zap,
+  RotateCw,
+  CircleDot,
 } from "lucide-preact";
 
 interface RelayManagerProps {
@@ -27,17 +29,15 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
   const [updating, setUpdating] = useState<boolean>(false);
   const [notification, setNotification] = useState<{ type: "success" | "info" | "error"; message: string } | null>(null);
 
-  // Add Relay form
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
   const [newUrl, setNewUrl] = useState<string>("");
   const [newLabel, setNewLabel] = useState<string>("");
 
-  // Copy state
   const [copiedCli, setCopiedCli] = useState<string | null>(null);
 
-  // Latency probe state
   const [testingLatency, setTestingLatency] = useState<boolean>(false);
   const [latencyResult, setLatencyResult] = useState<{ ms?: number; ok?: boolean; error?: string } | null>(null);
+  const [probeMap, setProbeMap] = useState<Record<string, { ok: boolean; latencyMs?: number; error?: string; probing?: boolean }>>({});
 
   const loadState = useCallback(async () => {
     try {
@@ -68,7 +68,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
   const hasRelays = Boolean(relayState && relayState.relays.length > 0);
   const isEnabled = Boolean(relayState?.enabled && relayState.url);
 
-  // Master switch on/off toggle
+  // Toggle relay egress on/off with reachability check
   async function handleToggleEnabled() {
     if (!relayState) return;
 
@@ -84,6 +84,34 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
       activeUrl = relayState.relays[0]?.url ?? "";
     }
 
+    // Verify relay reachability before enabling
+    if (nextEnabled && activeUrl) {
+      setUpdating(true);
+      setProbeMap((prev) => ({ ...prev, [activeUrl]: { ok: false, probing: true } }));
+      try {
+        const probeRes = await probeRelay(activeUrl);
+        setProbeMap((prev) => ({
+          ...prev,
+          [activeUrl]: { ok: probeRes.ok, latencyMs: probeRes.latencyMs, error: probeRes.error, probing: false },
+        }));
+        setLatencyResult({ ms: probeRes.latencyMs, ok: probeRes.ok, error: probeRes.error });
+
+        if (!probeRes.ok) {
+          showToast("error", `Relay unreachable (${probeRes.error || "connection failed"}). Direct Egress preserved.`);
+          return;
+        }
+      } catch (err) {
+        setProbeMap((prev) => ({
+          ...prev,
+          [activeUrl]: { ok: false, error: err instanceof Error ? err.message : "Probe failed", probing: false },
+        }));
+        showToast("error", `Failed to reach relay endpoint. Direct Egress preserved.`);
+        return;
+      } finally {
+        setUpdating(false);
+      }
+    }
+
     try {
       setUpdating(true);
       const updated = await updateRelayState({
@@ -94,7 +122,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
       showToast(
         "success",
         nextEnabled
-          ? `Relay egress activated via ${activeUrl}`
+          ? `Relay egress verified & activated via ${activeUrl}`
           : "Switched to Direct Egress (local IP)"
       );
       if (onStateChange) onStateChange();
@@ -105,25 +133,43 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
     }
   }
 
-  // Switch active relay
+  // Set active relay
   async function handleSetActive(url: string) {
     try {
       setUpdating(true);
+      setProbeMap((prev) => ({ ...prev, [url]: { ok: false, probing: true } }));
+      
+      const probeRes = await probeRelay(url);
+      setProbeMap((prev) => ({
+        ...prev,
+        [url]: { ok: probeRes.ok, latencyMs: probeRes.latencyMs, error: probeRes.error, probing: false },
+      }));
+      setLatencyResult({ ms: probeRes.latencyMs, ok: probeRes.ok, error: probeRes.error });
+
+      if (!probeRes.ok) {
+        showToast("error", `Relay node unreachable (${probeRes.error || "probe failed"}). Cannot activate.`);
+        return;
+      }
+
       const updated = await updateRelayState({
         url,
         enabled: true,
       });
       setRelayState(updated);
-      showToast("success", `Active relay set to: ${url}`);
+      showToast("success", `Active relay set and verified (${probeRes.latencyMs}ms): ${url}`);
       if (onStateChange) onStateChange();
     } catch (err) {
+      setProbeMap((prev) => ({
+        ...prev,
+        [url]: { ok: false, error: err instanceof Error ? err.message : "Probe failed", probing: false },
+      }));
       showToast("error", err instanceof Error ? err.message : "Failed to switch relay");
     } finally {
       setUpdating(false);
     }
   }
 
-  // Add new relay
+  // Add new relay node
   async function handleAddRelay(e: Event) {
     e.preventDefault();
     const cleanUrl = newUrl.trim();
@@ -137,23 +183,38 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
     try {
       setUpdating(true);
       const shouldAutoActivate = !relayState?.url;
+
+      let canAutoActivate = false;
+      if (shouldAutoActivate) {
+        const probeRes = await probeRelay(cleanUrl);
+        setProbeMap((prev) => ({
+          ...prev,
+          [cleanUrl]: { ok: probeRes.ok, latencyMs: probeRes.latencyMs, error: probeRes.error, probing: false },
+        }));
+        if (probeRes.ok) {
+          canAutoActivate = true;
+        } else {
+          showToast("info", `Relay saved, but probe failed (${probeRes.error || "unreachable"}). Direct Egress preserved.`);
+        }
+      }
+
       const updated = await updateRelayState({
         action: "add",
         url: cleanUrl,
         label: newLabel.trim() || undefined,
-        ...(shouldAutoActivate ? { url: cleanUrl, enabled: true } : {}),
+        ...(canAutoActivate ? { url: cleanUrl, enabled: true } : {}),
       });
 
       setRelayState(updated);
       setNewUrl("");
       setNewLabel("");
       setShowAddForm(false);
-      showToast(
-        "success",
-        shouldAutoActivate
-          ? `Relay added & set as active: ${cleanUrl}`
-          : `Saved relay: ${cleanUrl}`
-      );
+      
+      if (canAutoActivate) {
+        showToast("success", `Relay verified & active: ${cleanUrl}`);
+      } else if (!shouldAutoActivate) {
+        showToast("success", `Saved relay: ${cleanUrl}`);
+      }
       if (onStateChange) onStateChange();
     } catch (err) {
       showToast("error", err instanceof Error ? err.message : "Failed to add relay");
@@ -162,21 +223,31 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
     }
   }
 
-  // Remove saved relay
+  // Delete relay node
   async function handleRemoveRelay(url: string) {
-    if (relayState?.url === url) {
-      showToast("error", "Cannot delete the active relay. Switch to another relay first.");
-      return;
-    }
-
     try {
       setUpdating(true);
+      const isDeletingActive = relayState?.url === url;
       const updated = await updateRelayState({
         action: "remove",
         url,
+        ...(isDeletingActive ? { enabled: false } : {}),
       });
       setRelayState(updated);
-      showToast("success", `Removed relay: ${url}`);
+      setProbeMap((prev) => {
+        const next = { ...prev };
+        delete next[url];
+        return next;
+      });
+      if (isDeletingActive) {
+        setLatencyResult(null);
+      }
+      showToast(
+        "success",
+        isDeletingActive
+          ? `Removed active relay (${url}). Switched to Direct Egress.`
+          : `Removed relay: ${url}`
+      );
       if (onStateChange) onStateChange();
     } catch (err) {
       showToast("error", err instanceof Error ? err.message : "Failed to delete relay");
@@ -208,14 +279,13 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
     }
   }
 
-  // Copy helper
   async function handleCopy(text: string, id: string) {
     try {
       await navigator.clipboard.writeText(text);
       setCopiedCli(id);
       setTimeout(() => setCopiedCli((curr) => (curr === id ? null : curr)), 2000);
     } catch {
-      // fallback
+      // Ignore clipboard write failures
     }
   }
 
@@ -226,7 +296,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-[#202026] text-[#8b8b96]">
+              <div className="p-1.5 rounded-lg bg-teal-500/10 text-teal-400 border border-teal-500/20">
                 <Shield className="h-4 w-4" />
               </div>
               <h2 className="text-base font-bold text-white tracking-tight">
@@ -247,7 +317,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
             </p>
           </div>
 
-          {/* Master Toggle Switch */}
+          {/* Toggle */}
           <div className="flex items-center gap-3 self-stretch sm:self-auto bg-[#121215] border border-[#23232a] p-2 rounded-xl">
             <div className="text-right">
               <div className="text-[10px] text-[#71717a] uppercase font-mono tracking-wider">
@@ -279,7 +349,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
           </div>
         </div>
 
-        {/* Active Relay Summary Bar (if configured) */}
+        {/* Active relay summary */}
         {relayState?.url && (
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-[#23232a] text-xs">
             <div className="flex items-center gap-2 min-w-0">
@@ -321,7 +391,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
           </div>
         )}
 
-        {/* Notification Banner */}
+        {/* Notification banner */}
         {notification && (
           <div
             className={`p-3 rounded-lg border flex items-center justify-between text-xs transition-all ${
@@ -348,7 +418,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
         )}
       </div>
 
-      {/* Relay Nodes Table */}
+      {/* Relay nodes table */}
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-5 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#23232a] pb-3">
           <div>
@@ -369,7 +439,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
           </button>
         </div>
 
-        {/* Inline Add Relay Form */}
+        {/* Add relay form */}
         {showAddForm && (
           <form
             onSubmit={handleAddRelay}
@@ -428,7 +498,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
           </form>
         )}
 
-        {/* Relay List Table or Clean Empty State */}
+        {/* Relay list */}
         {relayState && relayState.relays.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
@@ -436,6 +506,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
                 <tr className="border-b border-[#23232a] text-[#71717a] text-[11px] uppercase font-mono tracking-wider">
                   <th className="py-2.5 px-3">Status</th>
                   <th className="py-2.5 px-3">Relay Endpoint</th>
+                  <th className="py-2.5 px-3">Health / Latency</th>
                   <th className="py-2.5 px-3">Label</th>
                   <th className="py-2.5 px-3 text-right">Actions</th>
                 </tr>
@@ -443,6 +514,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
               <tbody className="divide-y divide-[#1f1f26]">
                 {relayState.relays.map((relay, idx) => {
                   const isActive = relayState.url === relay.url;
+                  const probeInfo = probeMap[relay.url];
                   return (
                     <tr
                       key={relay.url + idx}
@@ -450,7 +522,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
                         isActive ? "bg-[#141419]" : ""
                       }`}
                     >
-                      {/* Status indicator */}
+                      {/* Status */}
                       <td className="py-3 px-3 whitespace-nowrap">
                         {isActive ? (
                           <span
@@ -477,6 +549,38 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
                         {relay.url}
                       </td>
 
+                      {/* Health / Latency badge */}
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        {probeInfo?.probing ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-blue-400 font-mono">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <span>Probing...</span>
+                          </span>
+                        ) : probeInfo ? (
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono border ${
+                              probeInfo.ok
+                                ? "bg-emerald-950/60 text-emerald-400 border-emerald-800/40"
+                                : "bg-rose-950/60 text-rose-400 border-rose-800/40"
+                            }`}
+                          >
+                            {probeInfo.ok ? (
+                              <>
+                                <Check className="h-2.5 w-2.5" />
+                                <span>{probeInfo.latencyMs}ms</span>
+                              </>
+                            ) : (
+                              <>
+                                <ShieldAlert className="h-2.5 w-2.5" />
+                                <span>Unreachable</span>
+                              </>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-[#52525b] text-[11px] font-mono">—</span>
+                        )}
+                      </td>
+
                       {/* Label */}
                       <td className="py-3 px-3 text-[#9393a0] whitespace-nowrap">
                         {relay.label ? (
@@ -488,41 +592,66 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
                         )}
                       </td>
 
-                      {/* Action buttons */}
+                      {/* Actions */}
                       <td className="py-3 px-3 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* Probe */}
+                          <button
+                            onClick={async () => {
+                              setProbeMap((prev) => ({ ...prev, [relay.url]: { ok: false, probing: true } }));
+                              try {
+                                const res = await probeRelay(relay.url);
+                                setProbeMap((prev) => ({
+                                  ...prev,
+                                  [relay.url]: { ok: res.ok, latencyMs: res.latencyMs, error: res.error, probing: false },
+                                }));
+                              } catch (err) {
+                                setProbeMap((prev) => ({
+                                  ...prev,
+                                  [relay.url]: { ok: false, error: err instanceof Error ? err.message : "Probe failed", probing: false },
+                                }));
+                              }
+                            }}
+                            disabled={updating || probeInfo?.probing}
+                            className="p-1.5 rounded-md text-[#71717a] hover:text-amber-400 hover:bg-amber-950/40 transition cursor-pointer disabled:opacity-40"
+                            title="Ping relay"
+                          >
+                            {probeInfo?.probing ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-[#3b82f6]" />
+                            ) : (
+                              <Zap className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+
                           {!isActive ? (
                             <button
                               onClick={() => handleSetActive(relay.url)}
                               disabled={updating}
-                              className="px-2.5 py-1 rounded-md bg-[#202026] hover:bg-[#282832] border border-[#2e2e38] text-[11px] font-medium text-white transition cursor-pointer"
-                              title="Set as active relay and enable egress"
+                              className="p-1.5 rounded-md text-[#71717a] hover:text-emerald-400 hover:bg-emerald-950/40 transition cursor-pointer disabled:opacity-40"
+                              title="Use relay"
                             >
-                              Use Relay
+                              <Check className="h-3.5 w-3.5" />
                             </button>
                           ) : (
                             <span
-                              className={`text-[11px] font-medium px-2 py-1 ${
+                              className={`p-1.5 flex items-center justify-center ${
                                 isEnabled ? "text-emerald-400" : "text-amber-400"
                               }`}
+                              title={isEnabled ? "Active" : "Selected"}
                             >
-                              {isEnabled ? "Routing" : "Standby"}
+                              <span
+                                className={`h-2.5 w-2.5 rounded-full ${
+                                  isEnabled ? "bg-emerald-400 ring-2 ring-emerald-400/30 animate-pulse" : "bg-amber-400 ring-2 ring-amber-400/30"
+                                }`}
+                              />
                             </span>
                           )}
 
                           <button
                             onClick={() => handleRemoveRelay(relay.url)}
-                            disabled={updating || isActive}
-                            className={`p-1.5 rounded-md transition cursor-pointer ${
-                              isActive
-                                ? "text-[#3f3f46] cursor-not-allowed opacity-40"
-                                : "text-[#71717a] hover:text-rose-400 hover:bg-rose-950/40"
-                            }`}
-                            title={
-                              isActive
-                                ? "Active relay cannot be deleted (switch first)"
-                                : "Delete saved relay"
-                            }
+                            disabled={updating}
+                            className="p-1.5 rounded-md text-[#71717a] hover:text-rose-400 hover:bg-rose-950/40 transition cursor-pointer disabled:opacity-40"
+                            title="Delete relay"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -535,7 +664,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
             </table>
           </div>
         ) : (
-          /* Empty State when no relays exist */
+          /* Empty state */
           <div className="p-8 rounded-xl bg-[#121215] border border-dashed border-[#282832] text-center space-y-3">
             <div className="mx-auto h-10 w-10 rounded-xl bg-[#1a1a20] border border-[#282832] flex items-center justify-center text-blue-400">
               <Globe className="h-5 w-5" />
@@ -562,7 +691,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
         )}
       </div>
 
-      {/* Allowed Target Origins */}
+      {/* Allowed target origins */}
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-5 shadow-sm space-y-3">
         <div className="flex items-center gap-2 text-xs font-bold text-white uppercase tracking-wider">
           <Lock className="h-3.5 w-3.5 text-emerald-400" />
@@ -588,7 +717,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
         </div>
       </div>
 
-      {/* CLI Quick Reference */}
+      {/* CLI quick commands */}
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-5 shadow-sm space-y-3">
         <div className="flex items-center justify-between border-b border-[#23232a] pb-3">
           <div className="flex items-center gap-2">

@@ -27,27 +27,22 @@ interface PlaygroundProps {
 }
 
 export function Playground({ models, daemonPort }: PlaygroundProps) {
-  // Model selection
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [modelSearchQuery, setModelSearchQuery] = useState("");
 
-  // System Prompt
   const [systemPrompt, setSystemPrompt] = useState("");
   const [showSystemPrompt, setShowSystemPrompt] = useState(false);
 
-  // Conversation history
   const [userPrompt, setUserPrompt] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
-  // Settings
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(2048);
   const [stream, setStream] = useState(true);
   const [noFailover, setNoFailover] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
-  // Streaming states
   const [isLoading, setIsLoading] = useState(false);
   const [liveReasoning, setLiveReasoning] = useState("");
   const [liveContent, setLiveContent] = useState("");
@@ -57,21 +52,18 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
   const [activeViewTab, setActiveViewTab] = useState<"rendered" | "raw">("rendered");
   const [globalError, setGlobalError] = useState<string | null>(null);
 
-  // Copy tracking
   const [copiedMsgIdx, setCopiedMsgIdx] = useState<number | null>(null);
   const [copiedRaw, setCopiedRaw] = useState(false);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
 
-  // Auto-select first model if none selected
   useEffect(() => {
     if (!selectedModel && models.length > 0 && models[0]) {
       setSelectedModel(models[0].id);
     }
   }, [models, selectedModel]);
 
-  // Auto-scroll to bottom of chat when messages or streaming content updates
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, liveContent, liveReasoning]);
@@ -86,7 +78,6 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
     return models.filter((m) => m.id.toLowerCase().includes(q) || m.name?.toLowerCase().includes(q));
   }, [models, modelSearchQuery]);
 
-  // Stop active streaming request
   function handleStop() {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -95,7 +86,6 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
     setIsLoading(false);
   }
 
-  // Clear entire conversation history / new chat session
   function handleClearChat() {
     handleStop();
     setMessages([]);
@@ -107,7 +97,6 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
     setOpenReasoningMap({});
   }
 
-  // Toggle reasoning box per message
   function toggleReasoning(idx: number) {
     setOpenReasoningMap((prev) => ({
       ...prev,
@@ -115,25 +104,23 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
     }));
   }
 
-  // Copy message content
   async function handleCopyMessage(text: string, idx: number) {
     try {
       await navigator.clipboard.writeText(text);
       setCopiedMsgIdx(idx);
       setTimeout(() => setCopiedMsgIdx(null), 2000);
     } catch {
-      // fallback
+      // Ignore clipboard write failures
     }
   }
 
-  // Copy raw payload/chunks
   async function handleCopyRaw(text: string) {
     try {
       await navigator.clipboard.writeText(text);
       setCopiedRaw(true);
       setTimeout(() => setCopiedRaw(false), 2000);
     } catch {
-      // fallback
+      // Ignore clipboard write failures
     }
   }
 
@@ -334,7 +321,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
         tokensPerSec,
       };
 
-      // Append finished Assistant message into conversation history
+      // Append assistant message to history
       setMessages((prev) => [
         ...prev,
         {
@@ -373,7 +360,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-[#202026] text-[#8b8b96]">
+              <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
                 <MessageSquare className="h-4 w-4" />
               </div>
               <h2 className="text-base font-bold text-white tracking-tight">
@@ -610,7 +597,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
         {/* Right Side: Chat & Streaming */}
         <div className="lg:col-span-8 space-y-4">
           <div className="rounded-xl border border-[#23232a] bg-[#16161a] overflow-hidden shadow-sm flex flex-col min-h-[560px]">
-            {/* Header: Tabs & Raw Inspector */}
+            {/* Tabs & view toggle */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#23232a] bg-[#121215]">
               <div className="flex items-center gap-1 bg-[#1a1a20] p-1 rounded-lg border border-[#262630]">
                 <button
@@ -670,7 +657,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
               )}
             </div>
 
-            {/* Chat Message Stream */}
+            {/* Message stream */}
             <div className="flex-1 p-4 overflow-y-auto max-h-[500px] space-y-4 font-mono text-xs">
               {activeViewTab === "rendered" ? (
                 <>
@@ -684,7 +671,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
                     </div>
                   )}
 
-                  {/* Rendered History Messages */}
+                  {/* Messages */}
                   {messages.map((msg, idx) => (
                     <div
                       key={idx}
@@ -694,7 +681,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
                           : "bg-[#141418] border-[#24242e] mr-6 sm:mr-12"
                       }`}
                     >
-                      {/* Message Author Header */}
+                      {/* Author */}
                       <div className="flex items-center justify-between text-[11px]">
                         <div className="flex items-center gap-1.5 font-semibold">
                           {msg.role === "user" ? (
@@ -732,7 +719,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
                         </div>
                       </div>
 
-                      {/* Thinking Accordion (if reasoning was captured) */}
+                      {/* Thinking */}
                       {msg.reasoning && (
                         <div className="rounded-lg border border-[#2a2a36] bg-[#101014] overflow-hidden text-[11px]">
                           <button
@@ -758,7 +745,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
                         </div>
                       )}
 
-                      {/* Message Content */}
+                      {/* Content */}
                       <div className="text-[#f4f4f6] whitespace-pre-wrap break-words leading-relaxed">
                         {msg.content}
                       </div>
@@ -772,7 +759,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
                     </div>
                   ))}
 
-                  {/* Live Streaming Message In Progress */}
+                  {/* Live response */}
                   {isLoading && (
                     <div className="flex flex-col space-y-2 rounded-xl p-3.5 border bg-[#141418] border-[#24242e] mr-6 sm:mr-12 animate-in fade-in">
                       <div className="flex items-center justify-between text-[11px]">
@@ -785,7 +772,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
                         </span>
                       </div>
 
-                      {/* Live Reasoning */}
+                      {/* Live thinking */}
                       {liveReasoning && (
                         <div className="rounded-lg border border-[#2a2a36] bg-[#101014] overflow-hidden text-[11px]">
                           <div className="px-3 py-1.5 bg-[#16161c] text-emerald-400 flex items-center gap-1.5 font-medium">
@@ -798,7 +785,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
                         </div>
                       )}
 
-                      {/* Live Assistant Content */}
+                      {/* Live content */}
                       {liveContent ? (
                         <div className="text-[#f4f4f6] whitespace-pre-wrap break-words leading-relaxed">
                           {liveContent}
@@ -824,7 +811,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
                   )}
                 </>
               ) : (
-                /* Raw Inspector Tab */
+                /* Raw inspector */
                 <div className="space-y-4">
                   {rawPayload && (
                     <div>
@@ -864,7 +851,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
               <div ref={chatBottomRef} />
             </div>
 
-            {/* Input Bar at Bottom of Chat Panel */}
+            {/* Prompt input */}
             <div className="p-3 border-t border-[#23232a] bg-[#121215]">
               <form onSubmit={handleSendMessage} className="space-y-2">
                 <div className="relative">
