@@ -7,14 +7,17 @@ import {
   Check,
   Terminal,
   FileCode,
-  Sparkles,
   ChevronDown,
-  ExternalLink,
   Code2,
   Cpu,
-  Layers,
   Search,
 } from "lucide-preact";
+
+function getWireLabel(wire: string): string {
+  if (wire === "anthropic") return "Anthropic";
+  if (wire === "responses") return "Responses";
+  return "Chat";
+}
 
 interface HarnessGeneratorProps {
   models: ModelItem[];
@@ -26,7 +29,6 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
   const [selectedAdapterId, setSelectedAdapterId] = useState<string>("opencode");
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [renderData, setRenderData] = useState<AdapterRenderResponse | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
   const [rendering, setRendering] = useState<boolean>(false);
   const [copiedCli, setCopiedCli] = useState<boolean>(false);
   const [copiedConfigIndex, setCopiedConfigIndex] = useState<number | null>(null);
@@ -39,7 +41,6 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
   useEffect(() => {
     async function loadAdapters() {
       try {
-        setLoading(true);
         const list = await fetchAdapters();
         setAdapters(list);
         if (list.length > 0 && !list.find((a) => a.id === selectedAdapterId)) {
@@ -47,8 +48,6 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
         }
       } catch (err) {
         console.error("Failed to load adapters:", err);
-      } finally {
-        setLoading(false);
       }
     }
     loadAdapters();
@@ -228,8 +227,11 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
 
               {adapterDropdownOpen && (
                 <>
-                  <div
-                    className="fixed inset-0 z-20"
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    aria-label="Close harness dropdown"
+                    className="fixed inset-0 z-20 cursor-default bg-transparent border-0"
                     onClick={() => setAdapterDropdownOpen(false)}
                   />
                   <div className="absolute left-0 right-0 top-full mt-1.5 rounded-xl bg-[#16161a] border border-[#282832] shadow-2xl p-2 z-30 space-y-2 max-h-64 flex flex-col">
@@ -267,7 +269,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
                               <span className="truncate">{adapter.name}</span>
                             </div>
                             <span className="text-[10px] font-mono uppercase text-[#71717a] shrink-0 ml-2">
-                              {adapter.wire === "anthropic" ? "Anthropic" : adapter.wire === "responses" ? "Responses" : "Chat"}
+                              {getWireLabel(adapter.wire)}
                             </span>
                           </button>
                         );
@@ -310,8 +312,11 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
 
               {modelDropdownOpen && (
                 <>
-                  <div
-                    className="fixed inset-0 z-20"
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    aria-label="Close model dropdown"
+                    className="fixed inset-0 z-20 cursor-default bg-transparent border-0"
                     onClick={() => setModelDropdownOpen(false)}
                   />
                   <div className="absolute left-0 right-0 top-full mt-1.5 rounded-xl bg-[#16161a] border border-[#282832] shadow-2xl p-2 z-30 space-y-2 max-h-64 flex flex-col">

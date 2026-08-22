@@ -26,6 +26,152 @@ interface PlaygroundProps {
   daemonPort: number;
 }
 
+// Helper for non-streaming completions
+async function handleNonStreamCompletion(
+  res: Response,
+  startTime: number,
+  setMessages: (updater: (prev: ChatMessage[]) => ChatMessage[]) => void,
+  setRawChunks: (chunks: string[]) => void
+) {
+  const data = await res.json();
+  const endTime = performance.now();
+  const totalMs = Math.round(endTime - startTime);
+
+  const choice = data.choices?.[0];
+  const content = choice?.message?.content || "";
+  const reasoning = choice?.message?.reasoning_content || "";
+  const usage = data.usage;
+
+  const metrics: CompletionMetrics = {
+    ttftMs: totalMs,
+    totalMs,
+    promptTokens: usage?.prompt_tokens,
+    completionTokens: usage?.completion_tokens,
+    totalTokens: usage?.total_tokens,
+    tokenCount: usage?.completion_tokens ?? content.split(/\s+/).filter(Boolean).length,
+    tokensPerSec: usage?.completion_tokens
+      ? Math.round((usage.completion_tokens / (totalMs / 1000)) * 10) / 10
+      : undefined,
+  };
+
+  setMessages((prev) => [
+    ...prev,
+    {
+      role: "assistant",
+      content,
+      reasoning: reasoning || undefined,
+      metrics,
+    },
+  ]);
+
+  setRawChunks([JSON.stringify(data, null, 2)]);
+}
+
+// Helper for streaming SSE completions
+async function handleStreamCompletion(
+  res: Response,
+  startTime: number,
+  callbacks: {
+    setLiveContent: (text: string) => void;
+    setLiveReasoning: (text: string) => void;
+    setRawChunks: (updater: (prev: string[]) => string[]) => void;
+    setMessages: (updater: (prev: ChatMessage[]) => ChatMessage[]) => void;
+  }
+) {
+  if (!res.body) {
+    throw new Error("Response body is empty");
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let firstTokenTime: number | null = null;
+  let tokenCount = 0;
+  let accumulatedContent = "";
+  let accumulatedReasoning = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith(":")) continue;
+
+      if (trimmed.startsWith("data:")) {
+        const dataStr = trimmed.slice(5).trim();
+        callbacks.setRawChunks((prev) => [...prev, dataStr]);
+
+        if (dataStr === "[DONE]") continue;
+
+        try {
+          const chunk = JSON.parse(dataStr);
+          const delta = chunk.choices?.[0]?.delta;
+
+          if (delta) {
+            if (firstTokenTime === null) {
+              firstTokenTime = performance.now();
+            }
+
+            if (delta.reasoning_content) {
+              accumulatedReasoning += delta.reasoning_content;
+              callbacks.setLiveReasoning(accumulatedReasoning);
+            }
+
+            if (delta.content) {
+              accumulatedContent += delta.content;
+              callbacks.setLiveContent(accumulatedContent);
+              tokenCount += 1;
+            }
+          }
+        } catch {
+          // Ignore partial chunk parse error
+        }
+      }
+    }
+  }
+
+  const endTime = performance.now();
+  const totalMs = Math.round(endTime - startTime);
+  const ttftMs = firstTokenTime ? Math.round(firstTokenTime - startTime) : totalMs;
+
+  let finalOutput = accumulatedContent;
+  let finalReasoning = accumulatedReasoning;
+
+  const thinkExec = /^<think>([\s\S]*?)<\/think>\s*/.exec(finalOutput);
+  if (thinkExec && thinkExec[1]) {
+    finalReasoning = (finalReasoning ? finalReasoning + "\n" : "") + thinkExec[1].trim();
+    finalOutput = finalOutput.replace(/^<think>[\s\S]*?<\/think>\s*/, "");
+  }
+
+  const finalTokenCount = tokenCount > 0 ? tokenCount : finalOutput.split(/\s+/).filter(Boolean).length;
+  const speedDuration = (totalMs - ttftMs) / 1000;
+  const tokensPerSec = speedDuration > 0.05 ? Math.round((finalTokenCount / speedDuration) * 10) / 10 : undefined;
+
+  const metrics: CompletionMetrics = {
+    ttftMs,
+    totalMs,
+    tokenCount: finalTokenCount,
+    tokensPerSec,
+  };
+
+  callbacks.setMessages((prev) => [
+    ...prev,
+    {
+      role: "assistant",
+      content: finalOutput,
+      reasoning: finalReasoning || undefined,
+      metrics,
+    },
+  ]);
+  callbacks.setLiveContent("");
+  callbacks.setLiveReasoning("");
+}
+
 export function Playground({ models, daemonPort }: PlaygroundProps) {
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
@@ -201,138 +347,17 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
       }
 
       if (!stream) {
-        // Non-streaming response
-        const data = await res.json();
-        const endTime = performance.now();
-        const totalMs = Math.round(endTime - startTime);
-
-        const choice = data.choices?.[0];
-        const content = choice?.message?.content || "";
-        const reasoning = choice?.message?.reasoning_content || "";
-        const usage = data.usage;
-
-        const metrics: CompletionMetrics = {
-          ttftMs: totalMs,
-          totalMs,
-          promptTokens: usage?.prompt_tokens,
-          completionTokens: usage?.completion_tokens,
-          totalTokens: usage?.total_tokens,
-          tokenCount: usage?.completion_tokens ?? content.split(/\s+/).filter(Boolean).length,
-          tokensPerSec: usage?.completion_tokens
-            ? Math.round((usage.completion_tokens / (totalMs / 1000)) * 10) / 10
-            : undefined,
-        };
-
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content,
-            reasoning: reasoning || undefined,
-            metrics,
-          },
-        ]);
-
-        setRawChunks([JSON.stringify(data, null, 2)]);
+        await handleNonStreamCompletion(res, startTime, setMessages, setRawChunks);
         setIsLoading(false);
         return;
       }
 
-      // Streaming SSE response
-      if (!res.body) {
-        throw new Error("Response body is empty");
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed.startsWith(":")) continue;
-
-          if (trimmed.startsWith("data:")) {
-            const dataStr = trimmed.slice(5).trim();
-            setRawChunks((prev) => [...prev, dataStr]);
-
-            if (dataStr === "[DONE]") {
-              continue;
-            }
-
-            try {
-              const chunk = JSON.parse(dataStr);
-              const delta = chunk.choices?.[0]?.delta;
-
-              if (delta) {
-                if (firstTokenTime === null) {
-                  firstTokenTime = performance.now();
-                }
-
-                // Handle reasoning delta
-                if (delta.reasoning_content) {
-                  accumulatedReasoning += delta.reasoning_content;
-                  setLiveReasoning(accumulatedReasoning);
-                }
-
-                // Handle text delta
-                if (delta.content) {
-                  accumulatedContent += delta.content;
-                  setLiveContent(accumulatedContent);
-                  tokenCount += 1;
-                }
-              }
-            } catch {
-              // Ignore partial JSON parsing errors
-            }
-          }
-        }
-      }
-
-      const endTime = performance.now();
-      const totalMs = Math.round(endTime - startTime);
-      const ttftMs = firstTokenTime ? Math.round(firstTokenTime - startTime) : totalMs;
-
-      // Extract thinking blocks if wrapped in <think> tags
-      let finalOutput = accumulatedContent;
-      let finalReasoning = accumulatedReasoning;
-
-      const thinkMatch = finalOutput.match(/^<think>([\s\S]*?)<\/think>\s*/);
-      if (thinkMatch && thinkMatch[1]) {
-        finalReasoning = (finalReasoning ? finalReasoning + "\n" : "") + thinkMatch[1].trim();
-        finalOutput = finalOutput.replace(/^<think>[\s\S]*?<\/think>\s*/, "");
-      }
-
-      const finalTokenCount = tokenCount > 0 ? tokenCount : finalOutput.split(/\s+/).filter(Boolean).length;
-      const speedDuration = (totalMs - ttftMs) / 1000;
-      const tokensPerSec = speedDuration > 0.05 ? Math.round((finalTokenCount / speedDuration) * 10) / 10 : undefined;
-
-      const metrics: CompletionMetrics = {
-        ttftMs,
-        totalMs,
-        tokenCount: finalTokenCount,
-        tokensPerSec,
-      };
-
-      // Append assistant message to history
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: finalOutput,
-          reasoning: finalReasoning || undefined,
-          metrics,
-        },
-      ]);
-      setLiveContent("");
-      setLiveReasoning("");
+      await handleStreamCompletion(res, startTime, {
+        setLiveContent,
+        setLiveReasoning,
+        setRawChunks,
+        setMessages,
+      });
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
         const errorMsg = err instanceof Error ? err.message : "Completion request failed";
@@ -414,7 +439,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
                 max="2"
                 step="0.05"
                 value={temperature}
-                onChange={(e) => setTemperature(parseFloat((e.target as HTMLInputElement).value))}
+                onChange={(e) => setTemperature(Number.parseFloat((e.target as HTMLInputElement).value))}
                 className="w-full h-1.5 bg-[#202028] rounded-lg appearance-none cursor-pointer accent-[#2b64e0]"
               />
             </div>
@@ -429,7 +454,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
                 min="1"
                 max="16384"
                 value={maxTokens}
-                onChange={(e) => setMaxTokens(parseInt((e.target as HTMLInputElement).value, 10) || 2048)}
+                onChange={(e) => setMaxTokens(Number.parseInt((e.target as HTMLInputElement).value, 10) || 2048)}
                 className="w-full px-2.5 py-1 bg-[#121215] border border-[#262630] rounded-lg text-xs font-mono text-white focus:outline-none focus:border-[#2b64e0]"
               />
             </div>
@@ -501,8 +526,11 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
 
                 {modelDropdownOpen && (
                   <>
-                    <div
-                      className="fixed inset-0 z-20"
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      aria-label="Close model dropdown"
+                      className="fixed inset-0 z-20 cursor-default bg-transparent border-0"
                       onClick={() => setModelDropdownOpen(false)}
                     />
                     <div className="absolute left-0 right-0 mt-1.5 max-h-64 rounded-xl bg-[#16161a] border border-[#282832] shadow-2xl z-30 flex flex-col overflow-hidden">
@@ -836,7 +864,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
                       <div className="space-y-1.5 max-h-96 overflow-y-auto">
                         {rawChunks.map((chunk, idx) => (
                           <div
-                            key={idx}
+                            key={`chunk-${idx}-${chunk.slice(0, 16)}`}
                             className="p-2 rounded bg-[#0e0e12] border border-[#23232e] text-[#a1a1aa] text-[11px] font-mono break-all"
                           >
                             <span className="text-[#3b82f6] select-none mr-2">[{idx + 1}]</span>

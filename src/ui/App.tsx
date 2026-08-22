@@ -96,6 +96,16 @@ export function App() {
     return () => clearInterval(interval);
   }, [loadStatus, loadModels]);
 
+  let syncButtonText = "Sync";
+  let syncButtonClass = "bg-[#1a1a20] hover:bg-[#23232a] active:bg-[#151518] border-[#282832] text-[#9393a0] hover:text-white";
+  if (justRefreshed) {
+    syncButtonText = "Synced";
+    syncButtonClass = "bg-emerald-950/60 text-emerald-400 border-emerald-800/60 shadow-[0_0_12px_rgba(16,185,129,0.25)]";
+  } else if (loadingStatus) {
+    syncButtonText = "Syncing...";
+    syncButtonClass = "bg-[#202028] text-[#60a5fa] border-[#2b64e0]/40";
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-[#111113] text-[#f4f4f6]">
       {/* Header */}
@@ -148,16 +158,11 @@ export function App() {
 
               {/* Refresh button */}
               <button
+                type="button"
                 onClick={() => loadStatus(true)}
                 disabled={loadingStatus}
                 title={justRefreshed ? "Refreshed!" : "Refresh status & models"}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition cursor-pointer active:scale-95 ${
-                  justRefreshed
-                    ? "bg-emerald-950/60 text-emerald-400 border-emerald-800/60 shadow-[0_0_12px_rgba(16,185,129,0.25)]"
-                    : loadingStatus
-                    ? "bg-[#202028] text-[#60a5fa] border-[#2b64e0]/40"
-                    : "bg-[#1a1a20] hover:bg-[#23232a] active:bg-[#151518] border-[#282832] text-[#9393a0] hover:text-white"
-                }`}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition cursor-pointer active:scale-95 ${syncButtonClass}`}
               >
                 <RefreshCw
                   className={`h-3.5 w-3.5 transition-transform duration-500 ${
@@ -165,7 +170,7 @@ export function App() {
                   }`}
                 />
                 <span className="text-[11px] font-mono select-none">
-                  {justRefreshed ? "Synced" : loadingStatus ? "Syncing..." : "Sync"}
+                  {syncButtonText}
                 </span>
               </button>
             </div>
@@ -174,6 +179,7 @@ export function App() {
           {/* Navigation tabs */}
           <nav className="flex space-x-1 sm:space-x-2 -mb-px pt-1 overflow-x-auto scroll-smooth">
             <button
+              type="button"
               onClick={() => setActiveTab("catalog")}
               className={`flex items-center gap-2 px-3.5 py-2.5 border-b-2 text-[13px] font-medium transition whitespace-nowrap cursor-pointer ${
                 activeTab === "catalog"
@@ -191,6 +197,7 @@ export function App() {
             </button>
 
             <button
+              type="button"
               onClick={() => setActiveTab("harness")}
               className={`flex items-center gap-2 px-3.5 py-2.5 border-b-2 text-[13px] font-medium transition whitespace-nowrap cursor-pointer ${
                 activeTab === "harness"
@@ -203,6 +210,7 @@ export function App() {
             </button>
 
             <button
+              type="button"
               onClick={() => setActiveTab("relay")}
               className={`flex items-center gap-2 px-3.5 py-2.5 border-b-2 text-[13px] font-medium transition whitespace-nowrap cursor-pointer ${
                 activeTab === "relay"
@@ -215,6 +223,7 @@ export function App() {
             </button>
 
             <button
+              type="button"
               onClick={() => setActiveTab("playground")}
               className={`flex items-center gap-2 px-3.5 py-2.5 border-b-2 text-[13px] font-medium transition whitespace-nowrap cursor-pointer ${
                 activeTab === "playground"

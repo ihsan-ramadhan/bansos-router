@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "preact/hooks";
-import type { RelayStateResponse, KnownRelay } from "../types/ui";
+import type { RelayStateResponse } from "../types/ui";
 import { fetchRelayState, updateRelayState, probeRelay } from "../services/api";
 import {
   Shield,
@@ -14,9 +14,159 @@ import {
   Info,
   Lock,
   Zap,
-  RotateCw,
-  CircleDot,
 } from "lucide-preact";
+
+interface RelayRowItemProps {
+  relay: { url: string; label?: string };
+  isActive: boolean;
+  isEnabled: boolean;
+  updating: boolean;
+  probeInfo?: { ok: boolean; latencyMs?: number; error?: string; probing?: boolean };
+  onProbe: (url: string) => void;
+  onSetActive: (url: string) => void;
+  onRemove: (url: string) => void;
+}
+
+function RelayRowItem({
+  relay,
+  isActive,
+  isEnabled,
+  updating,
+  probeInfo,
+  onProbe,
+  onSetActive,
+  onRemove,
+}: RelayRowItemProps) {
+  return (
+    <tr className={`hover:bg-[#19191f] transition-colors ${isActive ? "bg-[#141419]" : ""}`}>
+      {/* Status */}
+      <td className="py-3 px-3 whitespace-nowrap">
+        {isActive ? (
+          <span
+            className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${
+              isEnabled ? "text-emerald-400" : "text-amber-400"
+            }`}
+          >
+            <span className={`h-2 w-2 rounded-full ${isEnabled ? "bg-emerald-400" : "bg-amber-400"}`} />
+            <span>{isEnabled ? "Active & Routing" : "Selected (Standby)"}</span>
+          </span>
+        ) : (
+          <span className="text-[11px] text-[#52525b] font-mono">Saved</span>
+        )}
+      </td>
+
+      {/* URL */}
+      <td className="py-3 px-3 font-mono text-white break-all">{relay.url}</td>
+
+      {/* Health / Latency badge */}
+      <td className="py-3 px-3 whitespace-nowrap">
+        {probeInfo?.probing ? (
+          <span className="inline-flex items-center gap-1 text-[11px] text-blue-400 font-mono">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span>Probing...</span>
+          </span>
+        ) : probeInfo ? (
+          <span
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono border ${
+              probeInfo.ok
+                ? "bg-emerald-950/60 text-emerald-400 border-emerald-800/40"
+                : "bg-rose-950/60 text-rose-400 border-rose-800/40"
+            }`}
+          >
+            {probeInfo.ok ? (
+              <>
+                <Check className="h-2.5 w-2.5" />
+                <span>{probeInfo.latencyMs}ms</span>
+              </>
+            ) : (
+              <>
+                <ShieldAlert className="h-2.5 w-2.5" />
+                <span>Unreachable</span>
+              </>
+            )}
+          </span>
+        ) : (
+          <span className="text-[#52525b] text-[11px] font-mono">—</span>
+        )}
+      </td>
+
+      {/* Label */}
+      <td className="py-3 px-3 text-[#9393a0] whitespace-nowrap">
+        {relay.label ? (
+          <span className="px-2 py-0.5 rounded-md bg-[#202028] text-xs text-[#d4d4d8] border border-[#282832]">
+            {relay.label}
+          </span>
+        ) : (
+          <span className="text-[#52525b] italic">—</span>
+        )}
+      </td>
+
+      {/* Actions */}
+      <td className="py-3 px-3 text-right whitespace-nowrap">
+        <div className="flex items-center justify-end gap-1.5">
+          <button
+            type="button"
+            onClick={() => onProbe(relay.url)}
+            disabled={updating || probeInfo?.probing}
+            className="p-1.5 rounded-md text-[#71717a] hover:text-amber-400 hover:bg-amber-950/40 transition cursor-pointer disabled:opacity-40"
+            title="Ping relay"
+          >
+            {probeInfo?.probing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-[#3b82f6]" />
+            ) : (
+              <Zap className="h-3.5 w-3.5" />
+            )}
+          </button>
+
+          {!isActive ? (
+            <button
+              type="button"
+              onClick={() => onSetActive(relay.url)}
+              disabled={updating}
+              className="p-1.5 rounded-md text-[#71717a] hover:text-emerald-400 hover:bg-emerald-950/40 transition cursor-pointer disabled:opacity-40"
+              title="Use relay"
+            >
+              <Check className="h-3.5 w-3.5" />
+            </button>
+          ) : (
+            <span
+              className={`p-1.5 flex items-center justify-center ${
+                isEnabled ? "text-emerald-400" : "text-amber-400"
+              }`}
+              title={isEnabled ? "Active" : "Selected"}
+            >
+              <span
+                className={`h-2.5 w-2.5 rounded-full ${
+                  isEnabled ? "bg-emerald-400 ring-2 ring-emerald-400/30 animate-pulse" : "bg-amber-400 ring-2 ring-amber-400/30"
+                }`}
+              />
+            </span>
+          )}
+
+          <button
+            type="button"
+            onClick={() => onRemove(relay.url)}
+            disabled={updating}
+            className="p-1.5 rounded-md text-[#71717a] hover:text-rose-400 hover:bg-rose-950/40 transition cursor-pointer disabled:opacity-40"
+            title="Delete relay"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function getNotificationClasses(type: "success" | "info" | "error"): string {
+  if (type === "success") {
+    return "bg-emerald-950/40 border-emerald-800/40 text-emerald-300";
+  }
+  if (type === "info") {
+    return "bg-blue-950/40 border-blue-800/40 text-blue-300";
+  }
+  return "bg-rose-950/40 border-rose-800/40 text-rose-300";
+}
 
 interface RelayManagerProps {
   daemonPort: number;
@@ -394,13 +544,9 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
         {/* Notification banner */}
         {notification && (
           <div
-            className={`p-3 rounded-lg border flex items-center justify-between text-xs transition-all ${
-              notification.type === "success"
-                ? "bg-emerald-950/40 border-emerald-800/40 text-emerald-300"
-                : notification.type === "info"
-                ? "bg-blue-950/40 border-blue-800/40 text-blue-300"
-                : "bg-rose-950/40 border-rose-800/40 text-rose-300"
-            }`}
+            className={`p-3 rounded-lg border flex items-center justify-between text-xs transition-all ${getNotificationClasses(
+              notification.type
+            )}`}
           >
             <div className="flex items-center gap-2">
               {notification.type === "info" && <Info className="h-4 w-4 text-blue-400 shrink-0" />}
@@ -409,6 +555,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
               <span>{notification.message}</span>
             </div>
             <button
+              type="button"
               onClick={() => setNotification(null)}
               className="text-[#9393a0] hover:text-white font-bold ml-3 cursor-pointer"
             >
@@ -431,6 +578,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
           </div>
 
           <button
+            type="button"
             onClick={() => setShowAddForm((v) => !v)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#2b64e0] hover:bg-[#2557c7] text-xs font-semibold text-white transition cursor-pointer self-start sm:self-auto shadow-sm"
           >
@@ -512,154 +660,33 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#1f1f26]">
-                {relayState.relays.map((relay, idx) => {
-                  const isActive = relayState.url === relay.url;
-                  const probeInfo = probeMap[relay.url];
-                  return (
-                    <tr
-                      key={relay.url + idx}
-                      className={`hover:bg-[#19191f] transition-colors ${
-                        isActive ? "bg-[#141419]" : ""
-                      }`}
-                    >
-                      {/* Status */}
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        {isActive ? (
-                          <span
-                            className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${
-                              isEnabled ? "text-emerald-400" : "text-amber-400"
-                            }`}
-                          >
-                            <span
-                              className={`h-2 w-2 rounded-full ${
-                                isEnabled ? "bg-emerald-400" : "bg-amber-400"
-                              }`}
-                            />
-                            <span>{isEnabled ? "Active & Routing" : "Selected (Standby)"}</span>
-                          </span>
-                        ) : (
-                          <span className="text-[11px] text-[#52525b] font-mono">
-                            Saved
-                          </span>
-                        )}
-                      </td>
-
-                      {/* URL */}
-                      <td className="py-3 px-3 font-mono text-white break-all">
-                        {relay.url}
-                      </td>
-
-                      {/* Health / Latency badge */}
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        {probeInfo?.probing ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] text-blue-400 font-mono">
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            <span>Probing...</span>
-                          </span>
-                        ) : probeInfo ? (
-                          <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono border ${
-                              probeInfo.ok
-                                ? "bg-emerald-950/60 text-emerald-400 border-emerald-800/40"
-                                : "bg-rose-950/60 text-rose-400 border-rose-800/40"
-                            }`}
-                          >
-                            {probeInfo.ok ? (
-                              <>
-                                <Check className="h-2.5 w-2.5" />
-                                <span>{probeInfo.latencyMs}ms</span>
-                              </>
-                            ) : (
-                              <>
-                                <ShieldAlert className="h-2.5 w-2.5" />
-                                <span>Unreachable</span>
-                              </>
-                            )}
-                          </span>
-                        ) : (
-                          <span className="text-[#52525b] text-[11px] font-mono">—</span>
-                        )}
-                      </td>
-
-                      {/* Label */}
-                      <td className="py-3 px-3 text-[#9393a0] whitespace-nowrap">
-                        {relay.label ? (
-                          <span className="px-2 py-0.5 rounded-md bg-[#202028] text-xs text-[#d4d4d8] border border-[#282832]">
-                            {relay.label}
-                          </span>
-                        ) : (
-                          <span className="text-[#52525b] italic">—</span>
-                        )}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="py-3 px-3 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {/* Probe */}
-                          <button
-                            onClick={async () => {
-                              setProbeMap((prev) => ({ ...prev, [relay.url]: { ok: false, probing: true } }));
-                              try {
-                                const res = await probeRelay(relay.url);
-                                setProbeMap((prev) => ({
-                                  ...prev,
-                                  [relay.url]: { ok: res.ok, latencyMs: res.latencyMs, error: res.error, probing: false },
-                                }));
-                              } catch (err) {
-                                setProbeMap((prev) => ({
-                                  ...prev,
-                                  [relay.url]: { ok: false, error: err instanceof Error ? err.message : "Probe failed", probing: false },
-                                }));
-                              }
-                            }}
-                            disabled={updating || probeInfo?.probing}
-                            className="p-1.5 rounded-md text-[#71717a] hover:text-amber-400 hover:bg-amber-950/40 transition cursor-pointer disabled:opacity-40"
-                            title="Ping relay"
-                          >
-                            {probeInfo?.probing ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin text-[#3b82f6]" />
-                            ) : (
-                              <Zap className="h-3.5 w-3.5" />
-                            )}
-                          </button>
-
-                          {!isActive ? (
-                            <button
-                              onClick={() => handleSetActive(relay.url)}
-                              disabled={updating}
-                              className="p-1.5 rounded-md text-[#71717a] hover:text-emerald-400 hover:bg-emerald-950/40 transition cursor-pointer disabled:opacity-40"
-                              title="Use relay"
-                            >
-                              <Check className="h-3.5 w-3.5" />
-                            </button>
-                          ) : (
-                            <span
-                              className={`p-1.5 flex items-center justify-center ${
-                                isEnabled ? "text-emerald-400" : "text-amber-400"
-                              }`}
-                              title={isEnabled ? "Active" : "Selected"}
-                            >
-                              <span
-                                className={`h-2.5 w-2.5 rounded-full ${
-                                  isEnabled ? "bg-emerald-400 ring-2 ring-emerald-400/30 animate-pulse" : "bg-amber-400 ring-2 ring-amber-400/30"
-                                }`}
-                              />
-                            </span>
-                          )}
-
-                          <button
-                            onClick={() => handleRemoveRelay(relay.url)}
-                            disabled={updating}
-                            className="p-1.5 rounded-md text-[#71717a] hover:text-rose-400 hover:bg-rose-950/40 transition cursor-pointer disabled:opacity-40"
-                            title="Delete relay"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {relayState.relays.map((relay, idx) => (
+                  <RelayRowItem
+                    key={`${relay.url}-${idx}`}
+                    relay={relay}
+                    isActive={relayState.url === relay.url}
+                    isEnabled={isEnabled}
+                    updating={updating}
+                    probeInfo={probeMap[relay.url]}
+                    onProbe={async (url) => {
+                      setProbeMap((prev) => ({ ...prev, [url]: { ok: false, probing: true } }));
+                      try {
+                        const res = await probeRelay(url);
+                        setProbeMap((prev) => ({
+                          ...prev,
+                          [url]: { ok: res.ok, latencyMs: res.latencyMs, error: res.error, probing: false },
+                        }));
+                      } catch (err) {
+                        setProbeMap((prev) => ({
+                          ...prev,
+                          [url]: { ok: false, error: err instanceof Error ? err.message : "Probe failed", probing: false },
+                        }));
+                      }
+                    }}
+                    onSetActive={handleSetActive}
+                    onRemove={handleRemoveRelay}
+                  />
+                ))}
               </tbody>
             </table>
           </div>
@@ -679,6 +706,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
             {!showAddForm && (
               <div className="pt-2">
                 <button
+                  type="button"
                   onClick={() => setShowAddForm(true)}
                   className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#2b64e0] hover:bg-[#2557c7] text-xs font-semibold text-white transition cursor-pointer shadow-sm"
                 >
@@ -738,6 +766,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
               <code className="text-white font-mono">bansos relay on | off</code>
             </div>
             <button
+              type="button"
               onClick={() => handleCopy("bansos relay on", "cli-toggle")}
               className="p-1.5 rounded-md hover:bg-[#202026] text-[#71717a] hover:text-white transition cursor-pointer"
               title="Copy"
@@ -752,6 +781,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
               <code className="text-white font-mono">bansos relay use &lt;URL&gt;</code>
             </div>
             <button
+              type="button"
               onClick={() => handleCopy("bansos relay use <URL>", "cli-use")}
               className="p-1.5 rounded-md hover:bg-[#202026] text-[#71717a] hover:text-white transition cursor-pointer"
               title="Copy"
@@ -766,6 +796,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
               <code className="text-white font-mono">bansos relay url &lt;URL&gt;</code>
             </div>
             <button
+              type="button"
               onClick={() => handleCopy("bansos relay url <URL>", "cli-url")}
               className="p-1.5 rounded-md hover:bg-[#202026] text-[#71717a] hover:text-white transition cursor-pointer"
               title="Copy"
@@ -780,6 +811,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
               <code className="text-white font-mono">bansos relay list</code>
             </div>
             <button
+              type="button"
               onClick={() => handleCopy("bansos relay list", "cli-list")}
               className="p-1.5 rounded-md hover:bg-[#202026] text-[#71717a] hover:text-white transition cursor-pointer"
               title="Copy"

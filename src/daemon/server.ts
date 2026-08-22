@@ -43,8 +43,54 @@ export interface ServerOptions {
 const ALLOWED_METHODS = new Set(["GET", "POST", "OPTIONS"]);
 
 // whitelisted inbound paths only; traversal/encoded variants rejected
-const ALLOWED_PATH_PATTERN =
-  /^(\/v1)?\/(chat\/completions|messages|responses|models)\/?$|^\/healthz\/?$|^\/bansos\/(status|refresh|adapters|adapters\/render|relay|relay\/probe)\/?$|^\/?$|^\/index\.html$|^\/assets\/[\w.-]+$|^\/(favicon\.(ico|svg)|manifest\.json|robots\.txt)$/;
+const STATIC_ROOT_FILES = new Set([
+  "/",
+  "/index.html",
+  "/favicon.ico",
+  "/favicon.svg",
+  "/manifest.json",
+  "/robots.txt",
+]);
+
+const API_EXACT_PATHS = new Set([
+  "/healthz",
+  "/healthz/",
+  "/bansos/status",
+  "/bansos/status/",
+  "/bansos/refresh",
+  "/bansos/refresh/",
+  "/bansos/adapters",
+  "/bansos/adapters/",
+  "/bansos/adapters/render",
+  "/bansos/adapters/render/",
+  "/bansos/relay",
+  "/bansos/relay/",
+  "/bansos/relay/probe",
+  "/bansos/relay/probe/",
+  "/chat/completions",
+  "/chat/completions/",
+  "/messages",
+  "/messages/",
+  "/responses",
+  "/responses/",
+  "/models",
+  "/models/",
+  "/v1/chat/completions",
+  "/v1/chat/completions/",
+  "/v1/messages",
+  "/v1/messages/",
+  "/v1/responses",
+  "/v1/responses/",
+  "/v1/models",
+  "/v1/models/",
+]);
+
+function isAllowedInboundPath(pathname: string): boolean {
+  if (STATIC_ROOT_FILES.has(pathname) || API_EXACT_PATHS.has(pathname)) {
+    return true;
+  }
+  return pathname.startsWith("/assets/") && /^[\w.-]+$/.test(pathname.slice(8));
+}
 
 // how many fallback models to try after the primary rejects with 429/5xx.
 // total attempts = 1 + MAX_FAILOVER_RETRIES.

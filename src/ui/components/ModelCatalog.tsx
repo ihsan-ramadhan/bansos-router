@@ -18,12 +18,238 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Activity,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  Info,
 } from "lucide-preact";
+
+function formatTokens(tokens?: number): string {
+  if (!tokens) return "-";
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(tokens % 1_000_000 === 0 ? 0 : 1)}M`;
+  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}k`;
+  return String(tokens);
+}
+
+function formatProviderLabel(provider: string): string {
+  switch (provider.toLowerCase()) {
+    case "zen":
+      return "OpenCode Zen";
+    case "kilo":
+      return "KiloCode";
+    case "llm7":
+      return "LLM7";
+    default:
+      return provider.toUpperCase();
+  }
+}
+
+function getProviderBadgeColor(provider: string): string {
+  switch (provider.toLowerCase()) {
+    case "opencode":
+    case "zen":
+      return "bg-blue-950/70 text-blue-300 border-blue-800/60";
+    case "kilo":
+    case "kilocode":
+      return "bg-purple-950/70 text-purple-300 border-purple-800/60";
+    case "llm7":
+      return "bg-emerald-950/70 text-emerald-300 border-emerald-800/60";
+    default:
+      return "bg-zinc-800/70 text-zinc-300 border-zinc-700/60";
+  }
+}
+
+function getSortIcon(currentField: string, activeField: string, asc: boolean) {
+  if (currentField !== activeField) {
+    return <ArrowUpDown className="h-3 w-3 opacity-40 hover:opacity-100" />;
+  }
+  return asc ? <ArrowUp className="h-3 w-3 text-[#3b82f6]" /> : <ArrowDown className="h-3 w-3 text-[#3b82f6]" />;
+}
+
+interface ModelCatalogRowProps {
+  model: ModelItem;
+  ping?: PingResult;
+  copiedId: string | null;
+  onCopy: (id: string) => void;
+  onPingModel: (modelId: string) => Promise<void>;
+}
+
+function ModelCatalogRow({ model, ping, copiedId, onCopy, onPingModel }: ModelCatalogRowProps) {
+  const contextLimit = model.context_window || model.context_length;
+  const outputLimit = model.max_tokens || model.maxTokens;
+  const provider = model.source || model.owned_by;
+  const showBadge = provider && provider.toLowerCase() !== "bansos";
+  const isPinging = ping?.status === "pinging";
+
+  return (
+    <tr className="hover:bg-[#1a1a20] transition-colors duration-150 group">
+      {/* Model info */}
+      <td className="py-3.5 px-4">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <span className="font-mono font-medium text-white text-[13px] group-hover:text-[#60a5fa] transition">
+              {model.id}
+            </span>
+            <button
+              type="button"
+              onClick={() => onCopy(model.id)}
+              className="p-1 rounded text-[#71717a] hover:text-white hover:bg-[#23232b] active:scale-95 transition cursor-pointer"
+              title={copiedId === model.id ? "Copied!" : "Copy model ID"}
+            >
+              {copiedId === model.id ? (
+                <Check className="h-3.5 w-3.5 text-emerald-400" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
+            </button>
+            {showBadge && (
+              <span
+                className={`text-[10px] px-2 py-0.5 rounded-full border font-medium uppercase tracking-wider ${getProviderBadgeColor(
+                  provider
+                )}`}
+              >
+                {provider}
+              </span>
+            )}
+          </div>
+          {model.name && model.name !== model.id && (
+            <span className="text-[11px] text-[#71717a]">{model.name}</span>
+          )}
+        </div>
+      </td>
+
+      {/* Reasoning */}
+      <td className="py-3.5 px-4 whitespace-nowrap">
+        {model.reasoning ? (
+          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-400 bg-emerald-950/60 border border-emerald-800/50 px-2 py-0.5 rounded-md">
+            <Sparkles className="h-3 w-3" /> Yes
+          </span>
+        ) : (
+          <span className="text-[#52525c] text-[11px] font-mono">-</span>
+        )}
+      </td>
+
+      {/* Context */}
+      <td className="py-3.5 px-4 whitespace-nowrap">
+        <span className="font-mono text-[#d4d4d8]">{formatTokens(contextLimit)}</span>
+      </td>
+
+      {/* Max output */}
+      <td className="py-3.5 px-4 whitespace-nowrap">
+        <span className="font-mono text-[#a1a1aa]">{formatTokens(outputLimit)}</span>
+      </td>
+
+      {/* Latency status */}
+      <td className="py-3.5 px-4 whitespace-nowrap">
+        {!ping || ping.status === "idle" ? (
+          <span className="text-[11px] text-[#52525b] font-mono">Not pinged</span>
+        ) : ping.status === "pinging" ? (
+          <span className="inline-flex items-center gap-1.5 text-xs text-[#60a5fa] font-mono">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span>pinging...</span>
+          </span>
+        ) : ping.status === "ok" ? (
+          <span className="inline-flex items-center gap-1.5 text-xs font-mono text-emerald-400 font-medium">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            <span>{ping.latencyMs}ms</span>
+          </span>
+        ) : ping.status === "rate_limited" ? (
+          <span className="inline-flex items-center gap-1.5 text-xs font-mono text-amber-400 font-medium">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            <span>429 ({ping.latencyMs}ms)</span>
+          </span>
+        ) : (
+          <span
+            className="inline-flex items-center gap-1.5 text-xs font-mono text-rose-400 font-medium"
+            title={ping.error || "Ping failed"}
+          >
+            <XCircle className="h-3.5 w-3.5" />
+            <span>Error {ping.statusCode ? `(${ping.statusCode})` : ""}</span>
+          </span>
+        )}
+      </td>
+
+      {/* Action */}
+      <td className="py-3.5 px-4 text-right whitespace-nowrap">
+        <button
+          type="button"
+          onClick={() => onPingModel(model.id)}
+          disabled={isPinging}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#202026] hover:bg-[#282832] active:bg-[#1a1a20] border border-[#2a2a34] hover:border-[#383846] text-[11px] font-medium text-[#d4d4d8] hover:text-white transition cursor-pointer disabled:opacity-50"
+          title={`Ping live response from ${model.id}`}
+        >
+          {isPinging ? (
+            <Loader2 className="h-3 w-3 animate-spin text-[#3b82f6]" />
+          ) : (
+            <Zap className="h-3 w-3 text-amber-400" />
+          )}
+          <span>Ping</span>
+        </button>
+      </td>
+    </tr>
+  );
+}
+
+function filterAndSortModels(
+  models: ModelItem[],
+  searchQuery: string,
+  selectedProvider: string,
+  activeHealthChip: "all" | "ok" | "429" | "error",
+  sortField: "default" | "model" | "reasoning" | "context" | "maxOutput" | "latency",
+  sortAsc: boolean,
+  pingResults: Record<string, PingResult>
+): ModelItem[] {
+  const list = models.filter((m) => {
+    const provider = m.source || m.owned_by || "";
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matchesId = m.id.toLowerCase().includes(q);
+      const matchesName = m.name?.toLowerCase().includes(q);
+      const matchesProvider = provider.toLowerCase().includes(q);
+      if (!matchesId && !matchesName && !matchesProvider) return false;
+    }
+    if (selectedProvider !== "all" && provider.toLowerCase() !== selectedProvider.toLowerCase()) {
+      return false;
+    }
+    const ping = pingResults[m.id];
+    if (activeHealthChip === "ok" && ping?.status !== "ok") return false;
+    if (activeHealthChip === "429" && ping?.status !== "rate_limited") return false;
+    if (activeHealthChip === "error" && ping?.status !== "error") return false;
+
+    return true;
+  });
+
+  if (sortField === "model") {
+    list.sort((a, b) => (sortAsc ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id)));
+  } else if (sortField === "reasoning") {
+    list.sort((a, b) => {
+      const valA = a.reasoning ? 1 : 0;
+      const valB = b.reasoning ? 1 : 0;
+      return sortAsc ? valB - valA : valA - valB;
+    });
+  } else if (sortField === "context") {
+    list.sort((a, b) => {
+      const valA = a.context_window || a.context_length || 0;
+      const valB = b.context_window || b.context_length || 0;
+      return sortAsc ? valB - valA : valA - valB;
+    });
+  } else if (sortField === "maxOutput") {
+    list.sort((a, b) => {
+      const valA = a.max_tokens || a.maxTokens || 0;
+      const valB = b.max_tokens || b.maxTokens || 0;
+      return sortAsc ? valB - valA : valA - valB;
+    });
+  } else if (sortField === "latency") {
+    list.sort((a, b) => {
+      const pingA = pingResults[a.id];
+      const pingB = pingResults[b.id];
+      const latA = pingA?.status === "ok" && typeof pingA.latencyMs === "number" ? pingA.latencyMs : Infinity;
+      const latB = pingB?.status === "ok" && typeof pingB.latencyMs === "number" ? pingB.latencyMs : Infinity;
+      return sortAsc ? latA - latB : latB - latA;
+    });
+  }
+
+  return list;
+}
 
 interface ModelCatalogProps {
   models: ModelItem[];
@@ -84,61 +310,15 @@ export function ModelCatalog({
 
   // Filter and sort models
   const filteredModels = useMemo(() => {
-    const list = models.filter((m) => {
-      const provider = m.source || m.owned_by || "";
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchesId = m.id.toLowerCase().includes(q);
-        const matchesName = m.name?.toLowerCase().includes(q);
-        const matchesProvider = provider.toLowerCase().includes(q);
-        if (!matchesId && !matchesName && !matchesProvider) return false;
-      }
-      if (selectedProvider !== "all" && provider.toLowerCase() !== selectedProvider.toLowerCase()) {
-        return false;
-      }
-      const ping = pingResults[m.id];
-      if (activeHealthChip === "ok") {
-        if (!ping || ping.status !== "ok") return false;
-      } else if (activeHealthChip === "429") {
-        if (!ping || ping.status !== "rate_limited") return false;
-      } else if (activeHealthChip === "error") {
-        if (!ping || ping.status !== "error") return false;
-      }
-
-      return true;
-    });
-
-    if (sortField === "model") {
-      list.sort((a, b) => (sortAsc ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id)));
-    } else if (sortField === "reasoning") {
-      list.sort((a, b) => {
-        const valA = a.reasoning ? 1 : 0;
-        const valB = b.reasoning ? 1 : 0;
-        return sortAsc ? valB - valA : valA - valB;
-      });
-    } else if (sortField === "context") {
-      list.sort((a, b) => {
-        const valA = a.context_window || a.context_length || 0;
-        const valB = b.context_window || b.context_length || 0;
-        return sortAsc ? valB - valA : valA - valB;
-      });
-    } else if (sortField === "maxOutput") {
-      list.sort((a, b) => {
-        const valA = a.max_tokens || a.maxTokens || 0;
-        const valB = b.max_tokens || b.maxTokens || 0;
-        return sortAsc ? valB - valA : valA - valB;
-      });
-    } else if (sortField === "latency") {
-      list.sort((a, b) => {
-        const pingA = pingResults[a.id];
-        const pingB = pingResults[b.id];
-        const latA = pingA?.status === "ok" && typeof pingA.latencyMs === "number" ? pingA.latencyMs : Infinity;
-        const latB = pingB?.status === "ok" && typeof pingB.latencyMs === "number" ? pingB.latencyMs : Infinity;
-        return sortAsc ? latA - latB : latB - latA;
-      });
-    }
-
-    return list;
+    return filterAndSortModels(
+      models,
+      searchQuery,
+      selectedProvider,
+      activeHealthChip,
+      sortField,
+      sortAsc,
+      pingResults
+    );
   }, [models, searchQuery, selectedProvider, activeHealthChip, sortField, sortAsc, pingResults]);
 
   function handleSort(field: "model" | "reasoning" | "context" | "maxOutput" | "latency") {
@@ -176,41 +356,6 @@ export function ModelCatalog({
     const probing = entries.filter((r) => r.status === "pinging").length;
     return { total: entries.length, ok, rateLimited, error, probing };
   }, [pingResults]);
-
-  function formatTokens(tokens?: number): string {
-    if (!tokens) return "-";
-    if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(tokens % 1_000_000 === 0 ? 0 : 1)}M`;
-    if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}k`;
-    return String(tokens);
-  }
-
-  function formatProviderLabel(provider: string): string {
-    switch (provider.toLowerCase()) {
-      case "zen":
-        return "OpenCode Zen";
-      case "kilo":
-        return "KiloCode";
-      case "llm7":
-        return "LLM7";
-      default:
-        return provider.toUpperCase();
-    }
-  }
-
-  function getProviderBadgeColor(provider: string): string {
-    switch (provider.toLowerCase()) {
-      case "opencode":
-      case "zen":
-        return "bg-blue-950/70 text-blue-300 border-blue-800/60";
-      case "kilo":
-      case "kilocode":
-        return "bg-purple-950/70 text-purple-300 border-purple-800/60";
-      case "llm7":
-        return "bg-emerald-950/70 text-emerald-300 border-emerald-800/60";
-      default:
-        return "bg-zinc-800/70 text-zinc-300 border-zinc-700/60";
-    }
-  }
 
   return (
     <div className="space-y-4">
@@ -266,8 +411,11 @@ export function ModelCatalog({
 
             {providerDropdownOpen && (
               <>
-                <div
-                  className="fixed inset-0 z-20"
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  aria-label="Close provider dropdown"
+                  className="fixed inset-0 z-20 cursor-default bg-transparent border-0"
                   onClick={() => setProviderDropdownOpen(false)}
                 />
                 <div className="absolute left-0 mt-1.5 w-48 rounded-xl bg-[#16161a] border border-[#282832] shadow-xl py-1 z-30 flex flex-col divide-y divide-[#202026]">
@@ -326,6 +474,7 @@ export function ModelCatalog({
 
           {/* Ping All Button */}
           <button
+            type="button"
             onClick={() => onPingAll(filteredModels)}
             disabled={isPingingAll || filteredModels.length === 0}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#202028] hover:bg-[#282834] active:bg-[#1a1a20] border border-[#2c2c36] text-xs font-medium text-white transition disabled:opacity-50 cursor-pointer"
@@ -341,6 +490,7 @@ export function ModelCatalog({
 
           {/* Refresh Catalog Button */}
           <button
+            type="button"
             onClick={onRefreshCatalog}
             disabled={refreshing}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#2b64e0] hover:bg-[#3872ee] active:bg-[#2353be] text-xs font-medium text-white transition shadow-sm disabled:opacity-50 cursor-pointer"
@@ -362,6 +512,7 @@ export function ModelCatalog({
 
             {/* Filter: All */}
             <button
+              type="button"
               onClick={() => {
                 setActiveHealthChip("all");
                 setCurrentPage(1);
@@ -377,6 +528,7 @@ export function ModelCatalog({
 
             {/* Filter: OK */}
             <button
+              type="button"
               onClick={() => {
                 setActiveHealthChip(activeHealthChip === "ok" ? "all" : "ok");
                 setCurrentPage(1);
@@ -395,6 +547,7 @@ export function ModelCatalog({
             {/* Filter: 429 */}
             {pingStats.rateLimited > 0 && (
               <button
+                type="button"
                 onClick={() => {
                   setActiveHealthChip(activeHealthChip === "429" ? "all" : "429");
                   setCurrentPage(1);
@@ -414,6 +567,7 @@ export function ModelCatalog({
             {/* Filter: Error */}
             {pingStats.error > 0 && (
               <button
+                type="button"
                 onClick={() => {
                   setActiveHealthChip(activeHealthChip === "error" ? "all" : "error");
                   setCurrentPage(1);
@@ -441,6 +595,7 @@ export function ModelCatalog({
 
           {onClearPings && (
             <button
+              type="button"
               onClick={() => {
                 setActiveHealthChip("all");
                 onClearPings();
@@ -468,11 +623,7 @@ export function ModelCatalog({
                 >
                   <div className="flex items-center gap-1.5">
                     <span>Model & Provider</span>
-                    {sortField === "model" ? (
-                      sortAsc ? <ArrowUp className="h-3 w-3 text-[#3b82f6]" /> : <ArrowDown className="h-3 w-3 text-[#3b82f6]" />
-                    ) : (
-                      <ArrowUpDown className="h-3 w-3 opacity-40 hover:opacity-100" />
-                    )}
+                    {getSortIcon("model", sortField, sortAsc)}
                   </div>
                 </th>
 
@@ -484,11 +635,7 @@ export function ModelCatalog({
                 >
                   <div className="flex items-center gap-1.5">
                     <span>Reasoning</span>
-                    {sortField === "reasoning" ? (
-                      sortAsc ? <ArrowDown className="h-3 w-3 text-[#3b82f6]" /> : <ArrowUp className="h-3 w-3 text-[#3b82f6]" />
-                    ) : (
-                      <ArrowUpDown className="h-3 w-3 opacity-40 hover:opacity-100" />
-                    )}
+                    {getSortIcon("reasoning", sortField, sortAsc)}
                   </div>
                 </th>
 
@@ -499,11 +646,7 @@ export function ModelCatalog({
                 >
                   <div className="flex items-center gap-1.5">
                     <span>Context</span>
-                    {sortField === "context" ? (
-                      sortAsc ? <ArrowUp className="h-3 w-3 text-[#3b82f6]" /> : <ArrowDown className="h-3 w-3 text-[#3b82f6]" />
-                    ) : (
-                      <ArrowUpDown className="h-3 w-3 opacity-40 hover:opacity-100" />
-                    )}
+                    {getSortIcon("context", sortField, sortAsc)}
                   </div>
                 </th>
 
@@ -514,11 +657,7 @@ export function ModelCatalog({
                 >
                   <div className="flex items-center gap-1.5">
                     <span>Max Output</span>
-                    {sortField === "maxOutput" ? (
-                      sortAsc ? <ArrowUp className="h-3 w-3 text-[#3b82f6]" /> : <ArrowDown className="h-3 w-3 text-[#3b82f6]" />
-                    ) : (
-                      <ArrowUpDown className="h-3 w-3 opacity-40 hover:opacity-100" />
-                    )}
+                    {getSortIcon("maxOutput", sortField, sortAsc)}
                   </div>
                 </th>
 
@@ -538,10 +677,8 @@ export function ModelCatalog({
                     <span>Live Latency</span>
                     {pingStats.total === 0 ? (
                       <Zap className="h-3 w-3 text-amber-400/80" />
-                    ) : sortField === "latency" ? (
-                      sortAsc ? <ArrowUp className="h-3 w-3 text-[#3b82f6]" /> : <ArrowDown className="h-3 w-3 text-[#3b82f6]" />
                     ) : (
-                      <ArrowUpDown className="h-3 w-3 opacity-40 hover:opacity-100" />
+                      getSortIcon("latency", sortField, sortAsc)
                     )}
                   </div>
                 </th>
@@ -572,126 +709,16 @@ export function ModelCatalog({
                   </td>
                 </tr>
               ) : (
-                paginatedModels.map((model) => {
-                  const ping = pingResults[model.id];
-                  const contextLimit = model.context_window || model.context_length;
-                  const outputLimit = model.max_tokens || model.maxTokens;
-                  const provider = model.source || model.owned_by;
-                  const showBadge = provider && provider.toLowerCase() !== "bansos";
-
-                  return (
-                    <tr
-                      key={model.id}
-                      className="hover:bg-[#1a1a20] transition-colors duration-150 group"
-                    >
-                      {/* Model info */}
-                      <td className="py-3.5 px-4">
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-medium text-white text-[13px] group-hover:text-[#60a5fa] transition">
-                              {model.id}
-                            </span>
-                            <button
-                              onClick={() => handleCopy(model.id)}
-                              className="p-1 rounded text-[#71717a] hover:text-white hover:bg-[#23232b] active:scale-95 transition cursor-pointer"
-                              title={copiedId === model.id ? "Copied!" : "Copy model ID"}
-                            >
-                              {copiedId === model.id ? (
-                                <Check className="h-3.5 w-3.5 text-emerald-400" />
-                              ) : (
-                                <Copy className="h-3.5 w-3.5" />
-                              )}
-                            </button>
-                            {showBadge && (
-                              <span
-                                className={`text-[10px] px-2 py-0.5 rounded-full border font-medium uppercase tracking-wider ${getProviderBadgeColor(
-                                  provider
-                                )}`}
-                              >
-                                {provider}
-                              </span>
-                            )}
-                          </div>
-                          {model.name && model.name !== model.id && (
-                            <span className="text-[11px] text-[#71717a]">{model.name}</span>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Reasoning */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        {model.reasoning ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-400 bg-emerald-950/60 border border-emerald-800/50 px-2 py-0.5 rounded-md">
-                            <Sparkles className="h-3 w-3" /> Yes
-                          </span>
-                        ) : (
-                          <span className="text-[#52525c] text-[11px] font-mono">-</span>
-                        )}
-                      </td>
-
-                      {/* Context */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        <span className="font-mono text-[#d4d4d8]">
-                          {formatTokens(contextLimit)}
-                        </span>
-                      </td>
-
-                      {/* Max output */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        <span className="font-mono text-[#a1a1aa]">
-                          {formatTokens(outputLimit)}
-                        </span>
-                      </td>
-
-                      {/* Latency status */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        {!ping || ping.status === "idle" ? (
-                          <span className="text-[11px] text-[#52525b] font-mono">Not pinged</span>
-                        ) : ping.status === "pinging" ? (
-                          <span className="inline-flex items-center gap-1.5 text-xs text-[#60a5fa] font-mono">
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            <span>pinging...</span>
-                          </span>
-                        ) : ping.status === "ok" ? (
-                          <span className="inline-flex items-center gap-1.5 text-xs font-mono text-emerald-400 font-medium">
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            <span>{ping.latencyMs}ms</span>
-                          </span>
-                        ) : ping.status === "rate_limited" ? (
-                          <span className="inline-flex items-center gap-1.5 text-xs font-mono text-amber-400 font-medium">
-                            <AlertTriangle className="h-3.5 w-3.5" />
-                            <span>429 ({ping.latencyMs}ms)</span>
-                          </span>
-                        ) : (
-                          <span
-                            className="inline-flex items-center gap-1.5 text-xs font-mono text-rose-400 font-medium"
-                            title={ping.error || "Ping failed"}
-                          >
-                            <XCircle className="h-3.5 w-3.5" />
-                            <span>Error {ping.statusCode ? `(${ping.statusCode})` : ""}</span>
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Action */}
-                      <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                        <button
-                          onClick={() => onPingModel(model.id)}
-                          disabled={ping?.status === "pinging"}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#202026] hover:bg-[#282832] active:bg-[#1a1a20] border border-[#2a2a34] hover:border-[#383846] text-[11px] font-medium text-[#d4d4d8] hover:text-white transition cursor-pointer disabled:opacity-50"
-                          title={`Ping live response from ${model.id}`}
-                        >
-                          {ping?.status === "pinging" ? (
-                            <Loader2 className="h-3 w-3 animate-spin text-[#3b82f6]" />
-                          ) : (
-                            <Zap className="h-3 w-3 text-amber-400" />
-                          )}
-                          <span>Ping</span>
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
+                paginatedModels.map((model) => (
+                  <ModelCatalogRow
+                    key={model.id}
+                    model={model}
+                    ping={pingResults[model.id]}
+                    copiedId={copiedId}
+                    onCopy={handleCopy}
+                    onPingModel={onPingModel}
+                  />
+                ))
               )}
             </tbody>
           </table>
@@ -734,8 +761,11 @@ export function ModelCatalog({
 
               {pageSizeDropdownOpen && (
                 <>
-                  <div
-                    className="fixed inset-0 z-20"
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    aria-label="Close page size dropdown"
+                    className="fixed inset-0 z-20 cursor-default bg-transparent border-0"
                     onClick={() => setPageSizeDropdownOpen(false)}
                   />
                   <div className="absolute bottom-full mb-1.5 left-8 w-20 rounded-lg bg-[#16161a] border border-[#282832] shadow-xl p-1 z-30 flex flex-col">
@@ -767,6 +797,7 @@ export function ModelCatalog({
           {totalPages > 1 && (
             <div className="flex items-center gap-1.5">
               <button
+                type="button"
                 onClick={() => setCurrentPage(1)}
                 disabled={activePage <= 1}
                 className="p-1 rounded-md bg-[#16161a] hover:bg-[#202028] disabled:opacity-30 disabled:hover:bg-[#16161a] border border-[#262630] text-[#a1a1aa] hover:text-white transition cursor-pointer disabled:cursor-not-allowed"
@@ -775,6 +806,7 @@ export function ModelCatalog({
                 <ChevronsLeft className="h-4 w-4" />
               </button>
               <button
+                type="button"
                 onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
                 disabled={activePage <= 1}
                 className="p-1 rounded-md bg-[#16161a] hover:bg-[#202028] disabled:opacity-30 disabled:hover:bg-[#16161a] border border-[#262630] text-[#a1a1aa] hover:text-white transition cursor-pointer disabled:cursor-not-allowed"
@@ -789,6 +821,7 @@ export function ModelCatalog({
               </span>
 
               <button
+                type="button"
                 onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
                 disabled={activePage >= totalPages}
                 className="p-1 rounded-md bg-[#16161a] hover:bg-[#202028] disabled:opacity-30 disabled:hover:bg-[#16161a] border border-[#262630] text-[#a1a1aa] hover:text-white transition cursor-pointer disabled:cursor-not-allowed"
@@ -797,6 +830,7 @@ export function ModelCatalog({
                 <ChevronRight className="h-4 w-4" />
               </button>
               <button
+                type="button"
                 onClick={() => setCurrentPage(totalPages)}
                 disabled={activePage >= totalPages}
                 className="p-1 rounded-md bg-[#16161a] hover:bg-[#202028] disabled:opacity-30 disabled:hover:bg-[#16161a] border border-[#262630] text-[#a1a1aa] hover:text-white transition cursor-pointer disabled:cursor-not-allowed"
