@@ -8,8 +8,11 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     min-height: 100vh;
-    selection-background-color: rgba(43, 100, 224, 0.3);
-    selection-color: #93c5fd;
+  }
+
+  ::selection {
+    background-color: rgba(43, 100, 224, 0.3);
+    color: #93c5fd;
   }
 
   /* Interactive elements */

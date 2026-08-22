@@ -15,7 +15,6 @@ import {
   RefreshCw,
   Zap,
   ExternalLink,
-  Info,
 } from "lucide-preact";
 
 export function App() {
@@ -96,7 +95,20 @@ export function App() {
     return () => clearInterval(interval);
   }, [loadStatus, loadModels]);
 
-  let syncButtonText = "Sync";
+  let daemonStatusText = "Connecting...";
+  if (status) {
+    daemonStatusText = `127.0.0.1:${status.port}`;
+  } else if (error) {
+    daemonStatusText = "Disconnected";
+  }
+
+  let refreshIconClass = "";
+  if (loadingStatus) {
+    refreshIconClass = "animate-spin text-[#3b82f6]";
+  } else if (justRefreshed) {
+    refreshIconClass = "text-emerald-400";
+  }
+  let syncButtonText = "Sync Catalog";
   let syncButtonClass = "bg-[#1a1a20] hover:bg-[#23232a] active:bg-[#151518] border-[#282832] text-[#9393a0] hover:text-white";
   if (justRefreshed) {
     syncButtonText = "Synced";
@@ -147,7 +159,7 @@ export function App() {
                   />
                 </span>
                 <span className="font-mono text-[#d4d4d8] text-[12px]">
-                  {status ? `127.0.0.1:${status.port}` : error ? "Disconnected" : "Connecting..."}
+                  {daemonStatusText}
                 </span>
                 {status && (
                   <span className="hidden sm:inline text-[11px] text-emerald-400 font-medium ml-0.5">
@@ -165,9 +177,7 @@ export function App() {
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition cursor-pointer active:scale-95 ${syncButtonClass}`}
               >
                 <RefreshCw
-                  className={`h-3.5 w-3.5 transition-transform duration-500 ${
-                    loadingStatus ? "animate-spin text-[#3b82f6]" : justRefreshed ? "text-emerald-400" : ""
-                  }`}
+                  className={`h-3.5 w-3.5 transition-transform duration-500 ${refreshIconClass}`}
                 />
                 <span className="text-[11px] font-mono select-none">
                   {syncButtonText}

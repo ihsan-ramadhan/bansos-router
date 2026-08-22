@@ -27,11 +27,21 @@ export function MetricCards({ status, loading }: MetricCardsProps) {
     return () => clearInterval(timer);
   }, [isOnline]);
 
-  const uptimeText = isOnline
-    ? liveUptime >= 3600
-      ? `${Math.floor(liveUptime / 3600)}h ${Math.floor((liveUptime % 3600) / 60)}m`
-      : `${Math.floor(liveUptime / 60)}m ${liveUptime % 60}s`
-    : "0s";
+  let uptimeText = "0s";
+  if (isOnline) {
+    if (liveUptime >= 3600) {
+      uptimeText = `${Math.floor(liveUptime / 3600)}h ${Math.floor((liveUptime % 3600) / 60)}m`;
+    } else {
+      uptimeText = `${Math.floor(liveUptime / 60)}m ${liveUptime % 60}s`;
+    }
+  }
+
+  let statusLabel = "Disconnected";
+  if (loading && !status) {
+    statusLabel = "Connecting...";
+  } else if (isOnline) {
+    statusLabel = "Online";
+  }
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -52,7 +62,7 @@ export function MetricCards({ status, loading }: MetricCardsProps) {
             }`}
           />
           <span className="text-lg font-bold text-white tracking-tight">
-            {loading && !status ? "Connecting..." : isOnline ? "Online" : "Disconnected"}
+            {statusLabel}
           </span>
         </div>
         <div className="text-xs text-[#71717a] mt-1 font-mono">

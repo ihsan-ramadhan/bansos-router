@@ -21,6 +21,7 @@ export function NotFound({ onGoHome }: NotFoundProps) {
       </p>
       {onGoHome ? (
         <button
+          type="button"
           onClick={onGoHome}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#2b64e0] hover:bg-[#3872ee] active:bg-[#2353be] text-white font-medium text-xs transition shadow-sm cursor-pointer"
         >

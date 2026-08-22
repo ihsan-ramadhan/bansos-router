@@ -16,15 +16,52 @@ import {
   Zap,
 } from "lucide-preact";
 
+type NotificationType = "success" | "info" | "error";
+
+interface ProbeStatus {
+  ok: boolean;
+  latencyMs?: number;
+  error?: string;
+  probing?: boolean;
+}
+
 interface RelayRowItemProps {
   relay: { url: string; label?: string };
   isActive: boolean;
   isEnabled: boolean;
   updating: boolean;
-  probeInfo?: { ok: boolean; latencyMs?: number; error?: string; probing?: boolean };
+  probeInfo?: ProbeStatus;
   onProbe: (url: string) => void;
   onSetActive: (url: string) => void;
   onRemove: (url: string) => void;
+}
+
+function RelayProbeBadge({ probeInfo }: { probeInfo?: ProbeStatus }) {
+  if (probeInfo?.probing) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] text-blue-400 font-mono">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        <span>Probing...</span>
+      </span>
+    );
+  }
+  if (!probeInfo) {
+    return <span className="text-[#52525b] text-[11px] font-mono">—</span>;
+  }
+  if (probeInfo.ok) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono border bg-emerald-950/60 text-emerald-400 border-emerald-800/40">
+        <Check className="h-2.5 w-2.5" />
+        <span>{probeInfo.latencyMs}ms</span>
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono border bg-rose-950/60 text-rose-400 border-rose-800/40">
+      <ShieldAlert className="h-2.5 w-2.5" />
+      <span>Unreachable</span>
+    </span>
+  );
 }
 
 function RelayRowItem({
@@ -37,57 +74,30 @@ function RelayRowItem({
   onSetActive,
   onRemove,
 }: RelayRowItemProps) {
+  let statusBadge = <span className="text-[11px] text-[#52525b] font-mono">Saved</span>;
+  if (isActive) {
+    const textColor = isEnabled ? "text-emerald-400" : "text-amber-400";
+    const dotColor = isEnabled ? "bg-emerald-400" : "bg-amber-400";
+    const label = isEnabled ? "Active & Routing" : "Selected (Standby)";
+    statusBadge = (
+      <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${textColor}`}>
+        <span className={`h-2 w-2 rounded-full ${dotColor}`} />
+        <span>{label}</span>
+      </span>
+    );
+  }
+
   return (
     <tr className={`hover:bg-[#19191f] transition-colors ${isActive ? "bg-[#141419]" : ""}`}>
       {/* Status */}
-      <td className="py-3 px-3 whitespace-nowrap">
-        {isActive ? (
-          <span
-            className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${
-              isEnabled ? "text-emerald-400" : "text-amber-400"
-            }`}
-          >
-            <span className={`h-2 w-2 rounded-full ${isEnabled ? "bg-emerald-400" : "bg-amber-400"}`} />
-            <span>{isEnabled ? "Active & Routing" : "Selected (Standby)"}</span>
-          </span>
-        ) : (
-          <span className="text-[11px] text-[#52525b] font-mono">Saved</span>
-        )}
-      </td>
+      <td className="py-3 px-3 whitespace-nowrap">{statusBadge}</td>
 
       {/* URL */}
       <td className="py-3 px-3 font-mono text-white break-all">{relay.url}</td>
 
       {/* Health / Latency badge */}
       <td className="py-3 px-3 whitespace-nowrap">
-        {probeInfo?.probing ? (
-          <span className="inline-flex items-center gap-1 text-[11px] text-blue-400 font-mono">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            <span>Probing...</span>
-          </span>
-        ) : probeInfo ? (
-          <span
-            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono border ${
-              probeInfo.ok
-                ? "bg-emerald-950/60 text-emerald-400 border-emerald-800/40"
-                : "bg-rose-950/60 text-rose-400 border-rose-800/40"
-            }`}
-          >
-            {probeInfo.ok ? (
-              <>
-                <Check className="h-2.5 w-2.5" />
-                <span>{probeInfo.latencyMs}ms</span>
-              </>
-            ) : (
-              <>
-                <ShieldAlert className="h-2.5 w-2.5" />
-                <span>Unreachable</span>
-              </>
-            )}
-          </span>
-        ) : (
-          <span className="text-[#52525b] text-[11px] font-mono">—</span>
-        )}
+        <RelayProbeBadge probeInfo={probeInfo} />
       </td>
 
       {/* Label */}
@@ -158,7 +168,7 @@ function RelayRowItem({
   );
 }
 
-function getNotificationClasses(type: "success" | "info" | "error"): string {
+function getNotificationClasses(type: NotificationType): string {
   if (type === "success") {
     return "bg-emerald-950/40 border-emerald-800/40 text-emerald-300";
   }
@@ -483,6 +493,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
             </div>
 
             <button
+              type="button"
               onClick={handleToggleEnabled}
               disabled={updating || loading}
               aria-label="Toggle Relay Egress"
@@ -513,6 +524,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
 
             <div className="flex items-center gap-2 shrink-0">
               <button
+                type="button"
                 onClick={handleTestRelay}
                 disabled={testingLatency}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#202026] hover:bg-[#282832] border border-[#2e2e38] text-[11px] font-medium text-[#d4d4d8] hover:text-white transition cursor-pointer disabled:opacity-50"
@@ -600,9 +612,9 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="sm:col-span-2 space-y-1">
-                <label className="text-[10px] uppercase font-mono tracking-wider text-[#8b8b96]">
+                <span className="block text-[10px] uppercase font-mono tracking-wider text-[#8b8b96]">
                   Relay Worker URL *
-                </label>
+                </span>
                 <input
                   type="text"
                   placeholder="https://my-relay.workers.dev"
@@ -614,9 +626,9 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] uppercase font-mono tracking-wider text-[#8b8b96]">
+                <span className="block text-[10px] uppercase font-mono tracking-wider text-[#8b8b96]">
                   Label (Optional)
-                </label>
+                </span>
                 <input
                   type="text"
                   placeholder="e.g. Cloudflare SG / Vercel US"

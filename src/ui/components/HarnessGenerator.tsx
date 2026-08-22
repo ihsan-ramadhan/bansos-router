@@ -19,6 +19,17 @@ function getWireLabel(wire: string): string {
   return "Chat";
 }
 
+function getWireBadge(wire?: string) {
+  switch (wire) {
+    case "anthropic":
+      return { label: "Anthropic Messages API", color: "text-amber-300 bg-amber-950/60 border-amber-800/40" };
+    case "responses":
+      return { label: "OpenAI Responses API", color: "text-purple-300 bg-purple-950/60 border-purple-800/40" };
+    default:
+      return { label: "OpenAI Chat Completions API", color: "text-blue-300 bg-blue-950/60 border-blue-800/40" };
+  }
+}
+
 interface HarnessGeneratorProps {
   models: ModelItem[];
   daemonPort: number;
@@ -43,7 +54,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
       try {
         const list = await fetchAdapters();
         setAdapters(list);
-        if (list.length > 0 && !list.find((a) => a.id === selectedAdapterId)) {
+        if (list.length > 0 && !list.some((a) => a.id === selectedAdapterId)) {
           setSelectedAdapterId(list[0]?.id ?? "opencode");
         }
       } catch (err) {
@@ -123,18 +134,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
     }
   }
 
-  // Protocol badge helper
-  function getWireBadge(wire?: string) {
-    switch (wire) {
-      case "anthropic":
-        return { label: "Anthropic Messages API", color: "text-amber-300 bg-amber-950/60 border-amber-800/40" };
-      case "responses":
-        return { label: "OpenAI Responses API", color: "text-purple-300 bg-purple-950/60 border-purple-800/40" };
-      default:
-        return { label: "OpenAI Chat Completions API", color: "text-blue-300 bg-blue-950/60 border-blue-800/40" };
-    }
-  }
-
+  // Copy CLI command string
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -194,9 +194,9 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
           {/* Target Harness */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8b96]">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8b96]">
                 Target Coding Harness
-              </label>
+              </span>
               <span className="text-[11px] font-mono text-[#71717a]">
                 {adapters.length} available
               </span>
@@ -284,9 +284,9 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
           {/* Model Pinning */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8b96]">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8b96]">
                 Model Pinning (Optional)
-              </label>
+              </span>
               <span className="text-[11px] font-mono text-[#71717a]">
                 {models.length} available
               </span>
@@ -304,7 +304,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
                 <div className="flex items-center gap-2 truncate">
                   <Cpu className="h-3.5 w-3.5 text-[#71717a] shrink-0" />
                   <span className="truncate">
-                    {selectedModel ? selectedModel : "Auto (Register All Models)"}
+                    {selectedModel || "Auto (Register All Models)"}
                   </span>
                 </div>
                 <ChevronDown className={`h-3.5 w-3.5 text-[#71717a] shrink-0 transition-transform duration-150 ${modelDropdownOpen ? "rotate-180" : ""}`} />
@@ -397,6 +397,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
               {cliCommand}
             </code>
             <button
+              type="button"
               onClick={handleCopyCli}
               className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#202026] hover:bg-[#282832] active:bg-[#1a1a20] border border-[#2a2a34] text-xs font-medium text-white transition cursor-pointer shadow-sm"
               title="Copy terminal command"
@@ -439,17 +440,19 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
           </div>
 
           <div className="p-4 space-y-4">
-            {rendering ? (
+            {rendering && (
               <div className="py-12 text-center text-xs text-[#71717a]">
                 Rendering config...
               </div>
-            ) : !renderData || renderData.config.length === 0 ? (
+            )}
+            {!rendering && (!renderData || renderData.config.length === 0) && (
               <div className="py-12 text-center text-xs text-[#71717a]">
                 No config template available for this harness.
               </div>
-            ) : (
+            )}
+            {!rendering && renderData && renderData.config.length > 0 && (
               renderData.config.map((cfg, idx) => (
-                <div key={idx} className="space-y-2">
+                <div key={`${cfg.path}-${idx}`} className="space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-xs font-mono text-[#a1a1aa] truncate">
                       <span className="text-[#60a5fa]">File:</span>
@@ -460,6 +463,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
                     </div>
 
                     <button
+                      type="button"
                       onClick={() => handleCopyConfig(cfg.content, idx)}
                       className="flex items-center gap-1 text-[11px] text-[#71717a] hover:text-white px-2 py-1 rounded bg-[#16161a] hover:bg-[#202028] border border-[#262630] transition cursor-pointer"
                       title="Copy configuration snippet"

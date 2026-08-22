@@ -7,7 +7,6 @@ import {
   Square,
   Copy,
   Check,
-  RotateCcw,
   Sliders,
   ChevronDown,
   ChevronRight,
@@ -67,6 +66,46 @@ async function handleNonStreamCompletion(
   setRawChunks([JSON.stringify(data, null, 2)]);
 }
 
+interface StreamChunkContext {
+  callbacks: {
+    setLiveContent: (text: string) => void;
+    setLiveReasoning: (text: string) => void;
+    setRawChunks: (updater: (prev: string[]) => string[]) => void;
+  };
+  state: {
+    firstTokenTime: number | null;
+    tokenCount: number;
+    accumulatedContent: string;
+    accumulatedReasoning: string;
+  };
+}
+
+function processStreamDataChunk(dataStr: string, ctx: StreamChunkContext) {
+  ctx.callbacks.setRawChunks((prev) => [...prev, dataStr]);
+  if (dataStr === "[DONE]") return;
+
+  try {
+    const chunk = JSON.parse(dataStr);
+    const delta = chunk.choices?.[0]?.delta;
+    if (!delta) return;
+
+    ctx.state.firstTokenTime ??= performance.now();
+
+    if (delta.reasoning_content) {
+      ctx.state.accumulatedReasoning += delta.reasoning_content;
+      ctx.callbacks.setLiveReasoning(ctx.state.accumulatedReasoning);
+    }
+
+    if (delta.content) {
+      ctx.state.accumulatedContent += delta.content;
+      ctx.callbacks.setLiveContent(ctx.state.accumulatedContent);
+      ctx.state.tokenCount += 1;
+    }
+  } catch {
+    // Ignore partial chunk parse error
+  }
+}
+
 // Helper for streaming SSE completions
 async function handleStreamCompletion(
   res: Response,
@@ -85,10 +124,15 @@ async function handleStreamCompletion(
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let firstTokenTime: number | null = null;
-  let tokenCount = 0;
-  let accumulatedContent = "";
-  let accumulatedReasoning = "";
+  const ctx: StreamChunkContext = {
+    callbacks,
+    state: {
+      firstTokenTime: null,
+      tokenCount: 0,
+      accumulatedContent: "",
+      accumulatedReasoning: "",
+    },
+  };
 
   while (true) {
     const { done, value } = await reader.read();
@@ -103,52 +147,25 @@ async function handleStreamCompletion(
       if (!trimmed || trimmed.startsWith(":")) continue;
 
       if (trimmed.startsWith("data:")) {
-        const dataStr = trimmed.slice(5).trim();
-        callbacks.setRawChunks((prev) => [...prev, dataStr]);
-
-        if (dataStr === "[DONE]") continue;
-
-        try {
-          const chunk = JSON.parse(dataStr);
-          const delta = chunk.choices?.[0]?.delta;
-
-          if (delta) {
-            if (firstTokenTime === null) {
-              firstTokenTime = performance.now();
-            }
-
-            if (delta.reasoning_content) {
-              accumulatedReasoning += delta.reasoning_content;
-              callbacks.setLiveReasoning(accumulatedReasoning);
-            }
-
-            if (delta.content) {
-              accumulatedContent += delta.content;
-              callbacks.setLiveContent(accumulatedContent);
-              tokenCount += 1;
-            }
-          }
-        } catch {
-          // Ignore partial chunk parse error
-        }
+        processStreamDataChunk(trimmed.slice(5).trim(), ctx);
       }
     }
   }
 
   const endTime = performance.now();
   const totalMs = Math.round(endTime - startTime);
-  const ttftMs = firstTokenTime ? Math.round(firstTokenTime - startTime) : totalMs;
+  const ttftMs = ctx.state.firstTokenTime ? Math.round(ctx.state.firstTokenTime - startTime) : totalMs;
 
-  let finalOutput = accumulatedContent;
-  let finalReasoning = accumulatedReasoning;
+  let finalOutput = ctx.state.accumulatedContent;
+  let finalReasoning = ctx.state.accumulatedReasoning;
 
   const thinkExec = /^<think>([\s\S]*?)<\/think>\s*/.exec(finalOutput);
-  if (thinkExec && thinkExec[1]) {
+  if (thinkExec?.[1]) {
     finalReasoning = (finalReasoning ? finalReasoning + "\n" : "") + thinkExec[1].trim();
     finalOutput = finalOutput.replace(/^<think>[\s\S]*?<\/think>\s*/, "");
   }
 
-  const finalTokenCount = tokenCount > 0 ? tokenCount : finalOutput.split(/\s+/).filter(Boolean).length;
+  const finalTokenCount = ctx.state.tokenCount > 0 ? ctx.state.tokenCount : finalOutput.split(/\s+/).filter(Boolean).length;
   const speedDuration = (totalMs - ttftMs) / 1000;
   const tokensPerSec = speedDuration > 0.05 ? Math.round((finalTokenCount / speedDuration) * 10) / 10 : undefined;
 
@@ -503,9 +520,9 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
           <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 shadow-sm space-y-4">
             {/* Model Selector Dropdown */}
             <div className="space-y-1.5">
-              <label className="text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider block">
+              <span className="text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider block">
                 Active Model
-              </label>
+              </span>
 
               <div className="relative">
                 <button
@@ -702,7 +719,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
                   {/* Messages */}
                   {messages.map((msg, idx) => (
                     <div
-                      key={idx}
+                      key={`msg-${idx}-${msg.role}`}
                       className={`flex flex-col space-y-2 rounded-xl p-3.5 border transition ${
                         msg.role === "user"
                           ? "bg-[#181d28]/70 border-[#2b64e0]/30 ml-6 sm:ml-12"
@@ -814,17 +831,18 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
                       )}
 
                       {/* Live content */}
-                      {liveContent ? (
+                      {liveContent && (
                         <div className="text-[#f4f4f6] whitespace-pre-wrap break-words leading-relaxed">
                           {liveContent}
                           <span className="inline-block w-2 h-4 ml-1 bg-[#3b82f6] animate-pulse align-middle" />
                         </div>
-                      ) : !liveReasoning ? (
+                      )}
+                      {!liveContent && !liveReasoning && (
                         <div className="py-4 flex items-center gap-2 text-xs text-[#60a5fa]">
                           <Zap className="h-3.5 w-3.5 animate-bounce text-amber-400" />
                           <span>Waiting for first token...</span>
                         </div>
-                      ) : null}
+                      )}
                     </div>
                   )}
 

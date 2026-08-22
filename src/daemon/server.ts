@@ -17,6 +17,7 @@ import {
   addRelay,
   removeRelay,
   relayFetch,
+  type RelayState,
 } from "../relay/egress";
 import { ADAPTERS, findAdapter } from "../adapters";
 import { readSseStream } from "../protocols/stream";
@@ -42,7 +43,30 @@ export interface ServerOptions {
 
 const ALLOWED_METHODS = new Set(["GET", "POST", "OPTIONS"]);
 
-// whitelisted inbound paths only; traversal/encoded variants rejected
+function applyRelayMutation(
+  initialState: RelayState,
+  body: Record<string, unknown>,
+): RelayState {
+  let current = { ...initialState };
+  if (typeof body.enabled === "boolean") {
+    current.enabled = body.enabled;
+  }
+  const label = typeof body.label === "string" ? body.label : undefined;
+  if (!body.action && typeof body.url === "string") {
+    current.url = body.url;
+    if (body.url && !current.relays.some((r: import("../relay/egress").KnownRelay) => r.url === body.url)) {
+      current = addRelay(current, body.url, label);
+    }
+  } else if (body.action === "add" && typeof body.url === "string") {
+    current = addRelay(current, body.url, label);
+  } else if (body.action === "remove" && typeof body.url === "string") {
+    current = removeRelay(current, body.url);
+  }
+  if (Array.isArray(body.relays)) {
+    current.relays = body.relays as import("../relay/egress").KnownRelay[];
+  }
+  return current;
+}
 const STATIC_ROOT_FILES = new Set([
   "/",
   "/index.html",
@@ -976,35 +1000,9 @@ export function createServer(opts: ServerOptions): http.Server {
             return;
           }
         }
-        let current = loadRelayState();
-        if (typeof body.enabled === "boolean") {
-          current.enabled = body.enabled;
-        }
-        if (!body.action && typeof body.url === "string") {
-          current.url = body.url;
-          if (body.url && !current.relays.some((r) => r.url === body.url)) {
-            current = addRelay(
-              current,
-              body.url,
-              typeof body.label === "string" ? body.label : undefined,
-            );
-          }
-        }
-        if (body.action === "add" && typeof body.url === "string") {
-          current = addRelay(
-            current,
-            body.url,
-            typeof body.label === "string" ? body.label : undefined,
-          );
-        }
-        if (body.action === "remove" && typeof body.url === "string") {
-          current = removeRelay(current, body.url);
-        }
-        if (Array.isArray(body.relays)) {
-          current.relays = body.relays as import("../relay/egress").KnownRelay[];
-        }
-        saveRelayState(current);
-        sendJson(res, 200, current);
+        const updated = applyRelayMutation(loadRelayState(), body);
+        saveRelayState(updated);
+        sendJson(res, 200, updated);
       });
       return;
     }

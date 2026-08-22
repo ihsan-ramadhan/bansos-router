@@ -65,6 +65,45 @@ function getSortIcon(currentField: string, activeField: string, asc: boolean) {
   return asc ? <ArrowUp className="h-3 w-3 text-[#3b82f6]" /> : <ArrowDown className="h-3 w-3 text-[#3b82f6]" />;
 }
 
+function ModelPingStatusCell({ ping }: { ping?: PingResult }) {
+  if (!ping || ping.status === "idle") {
+    return <span className="text-[11px] text-[#52525b] font-mono">Not pinged</span>;
+  }
+  if (ping.status === "pinging") {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-[#60a5fa] font-mono">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        <span>pinging...</span>
+      </span>
+    );
+  }
+  if (ping.status === "ok") {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-mono text-emerald-400 font-medium">
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        <span>{ping.latencyMs}ms</span>
+      </span>
+    );
+  }
+  if (ping.status === "rate_limited") {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-mono text-amber-400 font-medium">
+        <AlertTriangle className="h-3.5 w-3.5" />
+        <span>429 ({ping.latencyMs}ms)</span>
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 text-xs font-mono text-rose-400 font-medium"
+      title={ping.error || "Ping failed"}
+    >
+      <XCircle className="h-3.5 w-3.5" />
+      <span>Error {ping.statusCode ? `(${ping.statusCode})` : ""}</span>
+    </span>
+  );
+}
+
 interface ModelCatalogRowProps {
   model: ModelItem;
   ping?: PingResult;
@@ -140,32 +179,7 @@ function ModelCatalogRow({ model, ping, copiedId, onCopy, onPingModel }: ModelCa
 
       {/* Latency status */}
       <td className="py-3.5 px-4 whitespace-nowrap">
-        {!ping || ping.status === "idle" ? (
-          <span className="text-[11px] text-[#52525b] font-mono">Not pinged</span>
-        ) : ping.status === "pinging" ? (
-          <span className="inline-flex items-center gap-1.5 text-xs text-[#60a5fa] font-mono">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            <span>pinging...</span>
-          </span>
-        ) : ping.status === "ok" ? (
-          <span className="inline-flex items-center gap-1.5 text-xs font-mono text-emerald-400 font-medium">
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            <span>{ping.latencyMs}ms</span>
-          </span>
-        ) : ping.status === "rate_limited" ? (
-          <span className="inline-flex items-center gap-1.5 text-xs font-mono text-amber-400 font-medium">
-            <AlertTriangle className="h-3.5 w-3.5" />
-            <span>429 ({ping.latencyMs}ms)</span>
-          </span>
-        ) : (
-          <span
-            className="inline-flex items-center gap-1.5 text-xs font-mono text-rose-400 font-medium"
-            title={ping.error || "Ping failed"}
-          >
-            <XCircle className="h-3.5 w-3.5" />
-            <span>Error {ping.statusCode ? `(${ping.statusCode})` : ""}</span>
-          </span>
-        )}
+        <ModelPingStatusCell ping={ping} />
       </td>
 
       {/* Action */}
@@ -344,10 +358,6 @@ export function ModelCatalog({
     return filteredModels.slice(start, start + pageSize);
   }, [filteredModels, activePage, pageSize]);
 
-  const reasoningCount = useMemo(() => {
-    return models.filter((m) => m.reasoning).length;
-  }, [models]);
-
   const pingStats = useMemo(() => {
     const entries = Object.values(pingResults);
     const ok = entries.filter((r) => r.status === "ok").length;
@@ -376,6 +386,7 @@ export function ModelCatalog({
           />
           {searchQuery && (
             <button
+              type="button"
               onClick={() => {
                 setSearchQuery("");
                 setCurrentPage(1);
