@@ -28,10 +28,31 @@
     cursor: not-allowed;
   }
 
-  /* Custom subtle scrollbar */
+  /* Reset standard outline & focus rings to dark theme */
+  *:focus-visible {
+    outline: 1px solid #2b64e0;
+    outline-offset: 1px;
+  }
+
+  /* Reset webkit appearance on forms */
+  input, select, textarea, button {
+    font-family: inherit;
+  }
+
+  /* Hide scrollbar for Chrome, Safari and Opera */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  /* Hide scrollbar for IE, Edge and Firefox */
+  .no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+
+  /* Custom subtle scrollbar for tables / large scroll areas */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;

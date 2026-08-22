@@ -15,6 +15,7 @@ export interface ModelItem {
   object: string;
   created: number;
   owned_by: string;
+  source?: string;
   name?: string;
   context_window?: number;
   context_length?: number;

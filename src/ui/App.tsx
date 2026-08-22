@@ -1,6 +1,9 @@
-import { useState, useEffect } from "preact/hooks";
-import { fetchStatus } from "./services/api";
-import type { DaemonStatus } from "./types/ui";
+import { useState, useEffect, useCallback } from "preact/hooks";
+import { fetchStatus, fetchModels, refreshCatalog } from "./services/api";
+import type { DaemonStatus, ModelItem } from "./types/ui";
+import { MetricCards } from "./components/MetricCards";
+import { ModelCatalog } from "./components/ModelCatalog";
+import { usePing } from "./hooks/usePing";
 import {
   Cpu,
   Wrench,
@@ -8,26 +11,28 @@ import {
   MessageSquare,
   RefreshCw,
   Zap,
-  Server,
-  Clock,
-  ShieldCheck,
-  ShieldAlert,
   ExternalLink,
+  Info,
 } from "lucide-preact";
 
 export function App() {
   const [activeTab, setActiveTab] = useState<"catalog" | "harness" | "relay" | "playground">("catalog");
   const [status, setStatus] = useState<DaemonStatus | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [models, setModels] = useState<ModelItem[]>([]);
+  const [loadingStatus, setLoadingStatus] = useState(true);
+  const [loadingModels, setLoadingModels] = useState(true);
+  const [refreshingCatalog, setRefreshingCatalog] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadStatus();
-    const interval = setInterval(loadStatus, 5000);
-    return () => clearInterval(interval);
-  }, []);
+  const {
+    pingResults,
+    isPingingAll,
+    pingSingle,
+    pingAll,
+    clearPingResults,
+  } = usePing();
 
-  async function loadStatus() {
+  const loadStatus = useCallback(async () => {
     try {
       const data = await fetchStatus();
       setStatus(data);
@@ -35,15 +40,41 @@ export function App() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to connect to daemon");
     } finally {
-      setLoading(false);
+      setLoadingStatus(false);
     }
-  }
+  }, []);
 
-  const uptimeText = status?.uptimeSeconds
-    ? status.uptimeSeconds >= 3600
-      ? `${Math.floor(status.uptimeSeconds / 3600)}h ${Math.floor((status.uptimeSeconds % 3600) / 60)}m`
-      : `${Math.floor(status.uptimeSeconds / 60)}m ${status.uptimeSeconds % 60}s`
-    : "0s";
+  const loadModels = useCallback(async () => {
+    try {
+      setLoadingModels(true);
+      const res = await fetchModels();
+      setModels(res.data || []);
+    } catch (err) {
+      console.error("Failed to load models:", err);
+    } finally {
+      setLoadingModels(false);
+    }
+  }, []);
+
+  const handleRefreshCatalog = useCallback(async () => {
+    setRefreshingCatalog(true);
+    try {
+      await refreshCatalog();
+      await Promise.all([loadModels(), loadStatus()]);
+    } catch (err) {
+      console.error("Failed to refresh catalog:", err);
+    } finally {
+      setRefreshingCatalog(false);
+    }
+  }, [loadModels, loadStatus]);
+
+  useEffect(() => {
+    loadStatus();
+    loadModels();
+
+    const interval = setInterval(loadStatus, 5000);
+    return () => clearInterval(interval);
+  }, [loadStatus, loadModels]);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#111113] text-[#f4f4f6]">
@@ -95,19 +126,19 @@ export function App() {
                 )}
               </div>
 
-              {/* Refresh Button */}
+              {/* Quick Refresh Status Button */}
               <button
                 onClick={loadStatus}
                 title="Refresh status"
                 className="p-2 rounded-lg bg-[#1a1a20] hover:bg-[#23232a] active:bg-[#151518] border border-[#282832] text-[#9393a0] hover:text-white transition cursor-pointer"
               >
-                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+                <RefreshCw className={`h-4 w-4 ${loadingStatus ? "animate-spin" : ""}`} />
               </button>
             </div>
           </div>
 
           {/* Sub-header Top Tabs (Tailscale style) */}
-          <nav className="flex space-x-1 sm:space-x-2 -mb-px pt-1 overflow-x-auto">
+          <nav className="flex space-x-1 sm:space-x-2 -mb-px pt-1 overflow-x-auto no-scrollbar scroll-smooth">
             <button
               onClick={() => setActiveTab("catalog")}
               className={`flex items-center gap-2 px-3.5 py-2.5 border-b-2 text-[13px] font-medium transition whitespace-nowrap cursor-pointer ${
@@ -118,6 +149,11 @@ export function App() {
             >
               <Cpu className="h-4 w-4" />
               <span>Models & Health</span>
+              {models.length > 0 && (
+                <span className="text-[11px] px-1.5 py-0.2 rounded-full bg-[#202028] text-[#a1a1aa] font-mono">
+                  {models.length}
+                </span>
+              )}
             </button>
 
             <button
@@ -161,175 +197,80 @@ export function App() {
 
       {/* Main Content View */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        {/* Metric Cards Shell */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Card 1: Status */}
-          <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 transition-all duration-200 hover:border-[#2e2e38] shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider">
-                Daemon Status
-              </span>
-              <div className="p-1.5 rounded-lg bg-[#202026] text-[#a1a1aa]">
-                <Server className="h-4 w-4" />
-              </div>
+        {/* Top Metric Cards */}
+        <MetricCards status={status} loading={loadingStatus} />
+
+        {/* Tab 1: Models & Health (Step 2 Active View) */}
+        {activeTab === "catalog" && (
+          <ModelCatalog
+            models={models}
+            loading={loadingModels}
+            onRefreshCatalog={handleRefreshCatalog}
+            refreshing={refreshingCatalog}
+            pingResults={pingResults}
+            isPingingAll={isPingingAll}
+            onPingModel={pingSingle}
+            onPingAll={pingAll}
+            onClearPings={clearPingResults}
+          />
+        )}
+
+        {/* Tab 2: Harness Setup Placeholder (Step 3) */}
+        {activeTab === "harness" && (
+          <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-8 shadow-sm text-center">
+            <div className="mx-auto h-12 w-12 rounded-xl bg-[#202028] border border-[#2c2c36] flex items-center justify-center text-[#3b82f6] mb-4">
+              <Wrench className="h-6 w-6" />
             </div>
-            <div className="flex items-center gap-2">
-              <span
-                className={`h-2.5 w-2.5 rounded-full ${
-                  status ? "bg-emerald-500 shadow-sm shadow-emerald-500/50" : "bg-rose-500"
-                }`}
-              />
-              <span className="text-lg font-bold text-white tracking-tight">
-                {loading && !status ? "Connecting..." : status ? "Online" : "Disconnected"}
-              </span>
-            </div>
-            <div className="text-xs text-[#71717a] mt-1 font-mono">
-              Port {status?.port ?? 17070} • 127.0.0.1
+            <h3 className="text-base font-bold text-white mb-2">
+              Harness Config Generator
+            </h3>
+            <p className="text-xs text-[#9393a0] max-w-md mx-auto mb-6">
+              1-click configuration generator for OpenCode, Cline, Roo Code, Aider, Codex, Continue, and Cursor.
+            </p>
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#121215] border border-[#23232a] text-xs text-[#a1a1aa]">
+              <Info className="h-4 w-4 text-[#60a5fa]" />
+              <span>Scheduled for Step 3 milestone implementation.</span>
             </div>
           </div>
+        )}
 
-          {/* Card 2: Active Models */}
-          <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 transition-all duration-200 hover:border-[#2e2e38] shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider">
-                Active Models
-              </span>
-              <div className="p-1.5 rounded-lg bg-[#202026] text-[#3b82f6]">
-                <Cpu className="h-4 w-4" />
-              </div>
+        {/* Tab 3: Relay Egress Placeholder (Step 4) */}
+        {activeTab === "relay" && (
+          <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-8 shadow-sm text-center">
+            <div className="mx-auto h-12 w-12 rounded-xl bg-[#202028] border border-[#2c2c36] flex items-center justify-center text-amber-400 mb-4">
+              <Shield className="h-6 w-6" />
             </div>
-            <div className="text-lg font-bold text-white tracking-tight">
-              {status?.modelCount ?? 0} <span className="text-sm font-normal text-[#a1a1aa]">Models</span>
-            </div>
-            <div className="text-xs text-[#71717a] mt-1">
-              OpenCode Zen, Kilo, LLM7
+            <h3 className="text-base font-bold text-white mb-2">
+              Relay Egress Manager
+            </h3>
+            <p className="text-xs text-[#9393a0] max-w-md mx-auto mb-6">
+              Bypass IP rate-limits by managing outbound proxy targets and relay workers without restarting the daemon.
+            </p>
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#121215] border border-[#23232a] text-xs text-[#a1a1aa]">
+              <Info className="h-4 w-4 text-amber-400" />
+              <span>Scheduled for Step 4 milestone implementation.</span>
             </div>
           </div>
+        )}
 
-          {/* Card 3: Uptime */}
-          <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 transition-all duration-200 hover:border-[#2e2e38] shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider">
-                Daemon Uptime
-              </span>
-              <div className="p-1.5 rounded-lg bg-[#202026] text-[#a1a1aa]">
-                <Clock className="h-4 w-4" />
-              </div>
+        {/* Tab 4: Live Playground Placeholder */}
+        {activeTab === "playground" && (
+          <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-8 shadow-sm text-center">
+            <div className="mx-auto h-12 w-12 rounded-xl bg-[#202028] border border-[#2c2c36] flex items-center justify-center text-emerald-400 mb-4">
+              <MessageSquare className="h-6 w-6" />
             </div>
-            <div className="text-lg font-bold text-white tracking-tight font-mono">
-              {uptimeText}
-            </div>
-            <div className="text-xs text-emerald-400 mt-1 flex items-center gap-1 font-medium">
-              <span>●</span> Auto-failover active
+            <h3 className="text-base font-bold text-white mb-2">
+              Live Test Playground
+            </h3>
+            <p className="text-xs text-[#9393a0] max-w-md mx-auto mb-6">
+              Test streaming SSE completions and verify model outputs directly in the browser against any active model.
+            </p>
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#121215] border border-[#23232a] text-xs text-[#a1a1aa]">
+              <Info className="h-4 w-4 text-emerald-400" />
+              <span>Scheduled for Step 4 milestone implementation.</span>
             </div>
           </div>
-
-          {/* Card 4: Egress */}
-          <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 transition-all duration-200 hover:border-[#2e2e38] shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider">
-                Egress Mode
-              </span>
-              <div className="p-1.5 rounded-lg bg-[#202026] text-[#a1a1aa]">
-                {status?.relay?.enabled ? (
-                  <ShieldAlert className="h-4 w-4 text-amber-400" />
-                ) : (
-                  <ShieldCheck className="h-4 w-4 text-emerald-400" />
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span
-                className={`h-2.5 w-2.5 rounded-full ${
-                  status?.relay?.enabled ? "bg-amber-400" : "bg-emerald-400"
-                }`}
-              />
-              <span className="text-lg font-bold text-white tracking-tight">
-                {status?.relay?.enabled ? "Relay Active" : "Direct Egress"}
-              </span>
-            </div>
-            <div className="text-xs text-[#71717a] mt-1 truncate">
-              {status?.relay?.enabled && status?.relay?.url ? status.relay.url : "Direct IP connection"}
-            </div>
-          </div>
-        </div>
-
-        {/* Step 1 Clean Foundation View */}
-        <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-6 sm:p-8 shadow-sm">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-[#23232a]">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-white tracking-tight">
-                  {activeTab === "catalog" && "Models & Health Catalog"}
-                  {activeTab === "harness" && "Harness Integrations"}
-                  {activeTab === "relay" && "Relay Egress Manager"}
-                  {activeTab === "playground" && "Live Test Playground"}
-                </h2>
-                <span className="px-2 py-0.5 text-[11px] rounded-md bg-[#202028] text-[#a1a1aa] border border-[#2c2c36] font-mono">
-                  Step 1 Ready
-                </span>
-              </div>
-              <p className="text-xs text-[#9393a0] mt-1">
-                {activeTab === "catalog" &&
-                  "Live overview of free, keyless models routed with automatic failover."}
-                {activeTab === "harness" &&
-                  "1-click config generator for OpenCode, Cline, Roo Code, Aider, Codex, and Cursor."}
-                {activeTab === "relay" &&
-                  "Bypass IP rate-limits by routing outbound queries through private relays."}
-                {activeTab === "playground" &&
-                  "Direct SSE streaming completions test against any active upstream model."}
-              </p>
-            </div>
-
-            <button
-              onClick={loadStatus}
-              className="px-3 py-1.5 rounded-lg bg-[#202028] hover:bg-[#282834] active:bg-[#1a1a20] border border-[#2c2c36] text-xs font-medium text-white transition flex items-center gap-2 cursor-pointer shrink-0"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin text-[#3b82f6]" : "text-[#a1a1aa]"}`} />
-              <span>Refresh Status</span>
-            </button>
-          </div>
-
-          {/* Quick Info & Architecture Summary Box */}
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 rounded-lg bg-[#121215] border border-[#23232a]">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-[#71717a] mb-1">
-                Local Wire API
-              </div>
-              <div className="text-xs font-mono text-emerald-400">
-                http://127.0.0.1:{status?.port ?? 17070}/v1
-              </div>
-              <div className="text-[11px] text-[#71717a] mt-1">
-                OpenAI, Anthropic & SSE wire compatible
-              </div>
-            </div>
-
-            <div className="p-4 rounded-lg bg-[#121215] border border-[#23232a]">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-[#71717a] mb-1">
-                Zero Configuration
-              </div>
-              <div className="text-xs text-white font-medium">
-                No API Keys Needed
-              </div>
-              <div className="text-[11px] text-[#71717a] mt-1">
-                Routed across 3 keyless upstreams
-              </div>
-            </div>
-
-            <div className="p-4 rounded-lg bg-[#121215] border border-[#23232a]">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-[#71717a] mb-1">
-                Failover Protection
-              </div>
-              <div className="text-xs text-white font-medium flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                <span>Smart Auto-Retry</span>
-              </div>
-              <div className="text-[11px] text-[#71717a] mt-1">
-                Seamless fallback on 429 rate limit
-              </div>
-            </div>
-          </div>
-        </div>
+        )}
       </main>
 
       {/* Footer */}
