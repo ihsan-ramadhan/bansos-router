@@ -21,6 +21,8 @@ bansos start --bg       # detached daemon on 127.0.0.1:17070
 bansos setup opencode   # writes the config for your harness
 ```
 
+Open `http://127.0.0.1:17070` in your browser to access the Web UI dashboard (explore models, probe live latency, generate harness configs, manage relay egress, and test completions).
+
 Any OpenAI-compatible or Anthropic-compatible client can now use
 `http://127.0.0.1:17070` (chat at `/v1/chat/completions`, Claude Code at
 `/v1/messages`). `bansos setup <harness>` merges or appends config blocks, and
@@ -55,7 +57,9 @@ pi is handled by the separate extension. `codex` writes its config too, but its
   OpenAI Responses, for Codex CLI, lands in M3.
 - Keyless free upstreams only: OpenCode Zen, KiloCode gateway, and LLM7.
 - `bansos setup <harness>` writes config for Claude Code, Aider, OpenCode,
-  Codex, Hermes, Goose, OpenClaw, Antigravity, JCode, and 9Router.
+  Codex, Hermes, Goose, OpenClaw, Antigravity, JCode, 9Router, Continue, Cline, and Roo Code.
+- Web UI dashboard served at `http://127.0.0.1:17070/` with model catalog explorer,
+  live ping probes, 1-click harness setup generator, relay egress manager, and test playground.
 - The pi extension (`pi install npm:pi-bansos-router`) registers the `bansosr`
   provider, so every free model shows up in pi's `/model` picker. There is
   also a `/bansosr` command for status. If the daemon is not running when pi
@@ -144,13 +148,14 @@ For contributors working from source:
 git clone https://github.com/ihsan-ramadhan/bansos-router
 cd bansos-router
 npm install
-npm run build      # esbuild, outputs dist/ (bins: bansos, bansosd)
+npm run build      # builds Web UI (Vite) + CLI (esbuild), outputs dist/
 npm link           # make `bansos`/`bansosd` available globally
 npm run typecheck  # tsc --noEmit
 npm test           # node:test
 
 npm run dev        # run the bansos CLI from source
 npm run dev:daemon # run the daemon from source
+npm run dev:ui     # run Vite dev server for Web UI
 ```
 
 ## Docs

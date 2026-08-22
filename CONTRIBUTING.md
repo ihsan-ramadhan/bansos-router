@@ -33,13 +33,14 @@ Thanks for helping make free keyless models reachable from every coding harness.
 git clone https://github.com/ihsan-ramadhan/bansos-router
 cd bansos-router
 npm install
-npm run build      # esbuild, outputs dist/ (bins: bansos, bansosd)
+npm run build      # build Web UI (Vite) + CLI (esbuild), outputs dist/
 npm link           # make `bansos`/`bansosd` available globally
 npm run typecheck  # tsc --noEmit
-npm test           # node --test (node:test)
+npm test           # node --test (node:test, run with --test-concurrency=1)
 
 npm run dev        # run the bansos CLI from source (tsx)
 npm run dev:daemon # run the daemon from source (tsx)
+npm run dev:ui     # run Vite dev server for the Web UI
 ```
 
 The pi extension lives in `extensions/pi` and is published as a separate package (`pi-bansos-router`). Build and test it separately:
@@ -56,11 +57,12 @@ npm run build      # esbuild, outputs extensions/pi/dist/index.js
 ```
 src/
   cli/            CLI commands: index (dispatch), setup, doctor, ping, write, relay
-  adapters/       harness adapters (claude-code, opencode, goose, openclaw, ...)
+  adapters/       harness adapters (claude-code, opencode, goose, openclaw, continue, cline, roo, ...)
   protocols/      wire protocol parsing + translation (anthropic, openai-chat, responses, stream)
   upstreams/      keyless upstream definitions (zen, kilo, llm7, local) + catalog seeds
-  daemon/         server, catalog, runtime state, logging
+  daemon/         server, catalog, runtime state, static UI serving, logging
   relay/          relay egress logic + vercel deploy stub (M4)
+  ui/             web console dashboard (Preact, Vite)
   update.ts       npm registry version check (24h cache)
   logger.ts       JSON line logger
 extensions/pi/    pi coding agent extension (registers the bansosr provider)
@@ -70,7 +72,8 @@ test/             node:test suites
 
 ## Architecture in one minute
 
-- The **daemon** (`src/daemon`) is a long running HTTP server bound to `127.0.0.1:17070` (auto bumps to `17090` if busy). It exposes `/v1/chat/completions`, `/v1/messages`, `/v1/models`, `/healthz`, `/bansos/status`, and `/bansos/refresh`.
+- The **daemon** (`src/daemon`) is a long running HTTP server bound to `127.0.0.1:17070` (auto bumps to `17090` if busy). It exposes `/v1/chat/completions`, `/v1/messages`, `/v1/models`, `/healthz`, `/bansos/status`, `/bansos/refresh`, and the Web UI dashboard on `/`.
+- The **Web UI** (`src/ui`) provides a browser dashboard for exploring models, probing latency, generating harness configs, managing relay egress, and testing completions.
 - Inbound requests are translated to OpenAI Chat Completions and forwarded to a keyless upstream (OpenCode Zen, KiloCode, or LLM7). The upstream reply is translated back to the caller's wire format.
 - The **catalog** (`src/daemon/catalog.ts`) holds the live model registry. `resolve(id)` tolerates bare aliases (e.g. `hy3:free` resolves to `tencent/hy3:free`).
 - **Relay egress** (`src/relay`) wraps outbound upstream calls through a user owned relay when enabled, using `x-relay-target` / `x-relay-path` headers.

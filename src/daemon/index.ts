@@ -49,7 +49,10 @@ Options:
   return args;
 }
 
-function startServer(port: number, bind: string): Promise<{ server: http.Server; port: number }> {
+function startServer(
+  port: number,
+  bind: string,
+): Promise<{ server: http.Server; port: number; catalog: RuntimeCatalog }> {
   const log = createLogger({ prefix: "bansosd" });
   const config = loadConfig();
   const upstreams = buildUpstreams(config.localUpstreams);
@@ -82,7 +85,7 @@ function startServer(port: number, bind: string): Promise<{ server: http.Server;
         }
         reject(err);
       });
-      server.listen(port, bind, () => resolve({ server, port }));
+      server.listen(port, bind, () => resolve({ server, port, catalog }));
     };
     tryListen(0);
   });
@@ -116,8 +119,17 @@ async function main(argv: string[]): Promise<void> {
   }
 
   // run an initial health-check pass, then refresh periodically
-  const { server, port: actualPort } = await startServer(port, bind);
+  const { server, port: actualPort, catalog } = await startServer(port, bind);
   log.info(`bansosd listening on http://${bind}:${actualPort}`);
+
+  if (process.env.BANSOS_LOG !== "json") {
+    process.stdout.write(
+      `\n● bansosd online (port ${actualPort})\n` +
+      `  ├── Web UI   : http://${bind}:${actualPort}\n` +
+      `  ├── API Base : http://${bind}:${actualPort}/v1\n` +
+      `  └── Models   : ${catalog.models.length} alive (zen, kilo, llm7)\n\n`
+    );
+  }
 
   writeJsonAtomic(STATE_FILE, {
     pid: process.pid,

@@ -14,7 +14,7 @@ const ZEN_STATIC_HEADERS = {
 export const ZEN_MODELS: ModelDef[] = [
   modelDef({
     id: "mimo-v2.5-free",
-    name: "Mimo V2.5 Free (Zen)",
+    name: "Mimo V2.5 Free",
     source: "zen",
     reasoning: false,
     contextWindow: 1_048_576,
@@ -24,7 +24,7 @@ export const ZEN_MODELS: ModelDef[] = [
   }),
   modelDef({
     id: "nemotron-3-ultra-free",
-    name: "Nemotron 3 Ultra (Zen)",
+    name: "Nemotron 3 Ultra",
     source: "zen",
     reasoning: true,
     contextWindow: 1_000_000,
@@ -34,7 +34,7 @@ export const ZEN_MODELS: ModelDef[] = [
   }),
   modelDef({
     id: "big-pickle",
-    name: "Big Pickle (Zen)",
+    name: "Big Pickle",
     source: "zen",
     reasoning: true,
     contextWindow: 200_000,
@@ -44,7 +44,7 @@ export const ZEN_MODELS: ModelDef[] = [
   }),
   modelDef({
     id: "laguna-s-2.1-free",
-    name: "Laguna S 2.1 (Zen)",
+    name: "Laguna S 2.1",
     source: "zen",
     reasoning: true,
     contextWindow: 262_144,
@@ -54,7 +54,7 @@ export const ZEN_MODELS: ModelDef[] = [
   }),
   modelDef({
     id: "hy3-free",
-    name: "Tencent HY3 Free (Zen)",
+    name: "Tencent HY3 Free",
     source: "zen",
     reasoning: true,
     contextWindow: 256_000,
@@ -64,7 +64,7 @@ export const ZEN_MODELS: ModelDef[] = [
   }),
   modelDef({
     id: "nemotron-3.5-lightning-free",
-    name: "Nemotron 3.5 Lightning Free (Zen)",
+    name: "Nemotron 3.5 Lightning Free",
     source: "zen",
     reasoning: true,
     contextWindow: 1_000_000,
@@ -74,7 +74,7 @@ export const ZEN_MODELS: ModelDef[] = [
   }),
   modelDef({
     id: "x-preview-f-free",
-    name: "Ox Alpha Free (Zen)",
+    name: "Ox Alpha Free",
     source: "zen",
     reasoning: true,
     contextWindow: 1_000_000,
@@ -84,7 +84,7 @@ export const ZEN_MODELS: ModelDef[] = [
   }),
   modelDef({
     id: "muse-spark-1.2-contributor-free",
-    name: "Muse Spark 1.2 Contributor Free (Zen)",
+    name: "Muse Spark 1.2 Contributor Free",
     source: "zen",
     reasoning: false,
     contextWindow: 1_000_000,

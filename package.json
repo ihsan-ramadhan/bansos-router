@@ -18,11 +18,13 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "esbuild src/cli/index.ts --bundle --platform=node --format=esm --outfile=dist/cli/index.js",
+    "build": "npm run build:ui && esbuild src/cli/index.ts --bundle --platform=node --format=esm --outfile=dist/cli/index.js",
+    "build:ui": "vite build",
     "dev": "tsx src/cli/index.ts",
     "dev:daemon": "tsx src/cli/index.ts daemon",
+    "dev:ui": "vite",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test test/*.test.ts",
+    "test": "node --import tsx --test --test-concurrency=1 test/*.test.ts",
     "prepare": "npm run build"
   },
   "keywords": [
@@ -42,10 +44,16 @@
     "yaml": "^2.9.0"
   },
   "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.2.0",
     "esbuild": "^0.28.2",
+    "lucide-preact": "^1.33.0",
+    "preact": "^10.29.8",
+    "tailwindcss": "^4.3.3",
     "tsx": "^4.23.12",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
   },
   "allowScripts": {
     "esbuild@0.25.12": true,

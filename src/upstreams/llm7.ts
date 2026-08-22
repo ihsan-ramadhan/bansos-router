@@ -8,7 +8,7 @@ export const LLM7_ALIASES = ["default", "fast"] as const;
 export const LLM7_MODELS: ModelDef[] = [
   modelDef({
     id: "DeepSeek-V4-Flash-0731",
-    name: "DeepSeek V4 Flash (LLM7)",
+    name: "DeepSeek V4 Flash",
     source: "llm7",
     reasoning: true,
     contextWindow: 400_000,
@@ -18,7 +18,7 @@ export const LLM7_MODELS: ModelDef[] = [
   }),
   modelDef({
     id: "codestral-latest",
-    name: "Codestral Latest (LLM7)",
+    name: "Codestral Latest",
     source: "llm7",
     reasoning: false,
     contextWindow: 32_000,
@@ -28,7 +28,7 @@ export const LLM7_MODELS: ModelDef[] = [
   }),
   modelDef({
     id: "gemini-3.1-flash-lite",
-    name: "Gemini 3.1 Flash Lite (LLM7)",
+    name: "Gemini 3.1 Flash Lite",
     source: "llm7",
     reasoning: false,
     contextWindow: 256_000,
@@ -38,7 +38,7 @@ export const LLM7_MODELS: ModelDef[] = [
   }),
   modelDef({
     id: "gpt-oss:20b",
-    name: "GPT OSS 20B (LLM7)",
+    name: "GPT OSS 20B",
     source: "llm7",
     reasoning: false,
     contextWindow: 128_000,
@@ -48,7 +48,7 @@ export const LLM7_MODELS: ModelDef[] = [
   }),
   modelDef({
     id: "minimax-m2.7",
-    name: "MiniMax M2.7 (LLM7)",
+    name: "MiniMax M2.7",
     source: "llm7",
     reasoning: true,
     contextWindow: 180_000,
@@ -58,7 +58,7 @@ export const LLM7_MODELS: ModelDef[] = [
   }),
   modelDef({
     id: "mistral-Nemo-Instruct-2407",
-    name: "Mistral Nemo Instruct (LLM7)",
+    name: "Mistral Nemo Instruct",
     source: "llm7",
     reasoning: false,
     contextWindow: 128_000,
@@ -128,7 +128,7 @@ export const llm7Upstream: Upstream = {
 
         return modelDef({
           id: m.id,
-          name: seeded?.name ?? `LLM7 ${m.id}`,
+          name: seeded?.name ?? m.id,
           source: "llm7",
           reasoning: m.reasoning ?? seeded?.reasoning ?? false,
           contextWindow: context,

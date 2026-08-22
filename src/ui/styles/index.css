@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    background-color: #111113;
+    color: #f4f4f6;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+  }
+
+  ::selection {
+    background-color: rgba(43, 100, 224, 0.3);
+    color: #93c5fd;
+  }
+
+  /* Interactive elements */
+  button,
+  [role="button"],
+  select,
+  summary,
+  a {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"],
+  input:disabled,
+  select:disabled {
+    cursor: not-allowed;
+  }
+
+  /* Reset focus rings */
+  *:focus-visible {
+    outline: 1px solid #2b64e0;
+    outline-offset: 1px;
+  }
+
+  /* Reset appearance on forms */
+  input, select, textarea, button {
+    font-family: inherit;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+  }
+
+  /* Remove textarea resize handles */
+  textarea {
+    resize: none;
+  }
+
+  /* Custom scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(43, 100, 224, 0.45) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: rgba(43, 100, 224, 0.45);
+    border-radius: 9999px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: #3b82f6;
+  }
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
