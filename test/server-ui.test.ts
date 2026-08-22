@@ -161,3 +161,41 @@ test("404 returns HTML for browser navigation and JSON for API requests", async 
     await close();
   }
 });
+
+test("POST /bansos/relay/probe tests target reachability and latency", async () => {
+  const { baseUrl, close } = await setupTestServer();
+  try {
+    // 1. Probe valid local endpoint
+    const res = await fetch(`${baseUrl}/bansos/relay/probe`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: `${baseUrl}/healthz` }),
+    });
+    assert.equal(res.status, 200);
+    const data = (await res.json()) as { ok: boolean; status?: number; latencyMs: number };
+    assert.equal(data.ok, true);
+    assert.equal(data.status, 200);
+    assert.equal(typeof data.latencyMs, "number");
+
+    // 2. Probe missing url when no active relay -> 400
+    const resEmpty = await fetch(`${baseUrl}/bansos/relay/probe`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: "" }),
+    });
+    assert.equal(resEmpty.status, 400);
+
+    // 3. Probe unreachable host -> returns 200 with ok: false
+    const resUnreachable = await fetch(`${baseUrl}/bansos/relay/probe`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: "http://127.0.0.1:59999" }),
+    });
+    assert.equal(resUnreachable.status, 200);
+    const dataUnreachable = (await resUnreachable.json()) as { ok: boolean; error?: string };
+    assert.equal(dataUnreachable.ok, false);
+    assert.ok(dataUnreachable.error);
+  } finally {
+    await close();
+  }
+});
