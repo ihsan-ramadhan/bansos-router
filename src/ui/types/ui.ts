@@ -76,3 +76,35 @@ export interface PingResult {
   latencyMs?: number;
   error?: string;
 }
+
+export interface ChatMessage {
+  id?: string;
+  role: "system" | "user" | "assistant";
+  content: string;
+  reasoning?: string;
+  metrics?: CompletionMetrics;
+  error?: string;
+}
+
+export interface StreamEvent {
+  id?: string;
+  delta?: string;
+  reasoning_content?: string;
+  finish_reason?: string | null;
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+  raw?: string;
+}
+
+export interface CompletionMetrics {
+  ttftMs?: number;
+  totalMs?: number;
+  tokenCount?: number;
+  tokensPerSec?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+}

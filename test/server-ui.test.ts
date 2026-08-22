@@ -6,6 +6,7 @@ import { RuntimeCatalog } from "../src/daemon/catalog";
 import { RateLimiter } from "../src/daemon/rate-limit";
 import { createLogger } from "../src/logger";
 import { SEEDED_MODELS } from "../src/upstreams";
+import { loadRelayState, saveRelayState } from "../src/relay/egress";
 
 function setupTestServer(): Promise<{ server: http.Server; baseUrl: string; close: () => Promise<void> }> {
   const log = createLogger({ level: "error" });
@@ -92,6 +93,7 @@ test("GET /bansos/adapters/render renders harness config", async () => {
 });
 
 test("GET and POST /bansos/relay read and update relay state", async () => {
+  const originalState = loadRelayState();
   const { baseUrl, close } = await setupTestServer();
   try {
     const resGet = await fetch(`${baseUrl}/bansos/relay`);
@@ -108,14 +110,8 @@ test("GET and POST /bansos/relay read and update relay state", async () => {
     assert.equal(resPost.status, 200);
     const updated = (await resPost.json()) as { enabled: boolean };
     assert.equal(updated.enabled, !initial.enabled);
-
-    // Restore state
-    await fetch(`${baseUrl}/bansos/relay`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ enabled: initial.enabled }),
-    });
   } finally {
+    saveRelayState(originalState);
     await close();
   }
 });

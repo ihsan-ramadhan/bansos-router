@@ -104,8 +104,8 @@ function setupTestDaemon(): Promise<{
 }
 
 test("Relay API: Full state management (add, use, toggle, remove)", async () => {
-  const { baseUrl, close } = await setupTestDaemon();
   const originalState = loadRelayState();
+  const { baseUrl, close } = await setupTestDaemon();
 
   try {
     // 1. Initial GET
@@ -224,9 +224,9 @@ test("Relay CLI: runRelay commands execute cleanly", async () => {
 });
 
 test("Relay Egress: OpenAI Chat completions route through active relay with x-relay headers", async () => {
+  const originalState = loadRelayState();
   const mockRelay = await createMockRelayServer();
   const { baseUrl, catalog, close: closeDaemon } = await setupTestDaemon();
-  const originalState = loadRelayState();
 
   try {
     // Enable relay pointing to our mock relay server
@@ -282,9 +282,9 @@ test("Relay Egress: OpenAI Chat completions route through active relay with x-re
 });
 
 test("Relay Egress: Anthropic Messages API routes through active relay and converts response", async () => {
+  const originalState = loadRelayState();
   const mockRelay = await createMockRelayServer();
   const { baseUrl, catalog, close: closeDaemon } = await setupTestDaemon();
-  const originalState = loadRelayState();
 
   try {
     saveRelayState({

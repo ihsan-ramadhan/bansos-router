@@ -245,7 +245,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
                       />
                     </div>
 
-                    <div className="overflow-y-auto space-y-1 pr-1 no-scrollbar flex-1">
+                    <div className="overflow-y-auto space-y-1 pr-1 flex-1">
                       {filteredAdapters.map((adapter) => {
                         const isSelected = adapter.id === selectedAdapterId;
                         return (
@@ -327,7 +327,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
                       />
                     </div>
 
-                    <div className="overflow-y-auto space-y-1 pr-1 no-scrollbar flex-1">
+                    <div className="overflow-y-auto space-y-1 pr-1 flex-1">
                       {/* Auto option */}
                       <button
                         type="button"
@@ -473,7 +473,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
                     </button>
                   </div>
 
-                  <pre className="p-3.5 rounded-lg bg-[#111113] border border-[#23232a] text-xs font-mono text-[#e4e4e7] overflow-x-auto no-scrollbar max-h-96 select-all leading-relaxed">
+                  <pre className="p-3.5 rounded-lg bg-[#111113] border border-[#23232a] text-xs font-mono text-[#e4e4e7] overflow-x-auto max-h-96 select-all leading-relaxed">
                     {cfg.content}
                   </pre>
                 </div>

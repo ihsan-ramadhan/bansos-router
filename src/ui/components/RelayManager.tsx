@@ -453,9 +453,17 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
                       {/* Status indicator */}
                       <td className="py-3 px-3 whitespace-nowrap">
                         {isActive ? (
-                          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-400">
-                            <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                            <span>Active</span>
+                          <span
+                            className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${
+                              isEnabled ? "text-emerald-400" : "text-amber-400"
+                            }`}
+                          >
+                            <span
+                              className={`h-2 w-2 rounded-full ${
+                                isEnabled ? "bg-emerald-400" : "bg-amber-400"
+                              }`}
+                            />
+                            <span>{isEnabled ? "Active & Routing" : "Selected (Standby)"}</span>
                           </span>
                         ) : (
                           <span className="text-[11px] text-[#52525b] font-mono">
@@ -493,8 +501,12 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
                               Use Relay
                             </button>
                           ) : (
-                            <span className="text-[11px] text-emerald-400 font-medium px-2 py-1">
-                              Current
+                            <span
+                              className={`text-[11px] font-medium px-2 py-1 ${
+                                isEnabled ? "text-emerald-400" : "text-amber-400"
+                              }`}
+                            >
+                              {isEnabled ? "Routing" : "Standby"}
                             </span>
                           )}
 

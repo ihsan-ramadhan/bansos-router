@@ -44,7 +44,7 @@ const ALLOWED_METHODS = new Set(["GET", "POST", "OPTIONS"]);
 
 // whitelisted inbound paths only; traversal/encoded variants rejected
 const ALLOWED_PATH_PATTERN =
-  /^(\/v1)?\/(chat\/completions|messages|responses|models)\/?$|^\/healthz\/?$|^\/bansos\/(status|refresh|adapters|adapters\/render|relay)\/?$|^\/?$|^\/index\.html$|^\/assets\/[\w.-]+$|^\/(favicon\.(ico|svg)|manifest\.json|robots\.txt)$/;
+  /^(\/v1)?\/(chat\/completions|messages|responses|models)\/?$|^\/healthz\/?$|^\/bansos\/(status|refresh|adapters|adapters\/render|relay|relay\/probe)\/?$|^\/?$|^\/index\.html$|^\/assets\/[\w.-]+$|^\/(favicon\.(ico|svg)|manifest\.json|robots\.txt)$/;
 
 // how many fallback models to try after the primary rejects with 429/5xx.
 // total attempts = 1 + MAX_FAILOVER_RETRIES.

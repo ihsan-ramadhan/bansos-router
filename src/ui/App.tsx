@@ -5,6 +5,7 @@ import { MetricCards } from "./components/MetricCards";
 import { ModelCatalog } from "./components/ModelCatalog";
 import { HarnessGenerator } from "./components/HarnessGenerator";
 import { RelayManager } from "./components/RelayManager";
+import { Playground } from "./components/Playground";
 import { usePing } from "./hooks/usePing";
 import {
   Cpu,
@@ -140,7 +141,7 @@ export function App() {
           </div>
 
           {/* Sub-header Top Tabs (Tailscale style) */}
-          <nav className="flex space-x-1 sm:space-x-2 -mb-px pt-1 overflow-x-auto no-scrollbar scroll-smooth">
+          <nav className="flex space-x-1 sm:space-x-2 -mb-px pt-1 overflow-x-auto scroll-smooth">
             <button
               onClick={() => setActiveTab("catalog")}
               className={`flex items-center gap-2 px-3.5 py-2.5 border-b-2 text-[13px] font-medium transition whitespace-nowrap cursor-pointer ${
@@ -233,23 +234,12 @@ export function App() {
           />
         )}
 
-        {/* Tab 4: Live Playground Placeholder */}
+        {/* Tab 4: Live Test Playground (Step 5 Active View) */}
         {activeTab === "playground" && (
-          <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-8 shadow-sm text-center">
-            <div className="mx-auto h-12 w-12 rounded-xl bg-[#202028] border border-[#2c2c36] flex items-center justify-center text-emerald-400 mb-4">
-              <MessageSquare className="h-6 w-6" />
-            </div>
-            <h3 className="text-base font-bold text-white mb-2">
-              Live Test Playground
-            </h3>
-            <p className="text-xs text-[#9393a0] max-w-md mx-auto mb-6">
-              Test streaming SSE completions and verify model outputs directly in the browser against any active model.
-            </p>
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#121215] border border-[#23232a] text-xs text-[#a1a1aa]">
-              <Info className="h-4 w-4 text-emerald-400" />
-              <span>Scheduled for Step 5 milestone implementation.</span>
-            </div>
-          </div>
+          <Playground
+            models={models}
+            daemonPort={status?.port ?? 17070}
+          />
         )}
       </main>
 

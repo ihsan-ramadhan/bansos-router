@@ -370,7 +370,7 @@ export function ModelCatalog({
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 bg-[#16161a] border border-[#23232a] rounded-xl text-xs shadow-sm">
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <span className="font-semibold text-[#8b8b96] uppercase tracking-wider text-[11px] mr-1">
-              Probe Filter:
+              Ping Filter:
             </span>
 
             {/* Filter Chip: All */}

@@ -24,7 +24,7 @@
     "dev:daemon": "tsx src/cli/index.ts daemon",
     "dev:ui": "vite",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test test/*.test.ts",
+    "test": "node --import tsx --test --test-concurrency=1 test/*.test.ts",
     "prepare": "npm run build"
   },
   "keywords": [

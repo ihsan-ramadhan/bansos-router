@@ -37,31 +37,36 @@
   /* Reset webkit appearance on forms */
   input, select, textarea, button {
     font-family: inherit;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
   }
 
-  /* Hide scrollbar for Chrome, Safari and Opera */
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;
-  }
-  /* Hide scrollbar for IE, Edge and Firefox */
-  .no-scrollbar {
-    -ms-overflow-style: none;  /* IE and Edge */
-    scrollbar-width: none;  /* Firefox */
+  /* Remove native textarea resize handles */
+  textarea {
+    resize: none;
   }
 
-  /* Custom subtle scrollbar for tables / large scroll areas */
-  ::-webkit-scrollbar {
-    width: 5px;
-    height: 5px;
+  /* Custom blue-themed scrollbar matching the accent palette (#2b64e0 / #3b82f6) */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(43, 100, 224, 0.45) transparent;
   }
-  ::-webkit-scrollbar-track {
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  *::-webkit-scrollbar-track {
     background: transparent;
   }
-  ::-webkit-scrollbar-thumb {
-    background: #27272e;
+  *::-webkit-scrollbar-thumb {
+    background: rgba(43, 100, 224, 0.45);
     border-radius: 9999px;
   }
-  ::-webkit-scrollbar-thumb:hover {
-    background: #393944;
+  *::-webkit-scrollbar-thumb:hover {
+    background: #3b82f6;
+  }
+  *::-webkit-scrollbar-corner {
+    background: transparent;
   }
 }
