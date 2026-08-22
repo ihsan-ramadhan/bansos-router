@@ -3,6 +3,7 @@ import { fetchStatus, fetchModels, refreshCatalog } from "./services/api";
 import type { DaemonStatus, ModelItem } from "./types/ui";
 import { MetricCards } from "./components/MetricCards";
 import { ModelCatalog } from "./components/ModelCatalog";
+import { HarnessGenerator } from "./components/HarnessGenerator";
 import { usePing } from "./hooks/usePing";
 import {
   Cpu,
@@ -215,23 +216,12 @@ export function App() {
           />
         )}
 
-        {/* Tab 2: Harness Setup Placeholder (Step 3) */}
+        {/* Tab 2: Harness Setup (Step 3 Active View) */}
         {activeTab === "harness" && (
-          <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-8 shadow-sm text-center">
-            <div className="mx-auto h-12 w-12 rounded-xl bg-[#202028] border border-[#2c2c36] flex items-center justify-center text-[#3b82f6] mb-4">
-              <Wrench className="h-6 w-6" />
-            </div>
-            <h3 className="text-base font-bold text-white mb-2">
-              Harness Config Generator
-            </h3>
-            <p className="text-xs text-[#9393a0] max-w-md mx-auto mb-6">
-              1-click configuration generator for OpenCode, Cline, Roo Code, Aider, Codex, Continue, and Cursor.
-            </p>
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#121215] border border-[#23232a] text-xs text-[#a1a1aa]">
-              <Info className="h-4 w-4 text-[#60a5fa]" />
-              <span>Scheduled for Step 3 milestone implementation.</span>
-            </div>
-          </div>
+          <HarnessGenerator
+            models={models}
+            daemonPort={status?.port ?? 17070}
+          />
         )}
 
         {/* Tab 3: Relay Egress Placeholder (Step 4) */}
