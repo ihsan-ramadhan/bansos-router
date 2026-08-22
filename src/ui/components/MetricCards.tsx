@@ -35,7 +35,7 @@ export function MetricCards({ status, loading }: MetricCardsProps) {
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      {/* 1. Daemon Status Card */}
+      {/* Daemon Status Card */}
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 transition-all duration-200 hover:border-[#2e2e38] shadow-sm">
         <div className="flex items-center justify-between mb-2">
           <span className="text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider">
@@ -60,7 +60,7 @@ export function MetricCards({ status, loading }: MetricCardsProps) {
         </div>
       </div>
 
-      {/* 2. Active Models Card */}
+      {/* Active Models Card */}
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 transition-all duration-200 hover:border-[#2e2e38] shadow-sm">
         <div className="flex items-center justify-between mb-2">
           <span className="text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider">
@@ -78,7 +78,7 @@ export function MetricCards({ status, loading }: MetricCardsProps) {
         </div>
       </div>
 
-      {/* 3. Uptime Card */}
+      {/* Uptime Card */}
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 transition-all duration-200 hover:border-[#2e2e38] shadow-sm">
         <div className="flex items-center justify-between mb-2">
           <span className="text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider">
@@ -96,7 +96,7 @@ export function MetricCards({ status, loading }: MetricCardsProps) {
         </div>
       </div>
 
-      {/* 4. Egress Mode Card */}
+      {/* Egress Mode Card */}
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 transition-all duration-200 hover:border-[#2e2e38] shadow-sm">
         <div className="flex items-center justify-between mb-2">
           <span className="text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider">

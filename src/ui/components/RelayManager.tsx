@@ -185,7 +185,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
     }
   }
 
-  // Test active relay latency via daemon proxy to avoid browser CORS restrictions
+  // Test active relay latency
   async function handleTestRelay() {
     if (!relayState?.url) return;
     setTestingLatency(true);
@@ -221,7 +221,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
 
   return (
     <div className="space-y-6">
-      {/* 1. Header Card with Global Toggle and Active Status */}
+      {/* Header */}
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-5 shadow-sm space-y-4">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="space-y-1">
@@ -348,7 +348,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
         )}
       </div>
 
-      {/* 2. Relay Nodes Management (Unified Table & Single Add Button) */}
+      {/* Relay Nodes Table */}
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-5 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#23232a] pb-3">
           <div>
@@ -562,7 +562,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
         )}
       </div>
 
-      {/* 3. Allowed Target Origins (Security Scope) */}
+      {/* Allowed Target Origins */}
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-5 shadow-sm space-y-3">
         <div className="flex items-center gap-2 text-xs font-bold text-white uppercase tracking-wider">
           <Lock className="h-3.5 w-3.5 text-emerald-400" />
@@ -588,7 +588,7 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
         </div>
       </div>
 
-      {/* 4. CLI Quick Reference Commands */}
+      {/* CLI Quick Reference */}
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-5 shadow-sm space-y-3">
         <div className="flex items-center justify-between border-b border-[#23232a] pb-3">
           <div className="flex items-center gap-2">

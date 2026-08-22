@@ -55,7 +55,7 @@ export function ModelCatalog({
   const [sortAsc, setSortAsc] = useState<boolean>(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Custom Dropdown Open States (Tailscale style)
+  // Custom Dropdown Open States
   const [providerDropdownOpen, setProviderDropdownOpen] = useState<boolean>(false);
   const [pageSizeDropdownOpen, setPageSizeDropdownOpen] = useState<boolean>(false);
 
@@ -63,7 +63,7 @@ export function ModelCatalog({
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
 
-  // Copy model ID to clipboard helper
+  // Copy model ID helper
   async function handleCopy(id: string) {
     try {
       await navigator.clipboard.writeText(id);
@@ -76,7 +76,7 @@ export function ModelCatalog({
     }
   }
 
-  // Extract upstream providers dynamically from models
+  // Extract upstream providers from models
   const providers = useMemo(() => {
     const list = new Set<string>();
     for (const m of models) {
@@ -102,7 +102,7 @@ export function ModelCatalog({
       if (selectedProvider !== "all" && provider.toLowerCase() !== selectedProvider.toLowerCase()) {
         return false;
       }
-      // Health filter via chips (interactive probe summary)
+      // Health filter via chips
       const ping = pingResults[m.id];
       if (activeHealthChip === "ok") {
         if (!ping || ping.status !== "ok") return false;
@@ -122,19 +122,19 @@ export function ModelCatalog({
       list.sort((a, b) => {
         const valA = a.reasoning ? 1 : 0;
         const valB = b.reasoning ? 1 : 0;
-        return sortAsc ? valB - valA : valA - valB; // default asc: reasoning (1) first
+        return sortAsc ? valB - valA : valA - valB;
       });
     } else if (sortField === "context") {
       list.sort((a, b) => {
         const valA = a.context_window || a.context_length || 0;
         const valB = b.context_window || b.context_length || 0;
-        return sortAsc ? valB - valA : valA - valB; // largest first
+        return sortAsc ? valB - valA : valA - valB;
       });
     } else if (sortField === "maxOutput") {
       list.sort((a, b) => {
         const valA = a.max_tokens || a.maxTokens || 0;
         const valB = b.max_tokens || b.maxTokens || 0;
-        return sortAsc ? valB - valA : valA - valB; // largest first
+        return sortAsc ? valB - valA : valA - valB;
       });
     } else if (sortField === "latency") {
       list.sort((a, b) => {
@@ -142,7 +142,7 @@ export function ModelCatalog({
         const pingB = pingResults[b.id];
         const latA = pingA?.status === "ok" && typeof pingA.latencyMs === "number" ? pingA.latencyMs : Infinity;
         const latB = pingB?.status === "ok" && typeof pingB.latencyMs === "number" ? pingB.latencyMs : Infinity;
-        return sortAsc ? latA - latB : latB - latA; // lowest/fastest latency first
+        return sortAsc ? latA - latB : latB - latA;
       });
     }
 
@@ -258,7 +258,7 @@ export function ModelCatalog({
 
         {/* Right: Filters & Action Buttons */}
         <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
-          {/* Custom Provider Dropdown (Tailscale style, no raw HTML select) */}
+          {/* Provider Filter Dropdown */}
           <div className="relative">
             <button
               type="button"
@@ -365,7 +365,7 @@ export function ModelCatalog({
         </div>
       </div>
 
-      {/* Interactive Ping Probe Summary Banner */}
+      {/* Ping Probe Summary */}
       {pingStats.total > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 bg-[#16161a] border border-[#23232a] rounded-xl text-xs shadow-sm">
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
@@ -388,7 +388,7 @@ export function ModelCatalog({
               All ({pingStats.total})
             </button>
 
-            {/* Filter Chip: 200 OK (Verified Usable) */}
+            {/* Filter Chip: 200 OK */}
             <button
               onClick={() => {
                 setActiveHealthChip(activeHealthChip === "ok" ? "all" : "ok");
@@ -535,11 +535,10 @@ export function ModelCatalog({
                   </div>
                 </th>
 
-                {/* Live Latency Column Header (Sortable + Prompt if not probed) */}
+                {/* Live Latency Column Header */}
                 <th
                   onClick={() => {
                     if (pingStats.total === 0) {
-                      // Proactive prompt to ping
                       onPingAll(filteredModels);
                     } else {
                       handleSort("latency");

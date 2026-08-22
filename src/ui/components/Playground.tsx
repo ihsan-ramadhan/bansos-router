@@ -36,7 +36,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
   const [systemPrompt, setSystemPrompt] = useState("");
   const [showSystemPrompt, setShowSystemPrompt] = useState(false);
 
-  // Input states & Conversation history (Multi-turn Chat Session)
+  // Conversation history
   const [userPrompt, setUserPrompt] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
@@ -150,15 +150,15 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
     setLiveReasoning("");
     setRawChunks([]);
 
-    // 1. Add User message to conversation history
+    // Add User message to history
     const updatedMessages: ChatMessage[] = [
       ...messages,
       { role: "user", content: promptToSend },
     ];
     setMessages(updatedMessages);
-    setUserPrompt(""); // Clean textarea after send
+    setUserPrompt("");
 
-    // 2. Prepare payload including entire chat history
+    // Prepare payload
     const apiMessages = [];
     if (systemPrompt.trim()) {
       apiMessages.push({ role: "system", content: systemPrompt.trim() });
@@ -368,7 +368,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
 
   return (
     <div className="space-y-6">
-      {/* Top Banner / Explanation */}
+      {/* Header */}
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-5 shadow-sm">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="space-y-1">
@@ -484,9 +484,9 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
         )}
       </div>
 
-      {/* Main Grid: Controls/Sidebar (Left 4 cols) & Live Chat Stream (Right 8 cols) */}
+      {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Side: Model Selector & System Instructions (4 Cols) */}
+        {/* Left Side: Model Selector & System Instructions */}
         <div className="lg:col-span-4 space-y-4">
           <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 shadow-sm space-y-4">
             {/* Model Selector Dropdown */}
@@ -607,7 +607,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
           </div>
         </div>
 
-        {/* Right Side: Continuous Chat Session & Streaming Window (8 Cols) */}
+        {/* Right Side: Chat & Streaming */}
         <div className="lg:col-span-8 space-y-4">
           <div className="rounded-xl border border-[#23232a] bg-[#16161a] overflow-hidden shadow-sm flex flex-col min-h-[560px]">
             {/* Header: Tabs & Raw Inspector */}

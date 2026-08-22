@@ -12,9 +12,15 @@
 | `POST /v1/messages` | Anthropic Messages | Claude Code, OpenClaw (anthropic mode) |
 | `POST /v1/responses` | OpenAI Responses | Codex CLI (≥0.122, `wire_api = "responses"`) — **not live yet, lands in M3** |
 | `GET /v1/models` | OpenAI (list) | model pickers; returns **only alive curated models** |
+| `GET /` | Web UI Console | browser dashboard console |
 | `GET /healthz` | — | daemon health |
 | `GET /bansos/status` | — | CLI status payload (JSON) |
 | `POST /bansos/refresh` | — | CLI refresh: re-run upstream health checks now |
+| `GET /bansos/adapters` | — | list available harness adapters for Web UI |
+| `GET /bansos/adapters/render` | — | render harness configuration snippet |
+| `GET /bansos/relay` | — | get saved relay nodes and active state |
+| `POST /bansos/relay` | — | update relay state (toggle, add, remove, use) |
+| `POST /bansos/relay/probe` | — | test reachability and latency of a relay node |
 
 ## 2. Internal normalized model
 

@@ -79,8 +79,7 @@ harness.**
 - **No token-based local gateways in v1** — chaining freebuff-proxy-style
   local gateways is roadmap M5; v1 ships keyless remote upstreams only.
 - **No multi-user / multi-tenant** — single-user local tool.
-- **No GUI dashboard** — CLI + plain HTTP only (a dashboard is a later
-  possibility).
+- **No external telemetry** — privacy first; strictly local logs and diagnostics.
 - **No protocol we don't need** — Gemini's `generateContent` is out of scope
   until a harness in scope actually requires it (Antigravity CLI speaks
   OpenAI-compatible, not Gemini-native).
@@ -268,10 +267,11 @@ bansos-router/
 │   │   └── doctor.ts
 │   ├── daemon/             # bansosd server
 │   │   ├── index.ts        # entry, port bump, lifecycle
-│   │   ├── server.ts       # http server + routing + security guards
+│   │   ├── server.ts       # http server + routing + static UI serving
 │   │   ├── catalog.ts      # model registry + liveness
 │   │   ├── rate-limit.ts
 │   │   └── state.ts        # ~/.bansos persistence
+│   ├── ui/                 # Web console dashboard (Preact + Vite)
 │   ├── protocols/          # wire translation
 │   │   ├── internal.ts     # normalized chat-turn model
 │   │   ├── openai-chat.ts  # inbound/outbound Chat Completions

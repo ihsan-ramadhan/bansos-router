@@ -138,7 +138,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
 
   return (
     <div className="space-y-6">
-      {/* Top Banner / Explanation */}
+      {/* Header */}
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-5 shadow-sm">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="space-y-1">
@@ -167,7 +167,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
         </div>
       </div>
 
-      {/* Configuration Header Card: Adapter Selector, Model Pinning, and Wire Info */}
+      {/* Configuration */}
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-5 shadow-sm space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-[#23232a] pb-3">
           <div>
@@ -192,7 +192,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-          {/* 1. Target Harness Dropdown */}
+          {/* Target Harness Dropdown */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8b96]">
@@ -279,7 +279,7 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
             </div>
           </div>
 
-          {/* 2. Model Pinning Dropdown */}
+          {/* Model Pinning Dropdown */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-semibold uppercase tracking-wider text-[#8b8b96]">
@@ -371,9 +371,9 @@ export function HarnessGenerator({ models, daemonPort }: HarnessGeneratorProps) 
         </div>
       </div>
 
-      {/* Main Content Area: 1-Click Setup & Rendered Config Viewer */}
+      {/* Setup & Config Viewer */}
       <div className="space-y-4">
-        {/* 1-Click CLI Setup Card */}
+        {/* 1-Click Terminal Setup */}
         <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-5 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">

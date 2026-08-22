@@ -55,7 +55,9 @@ pi is handled by the separate extension. `codex` writes its config too, but its
   OpenAI Responses, for Codex CLI, lands in M3.
 - Keyless free upstreams only: OpenCode Zen, KiloCode gateway, and LLM7.
 - `bansos setup <harness>` writes config for Claude Code, Aider, OpenCode,
-  Codex, Hermes, Goose, OpenClaw, Antigravity, JCode, and 9Router.
+  Codex, Hermes, Goose, OpenClaw, Antigravity, JCode, 9Router, Continue, Cline, and Roo Code.
+- Web UI dashboard served at `http://127.0.0.1:17070/` with model catalog explorer,
+  live ping probes, 1-click harness setup generator, relay egress manager, and test playground.
 - The pi extension (`pi install npm:pi-bansos-router`) registers the `bansosr`
   provider, so every free model shows up in pi's `/model` picker. There is
   also a `/bansosr` command for status. If the daemon is not running when pi

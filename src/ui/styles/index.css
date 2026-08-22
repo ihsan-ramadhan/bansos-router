@@ -12,7 +12,7 @@
     selection-color: #93c5fd;
   }
 
-  /* Interactive Elements - Cursor pointer guarantee and smooth feel */
+  /* Interactive elements */
   button,
   [role="button"],
   select,
@@ -28,13 +28,13 @@
     cursor: not-allowed;
   }
 
-  /* Reset standard outline & focus rings to dark theme */
+  /* Reset focus rings */
   *:focus-visible {
     outline: 1px solid #2b64e0;
     outline-offset: 1px;
   }
 
-  /* Reset webkit appearance on forms */
+  /* Reset appearance on forms */
   input, select, textarea, button {
     font-family: inherit;
     appearance: none;
@@ -42,12 +42,12 @@
     -moz-appearance: none;
   }
 
-  /* Remove native textarea resize handles */
+  /* Remove textarea resize handles */
   textarea {
     resize: none;
   }
 
-  /* Custom blue-themed scrollbar matching the accent palette (#2b64e0 / #3b82f6) */
+  /* Custom scrollbar */
   * {
     scrollbar-width: thin;
     scrollbar-color: rgba(43, 100, 224, 0.45) transparent;

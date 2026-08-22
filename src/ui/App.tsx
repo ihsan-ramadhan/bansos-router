@@ -22,7 +22,8 @@ export function App() {
   const [activeTab, setActiveTab] = useState<"catalog" | "harness" | "relay" | "playground">("catalog");
   const [status, setStatus] = useState<DaemonStatus | null>(null);
   const [models, setModels] = useState<ModelItem[]>([]);
-  const [loadingStatus, setLoadingStatus] = useState(true);
+  const [loadingStatus, setLoadingStatus] = useState(false);
+  const [justRefreshed, setJustRefreshed] = useState(false);
   const [loadingModels, setLoadingModels] = useState(true);
   const [refreshingCatalog, setRefreshingCatalog] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,15 +36,32 @@ export function App() {
     clearPingResults,
   } = usePing();
 
-  const loadStatus = useCallback(async () => {
+  const loadStatus = useCallback(async (manual = false) => {
+    if (manual) {
+      setLoadingStatus(true);
+    }
     try {
-      const data = await fetchStatus();
-      setStatus(data);
+      const [statusData, modelsRes] = await Promise.all([
+        fetchStatus(),
+        fetchModels(),
+      ]);
+      setStatus(statusData);
+      setModels(modelsRes.data || []);
       setError(null);
+      if (manual) {
+        setJustRefreshed(true);
+        setTimeout(() => setJustRefreshed(false), 1200);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to connect to daemon");
     } finally {
-      setLoadingStatus(false);
+      if (manual) {
+        // Enforce a minimum visual spin duration so the user clearly feels the interaction
+        setTimeout(() => setLoadingStatus(false), 500);
+      } else {
+        setLoadingStatus(false);
+      }
+      setLoadingModels(false);
     }
   }, []);
 
@@ -131,16 +149,30 @@ export function App() {
 
               {/* Quick Refresh Status Button */}
               <button
-                onClick={loadStatus}
-                title="Refresh status"
-                className="p-2 rounded-lg bg-[#1a1a20] hover:bg-[#23232a] active:bg-[#151518] border border-[#282832] text-[#9393a0] hover:text-white transition cursor-pointer"
+                onClick={() => loadStatus(true)}
+                disabled={loadingStatus}
+                title={justRefreshed ? "Refreshed!" : "Refresh status & models"}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition cursor-pointer active:scale-95 ${
+                  justRefreshed
+                    ? "bg-emerald-950/60 text-emerald-400 border-emerald-800/60 shadow-[0_0_12px_rgba(16,185,129,0.25)]"
+                    : loadingStatus
+                    ? "bg-[#202028] text-[#60a5fa] border-[#2b64e0]/40"
+                    : "bg-[#1a1a20] hover:bg-[#23232a] active:bg-[#151518] border-[#282832] text-[#9393a0] hover:text-white"
+                }`}
               >
-                <RefreshCw className={`h-4 w-4 ${loadingStatus ? "animate-spin" : ""}`} />
+                <RefreshCw
+                  className={`h-3.5 w-3.5 transition-transform duration-500 ${
+                    loadingStatus ? "animate-spin text-[#3b82f6]" : justRefreshed ? "text-emerald-400" : ""
+                  }`}
+                />
+                <span className="text-[11px] font-mono select-none">
+                  {justRefreshed ? "Synced" : loadingStatus ? "Syncing..." : "Sync"}
+                </span>
               </button>
             </div>
           </div>
 
-          {/* Sub-header Top Tabs (Tailscale style) */}
+          {/* Sub-header Navigation Tabs */}
           <nav className="flex space-x-1 sm:space-x-2 -mb-px pt-1 overflow-x-auto scroll-smooth">
             <button
               onClick={() => setActiveTab("catalog")}
@@ -203,7 +235,7 @@ export function App() {
         {/* Top Metric Cards */}
         <MetricCards status={status} loading={loadingStatus} />
 
-        {/* Tab 1: Models & Health (Step 2 Active View) */}
+        {/* Models & Health */}
         {activeTab === "catalog" && (
           <ModelCatalog
             models={models}
@@ -218,7 +250,7 @@ export function App() {
           />
         )}
 
-        {/* Tab 2: Harness Setup (Step 3 Active View) */}
+        {/* Harness Setup */}
         {activeTab === "harness" && (
           <HarnessGenerator
             models={models}
@@ -226,7 +258,7 @@ export function App() {
           />
         )}
 
-        {/* Tab 3: Relay Egress (Step 4 Active View) */}
+        {/* Relay Egress */}
         {activeTab === "relay" && (
           <RelayManager
             daemonPort={status?.port ?? 17070}
@@ -234,7 +266,7 @@ export function App() {
           />
         )}
 
-        {/* Tab 4: Live Test Playground (Step 5 Active View) */}
+        {/* Live Test Playground */}
         {activeTab === "playground" && (
           <Playground
             models={models}

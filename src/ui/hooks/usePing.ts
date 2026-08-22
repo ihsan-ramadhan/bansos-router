@@ -69,7 +69,7 @@ export function usePing() {
     if (isPingingAll || models.length === 0) return;
     setIsPingingAll(true);
 
-    // Chunk in batches of 4 to prevent browser socket exhaustion
+    // Chunk in batches of 4 to prevent socket exhaustion
     const chunkSize = 4;
     for (let i = 0; i < models.length; i += chunkSize) {
       const chunk = models.slice(i, i + chunkSize);
