@@ -4,6 +4,7 @@ import type { DaemonStatus, ModelItem } from "./types/ui";
 import { MetricCards } from "./components/MetricCards";
 import { ModelCatalog } from "./components/ModelCatalog";
 import { HarnessGenerator } from "./components/HarnessGenerator";
+import { RelayManager } from "./components/RelayManager";
 import { usePing } from "./hooks/usePing";
 import {
   Cpu,
@@ -224,23 +225,12 @@ export function App() {
           />
         )}
 
-        {/* Tab 3: Relay Egress Placeholder (Step 4) */}
+        {/* Tab 3: Relay Egress (Step 4 Active View) */}
         {activeTab === "relay" && (
-          <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-8 shadow-sm text-center">
-            <div className="mx-auto h-12 w-12 rounded-xl bg-[#202028] border border-[#2c2c36] flex items-center justify-center text-amber-400 mb-4">
-              <Shield className="h-6 w-6" />
-            </div>
-            <h3 className="text-base font-bold text-white mb-2">
-              Relay Egress Manager
-            </h3>
-            <p className="text-xs text-[#9393a0] max-w-md mx-auto mb-6">
-              Bypass IP rate-limits by managing outbound proxy targets and relay workers without restarting the daemon.
-            </p>
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#121215] border border-[#23232a] text-xs text-[#a1a1aa]">
-              <Info className="h-4 w-4 text-amber-400" />
-              <span>Scheduled for Step 4 milestone implementation.</span>
-            </div>
-          </div>
+          <RelayManager
+            daemonPort={status?.port ?? 17070}
+            onStateChange={loadStatus}
+          />
         )}
 
         {/* Tab 4: Live Playground Placeholder */}
@@ -257,7 +247,7 @@ export function App() {
             </p>
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#121215] border border-[#23232a] text-xs text-[#a1a1aa]">
               <Info className="h-4 w-4 text-emerald-400" />
-              <span>Scheduled for Step 4 milestone implementation.</span>
+              <span>Scheduled for Step 5 milestone implementation.</span>
             </div>
           </div>
         )}

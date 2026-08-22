@@ -342,14 +342,14 @@ export function ModelCatalog({
             onClick={() => onPingAll(filteredModels)}
             disabled={isPingingAll || filteredModels.length === 0}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#202028] hover:bg-[#282834] active:bg-[#1a1a20] border border-[#2c2c36] text-xs font-medium text-white transition disabled:opacity-50 cursor-pointer"
-            title="Probe live latency and rate-limit status for visible models"
+            title="Ping live latency and status for visible models"
           >
             {isPingingAll ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin text-[#3b82f6]" />
             ) : (
               <Zap className="h-3.5 w-3.5 text-amber-400" />
             )}
-            <span>{isPingingAll ? "Probing..." : "Ping All"}</span>
+            <span>{isPingingAll ? "Pinging..." : "Ping All"}</span>
           </button>
 
           {/* Refresh Catalog Button */}
@@ -443,11 +443,11 @@ export function ModelCatalog({
               </button>
             )}
 
-            {/* Probing State */}
+            {/* Pinging State */}
             {pingStats.probing > 0 && (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[#60a5fa]">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                <span>{pingStats.probing} probing...</span>
+                <span>{pingStats.probing} pinging...</span>
               </span>
             )}
           </div>
@@ -459,7 +459,7 @@ export function ModelCatalog({
                 onClearPings();
               }}
               className="inline-flex items-center gap-1 text-[11px] text-[#71717a] hover:text-white cursor-pointer transition"
-              title="Reset probe results"
+              title="Reset ping results"
             >
               <RotateCcw className="h-3 w-3" />
               <span>Reset results</span>
@@ -660,11 +660,11 @@ export function ModelCatalog({
                       {/* Live Latency Status */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
                         {!ping || ping.status === "idle" ? (
-                          <span className="text-[11px] text-[#52525b] font-mono">Not probed</span>
+                          <span className="text-[11px] text-[#52525b] font-mono">Not pinged</span>
                         ) : ping.status === "pinging" ? (
                           <span className="inline-flex items-center gap-1.5 text-xs text-[#60a5fa] font-mono">
                             <Loader2 className="h-3 w-3 animate-spin" />
-                            <span>probing...</span>
+                            <span>pinging...</span>
                           </span>
                         ) : ping.status === "ok" ? (
                           <span className="inline-flex items-center gap-1.5 text-xs font-mono text-emerald-400 font-medium">
@@ -679,7 +679,7 @@ export function ModelCatalog({
                         ) : (
                           <span
                             className="inline-flex items-center gap-1.5 text-xs font-mono text-rose-400 font-medium"
-                            title={ping.error || "Probe failed"}
+                            title={ping.error || "Ping failed"}
                           >
                             <XCircle className="h-3.5 w-3.5" />
                             <span>Error {ping.statusCode ? `(${ping.statusCode})` : ""}</span>
@@ -693,7 +693,7 @@ export function ModelCatalog({
                           onClick={() => onPingModel(model.id)}
                           disabled={ping?.status === "pinging"}
                           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#202026] hover:bg-[#282832] active:bg-[#1a1a20] border border-[#2a2a34] hover:border-[#383846] text-[11px] font-medium text-[#d4d4d8] hover:text-white transition cursor-pointer disabled:opacity-50"
-                          title={`Probe live response from ${model.id}`}
+                          title={`Ping live response from ${model.id}`}
                         >
                           {ping?.status === "pinging" ? (
                             <Loader2 className="h-3 w-3 animate-spin text-[#3b82f6]" />

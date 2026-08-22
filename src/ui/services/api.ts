@@ -4,6 +4,7 @@ import type {
   AdapterSummary,
   AdapterRenderResponse,
   RelayStateResponse,
+  RelayUpdatePayload,
 } from "../types/ui";
 
 const BASE_URL = "";
@@ -47,7 +48,17 @@ export async function fetchRelayState(): Promise<RelayStateResponse> {
   return res.json();
 }
 
-export async function updateRelayState(payload: Partial<RelayStateResponse>): Promise<RelayStateResponse> {
+export async function probeRelay(url?: string): Promise<{ ok: boolean; status?: number; latencyMs?: number; error?: string }> {
+  const res = await fetch(`${BASE_URL}/bansos/relay/probe`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(url ? { url } : {}),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to probe relay`);
+  return res.json();
+}
+
+export async function updateRelayState(payload: RelayUpdatePayload): Promise<RelayStateResponse> {
   const res = await fetch(`${BASE_URL}/bansos/relay`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

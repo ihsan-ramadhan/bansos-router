@@ -871,6 +871,54 @@ export function createServer(opts: ServerOptions): http.Server {
       return;
     }
 
+    if (method === "POST" && url === "/bansos/relay/probe") {
+      void readBody(req).then(async (bodyText) => {
+        let targetUrl = "";
+        if (bodyText) {
+          try {
+            const parsed = JSON.parse(bodyText) as { url?: string };
+            targetUrl = parsed.url || "";
+          } catch {
+            sendJson(res, 400, { error: { message: "invalid json body" } });
+            return;
+          }
+        }
+        if (!targetUrl) {
+          const current = loadRelayState();
+          targetUrl = current.url;
+        }
+        if (!targetUrl) {
+          sendJson(res, 400, { error: { message: "no url specified or active" } });
+          return;
+        }
+
+        const start = performance.now();
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 7000);
+          const upstreamRes = await fetch(targetUrl, {
+            method: "GET",
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+          const ms = Math.round(performance.now() - start);
+          sendJson(res, 200, {
+            ok: upstreamRes.status < 500,
+            status: upstreamRes.status,
+            latencyMs: ms,
+          });
+        } catch (err) {
+          const ms = Math.round(performance.now() - start);
+          sendJson(res, 200, {
+            ok: false,
+            latencyMs: ms,
+            error: err instanceof Error ? err.message : "Unreachable",
+          });
+        }
+      });
+      return;
+    }
+
     if (method === "POST" && url === "/bansos/relay") {
       void readBody(req).then((bodyText) => {
         let body: Record<string, unknown> = {};
@@ -886,7 +934,7 @@ export function createServer(opts: ServerOptions): http.Server {
         if (typeof body.enabled === "boolean") {
           current.enabled = body.enabled;
         }
-        if (typeof body.url === "string") {
+        if (!body.action && typeof body.url === "string") {
           current.url = body.url;
           if (body.url && !current.relays.some((r) => r.url === body.url)) {
             current = addRelay(

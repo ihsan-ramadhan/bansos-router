@@ -55,6 +55,14 @@ export interface KnownRelay {
   addedAt?: string;
 }
 
+export interface RelayUpdatePayload {
+  enabled?: boolean;
+  url?: string;
+  label?: string;
+  action?: "add" | "remove";
+  relays?: KnownRelay[];
+}
+
 export interface RelayStateResponse {
   enabled: boolean;
   url: string;
