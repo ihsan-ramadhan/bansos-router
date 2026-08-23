@@ -66,6 +66,32 @@ async function handleNonStreamCompletion(
   setRawChunks([JSON.stringify(data, null, 2)]);
 }
 
+function buildApiMessages(
+  history: ChatMessage[],
+  systemPrompt: string
+): Array<{ role: string; content: string }> {
+  const messages: Array<{ role: string; content: string }> = [];
+  if (systemPrompt.trim()) {
+    messages.push({ role: "system", content: systemPrompt.trim() });
+  }
+  for (const m of history) {
+    messages.push({ role: m.role, content: m.content });
+  }
+  return messages;
+}
+
+async function parseErrorText(res: Response): Promise<string> {
+  const errText = await res.text();
+  let errMsg = `HTTP ${res.status}: ${res.statusText}`;
+  try {
+    const parsed = JSON.parse(errText) as { error?: { message?: string } };
+    if (parsed.error?.message) errMsg = parsed.error.message;
+  } catch {
+    if (errText) errMsg = errText;
+  }
+  return errMsg;
+}
+
 interface StreamChunkContext {
   callbacks: {
     setLiveContent: (text: string) => void;
@@ -152,6 +178,15 @@ async function handleStreamCompletion(
     }
   }
 
+  callbacks.setMessages((prev) => [...prev, buildStreamMessage(ctx, startTime)]);
+  callbacks.setLiveContent("");
+  callbacks.setLiveReasoning("");
+}
+
+function buildStreamMessage(
+  ctx: StreamChunkContext,
+  startTime: number
+): ChatMessage {
   const endTime = performance.now();
   const totalMs = Math.round(endTime - startTime);
   const ttftMs = ctx.state.firstTokenTime ? Math.round(ctx.state.firstTokenTime - startTime) : totalMs;
@@ -169,24 +204,12 @@ async function handleStreamCompletion(
   const speedDuration = (totalMs - ttftMs) / 1000;
   const tokensPerSec = speedDuration > 0.05 ? Math.round((finalTokenCount / speedDuration) * 10) / 10 : undefined;
 
-  const metrics: CompletionMetrics = {
-    ttftMs,
-    totalMs,
-    tokenCount: finalTokenCount,
-    tokensPerSec,
+  return {
+    role: "assistant",
+    content: finalOutput,
+    reasoning: finalReasoning || undefined,
+    metrics: { ttftMs, totalMs, tokenCount: finalTokenCount, tokensPerSec },
   };
-
-  callbacks.setMessages((prev) => [
-    ...prev,
-    {
-      role: "assistant",
-      content: finalOutput,
-      reasoning: finalReasoning || undefined,
-      metrics,
-    },
-  ]);
-  callbacks.setLiveContent("");
-  callbacks.setLiveReasoning("");
 }
 
 export function Playground({ models, daemonPort }: PlaygroundProps) {
@@ -309,13 +332,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
     setUserPrompt("");
 
     // Prepare payload
-    const apiMessages = [];
-    if (systemPrompt.trim()) {
-      apiMessages.push({ role: "system", content: systemPrompt.trim() });
-    }
-    for (const m of updatedMessages) {
-      apiMessages.push({ role: m.role, content: m.content });
-    }
+    const apiMessages = buildApiMessages(updatedMessages, systemPrompt);
 
     const payload = {
       model: selectedModel || models[0]?.id || "tencent/hy3:free",
@@ -352,15 +369,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
       });
 
       if (!res.ok) {
-        const errText = await res.text();
-        let errMsg = `HTTP ${res.status}: ${res.statusText}`;
-        try {
-          const parsed = JSON.parse(errText);
-          if (parsed.error?.message) errMsg = parsed.error.message;
-        } catch {
-          if (errText) errMsg = errText;
-        }
-        throw new Error(errMsg);
+        throw new Error(await parseErrorText(res));
       }
 
       if (!stream) {
@@ -641,7 +650,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
 
         {/* Right Side: Chat & Streaming */}
         <div className="lg:col-span-8 space-y-4">
-          <div className="rounded-xl border border-[#23232a] bg-[#16161a] overflow-hidden shadow-sm flex flex-col min-h-[560px]">
+          <div className="rounded-xl border border-[#23232a] bg-[#16161a] overflow-hidden shadow-sm flex flex-col min-h-140">
             {/* Tabs & view toggle */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#23232a] bg-[#121215]">
               <div className="flex items-center gap-1 bg-[#1a1a20] p-1 rounded-lg border border-[#262630]">
@@ -703,7 +712,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
             </div>
 
             {/* Message stream */}
-            <div className="flex-1 p-4 overflow-y-auto max-h-[500px] space-y-4 font-mono text-xs">
+            <div className="flex-1 p-4 overflow-y-auto max-h-125 space-y-4 font-mono text-xs">
               {activeViewTab === "rendered" ? (
                 <>
                   {messages.length === 0 && !isLoading && (
@@ -791,7 +800,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
                       )}
 
                       {/* Content */}
-                      <div className="text-[#f4f4f6] whitespace-pre-wrap break-words leading-relaxed">
+                      <div className="text-[#f4f4f6] whitespace-pre-wrap wrap-break-wor leading-relaxed">
                         {msg.content}
                       </div>
 
@@ -832,7 +841,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
 
                       {/* Live content */}
                       {liveContent && (
-                        <div className="text-[#f4f4f6] whitespace-pre-wrap break-words leading-relaxed">
+                        <div className="text-[#f4f4f6] whitespace-pre-wrap wrap-break-wor leading-relaxed">
                           {liveContent}
                           <span className="inline-block w-2 h-4 ml-1 bg-[#3b82f6] animate-pulse align-middle" />
                         </div>

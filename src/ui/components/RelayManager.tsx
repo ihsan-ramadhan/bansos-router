@@ -64,6 +64,58 @@ function RelayProbeBadge({ probeInfo }: { probeInfo?: ProbeStatus }) {
   );
 }
 
+function renderRelayStatusBadge(isActive: boolean, isEnabled: boolean) {
+  if (!isActive) {
+    return <span className="text-[11px] text-[#52525b] font-mono">Saved</span>;
+  }
+  const textColor = isEnabled ? "text-emerald-400" : "text-amber-400";
+  const dotColor = isEnabled ? "bg-emerald-400" : "bg-amber-400";
+  const label = isEnabled ? "Active & Routing" : "Selected (Standby)";
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${textColor}`}>
+      <span className={`h-2 w-2 rounded-full ${dotColor}`} />
+      <span>{label}</span>
+    </span>
+  );
+}
+
+interface ProbeHooks {
+  setProbeMap: (updater: (prev: Record<string, ProbeStatus>) => Record<string, ProbeStatus>) => void;
+  setLatencyResult: (v: { ms?: number; ok?: boolean; error?: string } | null) => void;
+  showToast: (type: "success" | "info" | "error", message: string) => void;
+  setUpdating: (v: boolean) => void;
+}
+
+async function probeRelayReachable(
+  url: string,
+  hooks: ProbeHooks
+): Promise<{ ok: boolean; latencyMs?: number } | null> {
+  hooks.setUpdating(true);
+  hooks.setProbeMap((prev) => ({ ...prev, [url]: { ok: false, probing: true } }));
+  try {
+    const probeRes = await probeRelay(url);
+    hooks.setProbeMap((prev) => ({
+      ...prev,
+      [url]: { ok: probeRes.ok, latencyMs: probeRes.latencyMs, error: probeRes.error, probing: false },
+    }));
+    hooks.setLatencyResult({ ms: probeRes.latencyMs, ok: probeRes.ok, error: probeRes.error });
+    if (!probeRes.ok) {
+      hooks.showToast("error", `Relay unreachable (${probeRes.error || "connection failed"}). Direct Egress preserved.`);
+      return null;
+    }
+    return { ok: true, latencyMs: probeRes.latencyMs };
+  } catch (err) {
+    hooks.setProbeMap((prev) => ({
+      ...prev,
+      [url]: { ok: false, error: err instanceof Error ? err.message : "Probe failed", probing: false },
+    }));
+    hooks.showToast("error", "Failed to reach relay endpoint. Direct Egress preserved.");
+    return null;
+  } finally {
+    hooks.setUpdating(false);
+  }
+}
+
 function RelayRowItem({
   relay,
   isActive,
@@ -74,18 +126,7 @@ function RelayRowItem({
   onSetActive,
   onRemove,
 }: RelayRowItemProps) {
-  let statusBadge = <span className="text-[11px] text-[#52525b] font-mono">Saved</span>;
-  if (isActive) {
-    const textColor = isEnabled ? "text-emerald-400" : "text-amber-400";
-    const dotColor = isEnabled ? "bg-emerald-400" : "bg-amber-400";
-    const label = isEnabled ? "Active & Routing" : "Selected (Standby)";
-    statusBadge = (
-      <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${textColor}`}>
-        <span className={`h-2 w-2 rounded-full ${dotColor}`} />
-        <span>{label}</span>
-      </span>
-    );
-  }
+  const statusBadge = renderRelayStatusBadge(isActive, isEnabled);
 
   return (
     <tr className={`hover:bg-[#19191f] transition-colors ${isActive ? "bg-[#141419]" : ""}`}>
@@ -246,30 +287,13 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
 
     // Verify relay reachability before enabling
     if (nextEnabled && activeUrl) {
-      setUpdating(true);
-      setProbeMap((prev) => ({ ...prev, [activeUrl]: { ok: false, probing: true } }));
-      try {
-        const probeRes = await probeRelay(activeUrl);
-        setProbeMap((prev) => ({
-          ...prev,
-          [activeUrl]: { ok: probeRes.ok, latencyMs: probeRes.latencyMs, error: probeRes.error, probing: false },
-        }));
-        setLatencyResult({ ms: probeRes.latencyMs, ok: probeRes.ok, error: probeRes.error });
-
-        if (!probeRes.ok) {
-          showToast("error", `Relay unreachable (${probeRes.error || "connection failed"}). Direct Egress preserved.`);
-          return;
-        }
-      } catch (err) {
-        setProbeMap((prev) => ({
-          ...prev,
-          [activeUrl]: { ok: false, error: err instanceof Error ? err.message : "Probe failed", probing: false },
-        }));
-        showToast("error", `Failed to reach relay endpoint. Direct Egress preserved.`);
-        return;
-      } finally {
-        setUpdating(false);
-      }
+      const reachable = await probeRelayReachable(activeUrl, {
+        setProbeMap,
+        setLatencyResult,
+        showToast,
+        setUpdating,
+      });
+      if (!reachable) return;
     }
 
     try {
@@ -297,26 +321,20 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
   async function handleSetActive(url: string) {
     try {
       setUpdating(true);
-      setProbeMap((prev) => ({ ...prev, [url]: { ok: false, probing: true } }));
-      
-      const probeRes = await probeRelay(url);
-      setProbeMap((prev) => ({
-        ...prev,
-        [url]: { ok: probeRes.ok, latencyMs: probeRes.latencyMs, error: probeRes.error, probing: false },
-      }));
-      setLatencyResult({ ms: probeRes.latencyMs, ok: probeRes.ok, error: probeRes.error });
-
-      if (!probeRes.ok) {
-        showToast("error", `Relay node unreachable (${probeRes.error || "probe failed"}). Cannot activate.`);
-        return;
-      }
+      const reachable = await probeRelayReachable(url, {
+        setProbeMap,
+        setLatencyResult,
+        showToast,
+        setUpdating,
+      });
+      if (!reachable) return;
 
       const updated = await updateRelayState({
         url,
         enabled: true,
       });
       setRelayState(updated);
-      showToast("success", `Active relay set and verified (${probeRes.latencyMs}ms): ${url}`);
+      showToast("success", `Active relay set and verified: ${url}`);
       if (onStateChange) onStateChange();
     } catch (err) {
       setProbeMap((prev) => ({
@@ -744,15 +762,15 @@ export function RelayManager({ daemonPort, onStateChange }: RelayManagerProps) {
         <div className="flex flex-wrap gap-2 pt-1">
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#121215] border border-[#282832] text-xs font-mono text-[#d4d4d8]">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            https://opencode.ai
+            {" "}https://opencode.ai
           </span>
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#121215] border border-[#282832] text-xs font-mono text-[#d4d4d8]">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            https://api.kilo.ai
+            {" "}https://api.kilo.ai
           </span>
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#121215] border border-[#282832] text-xs font-mono text-[#d4d4d8]">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            https://llm7.io
+            {" "}https://llm7.io
           </span>
         </div>
       </div>

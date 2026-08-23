@@ -109,7 +109,7 @@ interface ModelCatalogRowProps {
   ping?: PingResult;
   copiedId: string | null;
   onCopy: (id: string) => void;
-  onPingModel: (modelId: string) => Promise<void>;
+  onPingModel: (model: ModelItem) => Promise<void>;
 }
 
 function ModelCatalogRow({ model, ping, copiedId, onCopy, onPingModel }: ModelCatalogRowProps) {
@@ -186,7 +186,7 @@ function ModelCatalogRow({ model, ping, copiedId, onCopy, onPingModel }: ModelCa
       <td className="py-3.5 px-4 text-right whitespace-nowrap">
         <button
           type="button"
-          onClick={() => onPingModel(model.id)}
+          onClick={() => onPingModel(model)}
           disabled={isPinging}
           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#202026] hover:bg-[#282832] active:bg-[#1a1a20] border border-[#2a2a34] hover:border-[#383846] text-[11px] font-medium text-[#d4d4d8] hover:text-white transition cursor-pointer disabled:opacity-50"
           title={`Ping live response from ${model.id}`}
@@ -203,6 +203,57 @@ function ModelCatalogRow({ model, ping, copiedId, onCopy, onPingModel }: ModelCa
   );
 }
 
+function matchesFilters(
+  m: ModelItem,
+  searchQuery: string,
+  selectedProvider: string,
+  activeHealthChip: "all" | "ok" | "429" | "error",
+  pingResults: Record<string, PingResult>
+): boolean {
+  const provider = m.source || m.owned_by || "";
+  if (searchQuery.trim()) {
+    const q = searchQuery.toLowerCase();
+    const matchesId = m.id.toLowerCase().includes(q);
+    const matchesName = m.name?.toLowerCase().includes(q);
+    const matchesProvider = provider.toLowerCase().includes(q);
+    if (!matchesId && !matchesName && !matchesProvider) return false;
+  }
+  if (selectedProvider !== "all" && provider.toLowerCase() !== selectedProvider.toLowerCase()) {
+    return false;
+  }
+  const ping = pingResults[m.id];
+  if (activeHealthChip === "ok" && ping?.status !== "ok") return false;
+  if (activeHealthChip === "429" && ping?.status !== "rate_limited") return false;
+  if (activeHealthChip === "error" && ping?.status !== "error") return false;
+  return true;
+}
+
+function compareByField(
+  a: ModelItem,
+  b: ModelItem,
+  sortField: "model" | "reasoning" | "context" | "maxOutput" | "latency",
+  sortAsc: boolean,
+  pingResults: Record<string, PingResult>
+): number {
+  const dir = sortAsc ? 1 : -1;
+  if (sortField === "model") return dir * a.id.localeCompare(b.id);
+  if (sortField === "reasoning") {
+    return dir * ((b.reasoning ? 1 : 0) - (a.reasoning ? 1 : 0));
+  }
+  if (sortField === "context") {
+    return dir * ((b.context_window || b.context_length || 0) - (a.context_window || a.context_length || 0));
+  }
+  if (sortField === "maxOutput") {
+    return dir * ((b.max_tokens || b.maxTokens || 0) - (a.max_tokens || a.maxTokens || 0));
+  }
+  // latency
+  const pingA = pingResults[a.id];
+  const pingB = pingResults[b.id];
+  const latA = pingA?.status === "ok" && typeof pingA.latencyMs === "number" ? pingA.latencyMs : Infinity;
+  const latB = pingB?.status === "ok" && typeof pingB.latencyMs === "number" ? pingB.latencyMs : Infinity;
+  return dir * (latA - latB);
+}
+
 function filterAndSortModels(
   models: ModelItem[],
   searchQuery: string,
@@ -212,54 +263,12 @@ function filterAndSortModels(
   sortAsc: boolean,
   pingResults: Record<string, PingResult>
 ): ModelItem[] {
-  const list = models.filter((m) => {
-    const provider = m.source || m.owned_by || "";
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchesId = m.id.toLowerCase().includes(q);
-      const matchesName = m.name?.toLowerCase().includes(q);
-      const matchesProvider = provider.toLowerCase().includes(q);
-      if (!matchesId && !matchesName && !matchesProvider) return false;
-    }
-    if (selectedProvider !== "all" && provider.toLowerCase() !== selectedProvider.toLowerCase()) {
-      return false;
-    }
-    const ping = pingResults[m.id];
-    if (activeHealthChip === "ok" && ping?.status !== "ok") return false;
-    if (activeHealthChip === "429" && ping?.status !== "rate_limited") return false;
-    if (activeHealthChip === "error" && ping?.status !== "error") return false;
+  const list = models.filter((m) =>
+    matchesFilters(m, searchQuery, selectedProvider, activeHealthChip, pingResults)
+  );
 
-    return true;
-  });
-
-  if (sortField === "model") {
-    list.sort((a, b) => (sortAsc ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id)));
-  } else if (sortField === "reasoning") {
-    list.sort((a, b) => {
-      const valA = a.reasoning ? 1 : 0;
-      const valB = b.reasoning ? 1 : 0;
-      return sortAsc ? valB - valA : valA - valB;
-    });
-  } else if (sortField === "context") {
-    list.sort((a, b) => {
-      const valA = a.context_window || a.context_length || 0;
-      const valB = b.context_window || b.context_length || 0;
-      return sortAsc ? valB - valA : valA - valB;
-    });
-  } else if (sortField === "maxOutput") {
-    list.sort((a, b) => {
-      const valA = a.max_tokens || a.maxTokens || 0;
-      const valB = b.max_tokens || b.maxTokens || 0;
-      return sortAsc ? valB - valA : valA - valB;
-    });
-  } else if (sortField === "latency") {
-    list.sort((a, b) => {
-      const pingA = pingResults[a.id];
-      const pingB = pingResults[b.id];
-      const latA = pingA?.status === "ok" && typeof pingA.latencyMs === "number" ? pingA.latencyMs : Infinity;
-      const latB = pingB?.status === "ok" && typeof pingB.latencyMs === "number" ? pingB.latencyMs : Infinity;
-      return sortAsc ? latA - latB : latB - latA;
-    });
+  if (sortField !== "default") {
+    list.sort((a, b) => compareByField(a, b, sortField, sortAsc, pingResults));
   }
 
   return list;
@@ -272,7 +281,7 @@ interface ModelCatalogProps {
   refreshing: boolean;
   pingResults: Record<string, PingResult>;
   isPingingAll: boolean;
-  onPingModel: (modelId: string) => Promise<void>;
+  onPingModel: (model: ModelItem) => Promise<void>;
   onPingAll: (models: ModelItem[]) => Promise<void>;
   onClearPings?: () => void;
 }
@@ -348,6 +357,46 @@ export function ModelCatalog({
       setSortField(field);
       setSortAsc(true);
     }
+  }
+
+  function renderTableBody() {
+    if (loading) {
+      return (
+        <tr>
+          <td colSpan={6} className="py-12 text-center text-[#71717a]">
+            <div className="flex flex-col items-center justify-center gap-2">
+              <Loader2 className="h-6 w-6 animate-spin text-[#3b82f6]" />
+              <span>Loading active catalog from daemon...</span>
+            </div>
+          </td>
+        </tr>
+      );
+    }
+    if (filteredModels.length === 0) {
+      return (
+        <tr>
+          <td colSpan={6} className="py-12 text-center text-[#71717a]">
+            <div className="flex flex-col items-center justify-center gap-2">
+              <Search className="h-6 w-6 text-[#52525b]" />
+              <span className="text-white font-medium">No matching models found</span>
+              <span className="text-xs text-[#71717a]">
+                Try adjusting your search query or upstream filters.
+              </span>
+            </div>
+          </td>
+        </tr>
+      );
+    }
+    return paginatedModels.map((model) => (
+      <ModelCatalogRow
+        key={model.id}
+        model={model}
+        ping={pingResults[model.id]}
+        copiedId={copiedId}
+        onCopy={handleCopy}
+        onPingModel={onPingModel}
+      />
+    ));
   }
 
   const totalPages = Math.max(1, Math.ceil(filteredModels.length / pageSize));
@@ -698,39 +747,7 @@ export function ModelCatalog({
               </tr>
             </thead>
             <tbody className="divide-y divide-[#202026] text-xs">
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="py-12 text-center text-[#71717a]">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <Loader2 className="h-6 w-6 animate-spin text-[#3b82f6]" />
-                      <span>Loading active catalog from daemon...</span>
-                    </div>
-                  </td>
-                </tr>
-              ) : filteredModels.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-12 text-center text-[#71717a]">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <Search className="h-6 w-6 text-[#52525b]" />
-                      <span className="text-white font-medium">No matching models found</span>
-                      <span className="text-xs text-[#71717a]">
-                        Try adjusting your search query or upstream filters.
-                      </span>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                paginatedModels.map((model) => (
-                  <ModelCatalogRow
-                    key={model.id}
-                    model={model}
-                    ping={pingResults[model.id]}
-                    copiedId={copiedId}
-                    onCopy={handleCopy}
-                    onPingModel={onPingModel}
-                  />
-                ))
-              )}
+              {renderTableBody()}
             </tbody>
           </table>
         </div>

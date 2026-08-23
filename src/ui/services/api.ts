@@ -68,8 +68,14 @@ export async function updateRelayState(payload: RelayUpdatePayload): Promise<Rel
   return res.json();
 }
 
-export async function pingModel(modelId: string): Promise<{ latencyMs: number; status: number }> {
+export async function pingModel(
+  modelId: string,
+  maxTokens?: number,
+): Promise<{ latencyMs: number; status: number }> {
   const start = performance.now();
+  // some upstreams reject requests with max_tokens below a minimum (e.g. 16),
+  // so clamp the probe to at least 16 while never exceeding the model cap
+  const probeTokens = maxTokens && maxTokens >= 16 ? maxTokens : 16;
   try {
     const res = await fetch(`${BASE_URL}/v1/chat/completions`, {
       method: "POST",
@@ -79,7 +85,7 @@ export async function pingModel(modelId: string): Promise<{ latencyMs: number; s
       },
       body: JSON.stringify({
         model: modelId,
-        max_tokens: 8,
+        max_tokens: probeTokens,
         messages: [{ role: "user", content: "ping" }],
       }),
     });

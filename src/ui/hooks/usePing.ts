@@ -13,14 +13,15 @@ export function usePing() {
   const [pingResults, setPingResults] = useState<Record<string, PingResult>>({});
   const [isPingingAll, setIsPingingAll] = useState(false);
 
-  const pingSingle = useCallback(async (modelId: string) => {
+  const pingSingle = useCallback(async (model: ModelItem) => {
+    const modelId = model.id;
     setPingResults((prev) => ({
       ...prev,
       [modelId]: { modelId, status: "pinging" },
     }));
 
     try {
-      const res = await pingModel(modelId);
+      const res = await pingModel(modelId, model.maxTokens ?? model.max_tokens);
       if (res.status === 200) {
         setPingResults((prev) => ({
           ...prev,
@@ -73,7 +74,7 @@ export function usePing() {
     const chunkSize = 4;
     for (let i = 0; i < models.length; i += chunkSize) {
       const chunk = models.slice(i, i + chunkSize);
-      await Promise.all(chunk.map((m) => pingSingle(m.id)));
+      await Promise.all(chunk.map((m) => pingSingle(m)));
     }
 
     setIsPingingAll(false);
