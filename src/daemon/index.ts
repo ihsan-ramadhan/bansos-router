@@ -126,8 +126,15 @@ async function main(argv: string[]): Promise<void> {
     process.stdout.write(
       `\n● bansosd online (port ${actualPort})\n` +
       `  ├── Web UI   : http://${bind}:${actualPort}\n` +
-      `  ├── API Base : http://${bind}:${actualPort}/v1\n` +
-      `  └── Models   : ${catalog.models.length} alive (zen, kilo, llm7)\n\n`
+      `  └── API Base : http://${bind}:${actualPort}/v1\n\n`
+    );
+  }
+
+  await catalog.refresh();
+
+  if (process.env.BANSOS_LOG !== "json") {
+    process.stdout.write(
+      `  └── Models   : ${catalog.models.length} alive (${[...new Set(catalog.models.map((m) => m.source))].join(", ")})\n\n`
     );
   }
 
