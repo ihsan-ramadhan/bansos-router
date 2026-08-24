@@ -3,8 +3,15 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { loadConfig, writeJsonAtomic, STATE_FILE, BANSOS_DIR } from "./state";
+import {
+  loadConfig,
+  writeJsonAtomic,
+  STATE_FILE,
+  BANSOS_DIR,
+  type BansosConfig,
+} from "./state";
 import { createLogger } from "../logger";
+import { assertBindAllowed } from "../security/policy";
 import { buildUpstreams, SEEDED_MODELS } from "../upstreams";
 import { VERSION } from "../update";
 import { RuntimeCatalog } from "./catalog";
@@ -18,15 +25,17 @@ interface CliArgs {
   port?: number;
   bind?: string;
   bg: boolean;
+  unsafeAllowNonLoopback: boolean;
 }
 
 function parseArgs(argv: string[]): CliArgs {
-  const args: CliArgs = { bg: false };
+  const args: CliArgs = { bg: false, unsafeAllowNonLoopback: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--port" || arg === "-p") args.port = Number(argv[++i]);
     else if (arg === "--bind") args.bind = argv[++i];
     else if (arg === "--bg") args.bg = true;
+    else if (arg === "--unsafe-allow-non-loopback") args.unsafeAllowNonLoopback = true;
     else if (arg === "--version" || arg === "-v") {
       console.log(VERSION);
       process.exit(0);
@@ -41,6 +50,8 @@ Options:
   --port N    listen port (default: ${DEFAULT_PORT}, auto-bumps up to ${MAX_PORT})
   --bind H    bind address (default: 127.0.0.1)
   --bg        spawn detached, log to ~/.bansos/logs/bansosd.log
+  --unsafe-allow-non-loopback
+              override strict-mode loopback protection (unsafe)
   -h, --help  show this help
 `);
       process.exit(0);
@@ -52,11 +63,11 @@ Options:
 function startServer(
   port: number,
   bind: string,
+  config: BansosConfig,
 ): Promise<{ server: http.Server; port: number; catalog: RuntimeCatalog }> {
   const log = createLogger({ prefix: "bansosd" });
-  const config = loadConfig();
   const upstreams = buildUpstreams(config.localUpstreams);
-  const catalog = new RuntimeCatalog(upstreams, log);
+  const catalog = new RuntimeCatalog(upstreams, log, config.security);
 
   // seed the pinned registry: usable offline, refined by health checks
   catalog.seed(SEEDED_MODELS);
@@ -67,7 +78,14 @@ function startServer(
     windowMs: 60_000,
   });
 
-  const server = createServer({ catalog, rateLimiter, port, log, startedAt });
+  const server = createServer({
+    catalog,
+    rateLimiter,
+    port,
+    log,
+    startedAt,
+    security: config.security,
+  });
 
   // initial health-check pass, then refresh on the configured interval
   void catalog.refresh();
@@ -80,7 +98,7 @@ function startServer(
       server.once("error", (err: NodeJS.ErrnoException) => {
         if (err.code === "EADDRINUSE" && attempt < MAX_PORT) {
           log.warn(`port ${port} busy — trying ${port + 1}`);
-          resolve(startServer(port + 1, bind));
+          resolve(startServer(port + 1, bind, config));
           return;
         }
         reject(err);
@@ -98,6 +116,7 @@ async function main(argv: string[]): Promise<void> {
   const config = loadConfig();
   const port = args.port ?? config.port ?? DEFAULT_PORT;
   const bind = args.bind ?? config.bind;
+  assertBindAllowed(bind, config.security, args.unsafeAllowNonLoopback);
 
   if (args.bg) {
     const logDir = path.join(BANSOS_DIR, "logs");
@@ -106,7 +125,15 @@ async function main(argv: string[]): Promise<void> {
     const out = fs.openSync(logFile, "a");
     const child = spawn(
       process.execPath,
-      [...process.execArgv, process.argv[1]!, "--port", String(port), "--bind", bind],
+      [
+        ...process.execArgv,
+        process.argv[1]!,
+        "--port",
+        String(port),
+        "--bind",
+        bind,
+        ...(args.unsafeAllowNonLoopback ? ["--unsafe-allow-non-loopback"] : []),
+      ],
       {
         stdio: ["ignore", out, out] as unknown as import("node:child_process").StdioOptions,
         detached: true,
@@ -119,7 +146,7 @@ async function main(argv: string[]): Promise<void> {
   }
 
   // run an initial health-check pass, then refresh periodically
-  const { server, port: actualPort, catalog } = await startServer(port, bind);
+  const { server, port: actualPort, catalog } = await startServer(port, bind, config);
   log.info(`bansosd listening on http://${bind}:${actualPort}`);
 
   if (process.env.BANSOS_LOG !== "json") {

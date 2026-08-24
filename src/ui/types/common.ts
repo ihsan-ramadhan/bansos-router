@@ -10,4 +10,9 @@ export interface DaemonStatus {
     enabled: boolean;
     url: string;
   };
+  security?: {
+    mode: "normal" | "strict";
+    allowedUpstreams: string[];
+    allowCrossProviderFailover: boolean;
+  };
 }

@@ -61,12 +61,14 @@ const CMD_HELP: Record<string, string> = {
   start: `bansos start — start the daemon
 
 Usage:
-  bansos start [--bg] [--port N] [--bind H]
+  bansos start [--bg] [--port N] [--bind H] [--unsafe-allow-non-loopback]
 
 Flags:
   --bg          run detached; logs append to ~/.bansos/logs/bansosd.log
   --port, -p N  port to bind (default 17070, bumps +1 up to 17090 while busy)
   --bind H      address to bind (default 127.0.0.1; use 0.0.0.0 in containers)
+  --unsafe-allow-non-loopback
+                override strict-mode loopback protection (unsafe)
 
 Notes:
   Without --bg the daemon runs foreground and blocks until Ctrl+C/SIGTERM.
@@ -175,7 +177,8 @@ Exit codes: 0 healthy, 1 any check failed.
 };
 
 function isDaemonFlag(a: string | undefined): boolean {
-  return a === "--port" || a === "-p" || a === "--bind" || a === "--bg";
+  return a === "--port" || a === "-p" || a === "--bind" || a === "--bg" ||
+    a === "--unsafe-allow-non-loopback";
 }
 
 async function main(): Promise<number> {
@@ -248,11 +251,13 @@ async function runStart(args: string[]): Promise<number> {
   let bg = false;
   let port: number | undefined;
   let bind: string | undefined;
+  let unsafeAllowNonLoopback = false;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--bg") bg = true;
     else if (a === "--port" || a === "-p") port = Number(args[++i]);
     else if (a === "--bind") bind = args[++i];
+    else if (a === "--unsafe-allow-non-loopback") unsafeAllowNonLoopback = true;
     else {
       console.error(`bansos start: unknown flag "${a}"`);
       return 1;
@@ -276,6 +281,7 @@ async function runStart(args: string[]): Promise<number> {
       "daemon",
       ...(port !== undefined ? ["--port", String(port)] : []),
       ...(bind !== undefined ? ["--bind", bind] : []),
+      ...(unsafeAllowNonLoopback ? ["--unsafe-allow-non-loopback"] : []),
     ],
     {
       stdio: ["ignore", out, out] as unknown as import("node:child_process").StdioOptions,

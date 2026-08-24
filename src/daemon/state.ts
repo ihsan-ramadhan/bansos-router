@@ -1,6 +1,11 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import {
+  DEFAULT_SECURITY_CONFIG,
+  normalizeSecurityConfig,
+  type SecurityConfig,
+} from "../security/policy";
 
 export const BANSOS_DIR = path.join(os.homedir(), ".bansos");
 
@@ -12,6 +17,7 @@ export interface BansosConfig {
   port: number;
   bind: string;
   refreshIntervalMs: number;
+  security: SecurityConfig;
   // opt-in local gateways (freebuff-proxy, litellm, ...)
   localUpstreams: Array<{ name: string; baseUrl: string; apiKey?: string }>;
 }
@@ -20,6 +26,7 @@ export const DEFAULT_CONFIG: BansosConfig = {
   port: 17070,
   bind: "127.0.0.1",
   refreshIntervalMs: 30 * 60_000,
+  security: { ...DEFAULT_SECURITY_CONFIG },
   localUpstreams: [],
 };
 
@@ -33,6 +40,7 @@ export function loadConfig(): BansosConfig {
     return {
       ...DEFAULT_CONFIG,
       ...raw,
+      security: normalizeSecurityConfig(raw.security),
       localUpstreams: raw.localUpstreams ?? [],
     };
   } catch {

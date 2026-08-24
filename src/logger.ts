@@ -1,4 +1,4 @@
-
+import { scanRequestBody, type SecretType } from "./security/secret-guard";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -23,6 +23,68 @@ export interface LoggerOptions {
   prefix?: string;
 }
 
+const SAFE_FIELD_NAMES = new Set([
+  "model",
+  "upstream",
+  "status",
+  "durationMs",
+  "inputTokens",
+  "outputTokens",
+  "failoverBlocked",
+  "dlpBlocked",
+  "secretType",
+  "secretTypes",
+  "attempt",
+  "attempts",
+  "from",
+  "to",
+  "fromUpstream",
+  "failoverFrom",
+  "stream",
+]);
+
+const SECRET_TYPES = new Set<SecretType>([
+  "openai_api_key",
+  "anthropic_api_key",
+  "github_pat",
+  "aws_access_key",
+  "private_key",
+  "ssh_private_key",
+  "credential_assignment",
+]);
+
+function validatedSecretTypes(value: unknown): SecretType[] {
+  const values = Array.isArray(value) ? value : [value];
+  return values.filter(
+    (item): item is SecretType => typeof item === "string" && SECRET_TYPES.has(item as SecretType),
+  );
+}
+
+function safeFields(
+  fields?: Record<string, unknown>,
+  initialSecretTypes: SecretType[] = [],
+): Record<string, unknown> | undefined {
+  const safe: Record<string, unknown> = {};
+  const detectedTypes = new Set(initialSecretTypes);
+  for (const [key, value] of Object.entries(fields ?? {})) {
+    if (!SAFE_FIELD_NAMES.has(key)) continue;
+    if (key === "secretType" || key === "secretTypes") {
+      for (const type of validatedSecretTypes(value)) detectedTypes.add(type);
+      continue;
+    }
+    const scan = scanRequestBody(value);
+    if (scan.blocked) {
+      for (const type of scan.secretTypes) detectedTypes.add(type);
+      continue;
+    }
+    safe[key] = value;
+  }
+  if (detectedTypes.size > 0) {
+    safe.secretTypes = [...detectedTypes].sort((a, b) => a.localeCompare(b));
+  }
+  return Object.keys(safe).length > 0 ? safe : undefined;
+}
+
 export function createLogger(opts: LoggerOptions = {}): Logger {
   const level = opts.level ?? "info";
   const json = opts.json ?? process.env.BANSOS_LOG === "json";
@@ -30,14 +92,17 @@ export function createLogger(opts: LoggerOptions = {}): Logger {
 
   const write = (lvl: LogLevel, msg: string, fields?: Record<string, unknown>) => {
     if (LEVEL_ORDER[lvl] < LEVEL_ORDER[level]) return;
-    const line = prefix ? `[${prefix}] ${msg}` : msg;
+    const messageScan = scanRequestBody(msg);
+    const safeMessage = messageScan.blocked ? "sensitive log message suppressed" : msg;
+    const line = prefix ? `[${prefix}] ${safeMessage}` : safeMessage;
+    const filteredFields = safeFields(fields, messageScan.secretTypes);
     if (json) {
       process.stdout.write(
-        `${JSON.stringify({ level: lvl, msg, ...(fields ?? {}) })}\n`,
+        `${JSON.stringify({ timestamp: new Date().toISOString(), level: lvl, msg: safeMessage, ...filteredFields })}\n`,
       );
     } else {
       const tag = lvl === "error" ? "✗" : lvl === "warn" ? "⚠" : lvl === "debug" ? "·" : "✓";
-      process.stdout.write(`${tag} ${line}${renderFields(fields)}\n`);
+      process.stdout.write(`${tag} ${line}${renderFields(filteredFields)}\n`);
     }
   };
 

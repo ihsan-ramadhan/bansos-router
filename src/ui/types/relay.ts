@@ -25,4 +25,6 @@ export interface RelayStateResponse {
   enabled: boolean;
   url: string;
   relays: KnownRelay[];
+  securityMode?: "normal" | "strict";
+  locked?: boolean;
 }

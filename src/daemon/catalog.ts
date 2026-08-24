@@ -1,4 +1,9 @@
 import type { Logger } from "../logger";
+import {
+  DEFAULT_SECURITY_CONFIG,
+  isUpstreamAllowed,
+  type SecurityConfig,
+} from "../security/policy";
 import type { ModelDef, Upstream, UpstreamSource } from "../upstreams/types";
 
 export interface RefreshReport {
@@ -13,7 +18,11 @@ export class RuntimeCatalog {
   private readonly bySource = new Map<string, Upstream>();
   private readonly upstreams: Upstream[];
 
-  constructor(upstreams: Upstream[], private readonly log: Logger) {
+  constructor(
+    upstreams: Upstream[],
+    private readonly log: Logger,
+    private readonly security: SecurityConfig = DEFAULT_SECURITY_CONFIG,
+  ) {
     this.upstreams = upstreams;
     for (const u of upstreams) {
       this.bySource.set(u.id, u);
@@ -56,6 +65,11 @@ export class RuntimeCatalog {
     const report: RefreshReport = { checked: 0, alive: 0, dead: 0, degraded: [] };
 
     for (const upstream of this.upstreams) {
+      if (!isUpstreamAllowed(this.security, upstream.id)) {
+        report.degraded.push(upstream.id);
+        this.log.warn(`upstream ${upstream.id}: blocked by strict allowlist`);
+        continue;
+      }
       const live = await upstream.fetchCatalog();
       if (live === null) {
         report.degraded.push(upstream.id);

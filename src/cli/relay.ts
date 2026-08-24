@@ -1,9 +1,12 @@
 import { deployVercelRelay } from "../relay/vercel";
+import { loadConfig } from "../daemon/state";
+import { isStrictSecurity, type SecurityConfig } from "../security/policy";
 import {
   addRelay,
   loadRelayState,
   removeRelay,
   saveRelayState,
+  type RelayState,
 } from "../relay/egress";
 
 function usage(): void {
@@ -20,9 +23,48 @@ Commands:
 `);
 }
 
-export async function runRelay(argv: string[]): Promise<number> {
+function relayLabelSuffix(label?: string): string {
+  return label ? `  [${label}]` : "";
+}
+
+function runStrictRelay(cmd: string | undefined, state: RelayState): number {
+  switch (cmd) {
+    case "status":
+      console.log("enabled: off (locked by strict security mode)");
+      console.log(`active:  ${state.url || "(none)"} (ignored)`);
+      console.log(`saved:   ${state.relays.length}`);
+      return 0;
+    case "list":
+      for (const relay of state.relays) {
+        console.log(`  ${relay.url}${relayLabelSuffix(relay.label)}`);
+      }
+      return 0;
+    case "off":
+      saveRelayState({ ...state, enabled: false });
+      console.log("relay disabled and locked by strict security mode");
+      return 0;
+    case "help":
+    case "-h":
+    case undefined:
+      usage();
+      console.log("\nRelay mutation and egress are disabled while security.mode is strict.");
+      return 0;
+    default:
+      console.error(`bansos relay ${cmd}: rejected by strict security mode`);
+      return 1;
+  }
+}
+
+export async function runRelay(
+  argv: string[],
+  security: SecurityConfig = loadConfig().security,
+): Promise<number> {
   const cmd = argv[0];
   const state = loadRelayState();
+
+  if (isStrictSecurity(security)) {
+    return runStrictRelay(cmd, state);
+  }
 
   switch (cmd) {
     case "on": {
@@ -63,7 +105,7 @@ export async function runRelay(argv: string[]): Promise<number> {
     }
     case "list": {
       for (const r of state.relays) {
-        console.log(`${r.url === state.url ? "★" : " "} ${r.url}${r.label ? `  [${r.label}]` : ""}`);
+        console.log(`${r.url === state.url ? "★" : " "} ${r.url}${relayLabelSuffix(r.label)}`);
       }
       return 0;
     }

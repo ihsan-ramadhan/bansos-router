@@ -4,6 +4,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Readable, Transform } from "node:stream";
 import type { Logger } from "../logger";
+import {
+  DEFAULT_SECURITY_CONFIG,
+  isCrossProviderFailoverAllowed,
+  isRelayAllowed,
+  isLoopbackBind,
+  isStrictSecurity,
+  isUpstreamAllowed,
+  type SecurityConfig,
+} from "../security/policy";
+import { scanRequestBody, type SecretType } from "../security/secret-guard";
 import type { ModelDef, Upstream } from "../upstreams/types";
 import { pickSmartDefaultModel } from "../upstreams/types";
 import { parseChatTurn, sanitizeChatBody } from "../protocols/openai-chat";
@@ -33,6 +43,11 @@ export interface StatusPayload {
   modelCount: number;
   models: string[];
   relay?: { enabled: boolean; url: string };
+  security?: {
+    mode: "normal" | "strict";
+    allowedUpstreams: string[];
+    allowCrossProviderFailover: boolean;
+  };
 }
 
 export interface ServerOptions {
@@ -41,6 +56,7 @@ export interface ServerOptions {
   port: number;
   log: Logger;
   startedAt: number;
+  security?: SecurityConfig;
 }
 
 const ALLOWED_METHODS = new Set(["GET", "POST", "OPTIONS"]);
@@ -356,12 +372,14 @@ export function pickFailover(
   catalog: RuntimeCatalog,
   origin: ModelDef,
   attempts: ReadonlySet<string> = new Set(),
+  allowed: (candidate: ModelDef) => boolean = () => true,
 ): ModelDef | undefined {
   let best: ModelDef | undefined;
   let bestScore = Number.POSITIVE_INFINITY; // lower is better
   for (const candidate of catalog.models) {
     if (candidate.id === origin.id) continue;
     if (attempts.has(candidate.id)) continue;
+    if (!allowed(candidate)) continue;
     if (candidate.source === origin.source) continue;
     if (candidate.reasoning !== origin.reasoning) continue;
     if (candidate.compat.supportsDeveloperRole !== origin.compat.supportsDeveloperRole) continue;
@@ -381,14 +399,58 @@ export function pickFailover(
 // upstream with failover on 429/5xx. returns the final upstream Response plus
 // the model that served it, or a terminal error to forward to the client.
 type ForwardResult = { response: Response; model: ModelDef; upstream: Upstream };
-type ForwardError = { status: number; message: string };
+type ForwardError = {
+  status: number;
+  message: string;
+  type?: "upstream_error" | "security_policy_error";
+  secretTypes?: SecretType[];
+};
+
+function isExternalUpstream(upstream: Upstream): boolean {
+  try {
+    const url = new URL(upstream.chatUrl);
+    return !isLoopbackBind(url.hostname);
+  } catch {
+    // Invalid or unknown destinations are external for strict DLP purposes.
+    return true;
+  }
+}
+
+function selectFailover(
+  catalog: RuntimeCatalog,
+  current: ModelDef,
+  currentUpstream: Upstream,
+  tried: ReadonlySet<string>,
+  security: SecurityConfig,
+  failoverAllowed: boolean,
+  status: number,
+  requestStartedAt: number,
+  log: Logger,
+): ModelDef | undefined {
+  if (!failoverAllowed) {
+    log.warn("upstream rejected", {
+      model: current.id,
+      upstream: currentUpstream.id,
+      status,
+      durationMs: Date.now() - requestStartedAt,
+      failoverBlocked: true,
+    });
+    return undefined;
+  }
+
+  return pickFailover(catalog, current, tried, (candidate) => {
+    const candidateUpstream = catalog.upstreamBySource(candidate.source);
+    return Boolean(candidateUpstream && isUpstreamAllowed(security, candidateUpstream.id));
+  });
+}
+
 async function runChatForward(
   req: http.IncomingMessage,
   catalog: RuntimeCatalog,
   log: Logger,
+  security: SecurityConfig,
   parsedModel: string,
   sanitizedBody: Record<string, unknown>,
-  stream: boolean,
 ): Promise<ForwardResult | ForwardError> {
   const model = catalog.resolve(parsedModel);
   if (!model) {
@@ -401,7 +463,9 @@ async function runChatForward(
 
   const requestStartedAt = Date.now();
   const relay = loadRelayState();
-  const noFailover = req.headers["x-bansos-no-failover"] === "1";
+  const failoverAllowed =
+    req.headers["x-bansos-no-failover"] !== "1" &&
+    isCrossProviderFailoverAllowed(security);
   const tried = new Set<string>([model.id]);
   let current: ModelDef = model;
   let currentUpstream = catalog.upstreamBySource(current.source)!;
@@ -416,8 +480,24 @@ async function runChatForward(
         status: transientError?.status,
         durationMs: Date.now() - requestStartedAt,
         attempt,
-        error: transientError?.message.slice(0, 100),
       });
+    }
+
+    if (!isUpstreamAllowed(security, currentUpstream.id)) {
+      log.warn("upstream blocked by strict security policy", {
+        model: current.id,
+        upstream: currentUpstream.id,
+        status: 403,
+        durationMs: Date.now() - requestStartedAt,
+        failoverBlocked: true,
+      });
+      return {
+        status: 403,
+        type: "security_policy_error",
+        message: security.allowedUpstreams.length === 0
+          ? "strict security mode blocks external LLM requests until security.allowedUpstreams explicitly permits a provider"
+          : `upstream "${currentUpstream.id}" is not allowed by strict security policy`,
+      };
     }
 
     const headers = new Headers({
@@ -426,6 +506,26 @@ async function runChatForward(
     });
     const outboundBody = JSON.stringify({ ...sanitizedBody, model: current.id });
 
+    if (isStrictSecurity(security) && isExternalUpstream(currentUpstream)) {
+      const secretScan = scanRequestBody(outboundBody);
+      if (secretScan.blocked) {
+        log.warn("request blocked by strict secret guard", {
+          model: current.id,
+          upstream: currentUpstream.id,
+          status: 422,
+          durationMs: Date.now() - requestStartedAt,
+          dlpBlocked: true,
+          secretTypes: secretScan.secretTypes,
+        });
+        return {
+          status: 422,
+          type: "security_policy_error",
+          message: "request blocked by strict secret guard",
+          secretTypes: secretScan.secretTypes,
+        };
+      }
+    }
+
     let upstreamRes: Response;
     try {
       upstreamRes = await relayFetch(relay, currentUpstream.chatUrl, {
@@ -433,10 +533,13 @@ async function runChatForward(
         headers,
         body: outboundBody,
         duplex: "half",
-      });
-    } catch (err) {
-      transientError = { status: 0, message: String(err) };
-      const next = noFailover ? undefined : pickFailover(catalog, current, tried);
+      }, isRelayAllowed(security));
+    } catch {
+      transientError = { status: 502, message: "upstream request failed" };
+      const next = selectFailover(
+        catalog, current, currentUpstream, tried, security, failoverAllowed,
+        502, requestStartedAt, log,
+      );
       if (!next) break;
       tried.add(next.id);
       current = next;
@@ -446,12 +549,14 @@ async function runChatForward(
 
     if (upstreamRes.status >= 400) {
       const text = await upstreamRes.text();
-      let errorMsg = text.slice(0, 256) || "upstream error";
+      let errorMsg = `upstream returned HTTP ${upstreamRes.status}`;
       try {
         const json = JSON.parse(text);
-        errorMsg = json?.error?.message ?? json?.message ?? errorMsg;
+        if (!isStrictSecurity(security)) {
+          errorMsg = json?.error?.message ?? json?.message ?? text.slice(0, 256) ?? errorMsg;
+        }
       } catch {
-        // ignore parse failure; raw text stands as error message
+        if (!isStrictSecurity(security) && text) errorMsg = text.slice(0, 256);
       }
 
       const transient = upstreamRes.status === 429 || upstreamRes.status >= 500;
@@ -461,13 +566,15 @@ async function runChatForward(
           upstream: currentUpstream.id,
           status: upstreamRes.status,
           durationMs: Date.now() - requestStartedAt,
-          error: errorMsg.slice(0, 100),
         });
         return { status: upstreamRes.status, message: errorMsg };
       }
 
       transientError = { status: upstreamRes.status, message: errorMsg };
-      const next = noFailover ? undefined : pickFailover(catalog, current, tried);
+      const next = selectFailover(
+        catalog, current, currentUpstream, tried, security, failoverAllowed,
+        upstreamRes.status, requestStartedAt, log,
+      );
       if (!next) break;
       tried.add(next.id);
       current = next;
@@ -486,6 +593,7 @@ async function handleChat(
   res: http.ServerResponse,
   catalog: RuntimeCatalog,
   log: Logger,
+  security: SecurityConfig,
 ): Promise<void> {
   let bodyText: string;
   try {
@@ -522,13 +630,14 @@ async function handleChat(
     req,
     catalog,
     log,
+    security,
     parsed.value.model,
     sanitizedBody,
-    parsed.value.stream,
   );
   if ("status" in result) {
     sendJson(res, result.status, {
-      error: { message: result.message, type: "upstream_error", status: result.status },
+      error: { message: result.message, type: result.type ?? "upstream_error", status: result.status },
+      ...(result.secretTypes ? { secret_types: result.secretTypes } : {}),
     });
     return;
   }
@@ -585,6 +694,7 @@ async function handleResponses(
   res: http.ServerResponse,
   catalog: RuntimeCatalog,
   log: Logger,
+  security: SecurityConfig,
 ): Promise<void> {
   let bodyText: string;
   try {
@@ -658,13 +768,14 @@ async function handleResponses(
     req,
     catalog,
     log,
+    security,
     parsed.value.model,
     sanitizedBody,
-    parsed.value.stream,
   );
   if ("status" in result) {
     sendJson(res, result.status, {
-      error: { message: result.message, type: "upstream_error", status: result.status },
+      error: { message: result.message, type: result.type ?? "upstream_error", status: result.status },
+      ...(result.secretTypes ? { secret_types: result.secretTypes } : {}),
     });
     return;
   }
@@ -749,6 +860,7 @@ async function handleAnthropic(
   res: http.ServerResponse,
   catalog: RuntimeCatalog,
   log: Logger,
+  security: SecurityConfig,
 ): Promise<void> {
   let bodyText: string;
   try {
@@ -793,182 +905,120 @@ async function handleAnthropic(
     chatBody.max_tokens = model.maxTokens;
   }
 
+  const result = await runChatForward(
+    req,
+    catalog,
+    log,
+    security,
+    parsed.value.model,
+    chatBody,
+  );
+  if ("status" in result) {
+    sendAnthropicError(res, result.status, result.message, result.secretTypes);
+    return;
+  }
+
+  const { response: upstreamRes, model: current, upstream: currentUpstream } = result;
   log.info("anthropic → upstream", {
-    model: model.id,
-    upstream: upstream.id,
+    model: current.id,
+    upstream: currentUpstream.id,
     stream: parsed.value.stream,
   });
 
-  const relay = loadRelayState();
-  const tried = new Set<string>([model.id]);
-  let current: ModelDef = model;
-  let currentUpstream = catalog.upstreamBySource(current.source)!;
-  let transientError: { status: number; errorMsg: string } | null = null;
-
-  for (let attempt = 0; attempt <= MAX_FAILOVER_RETRIES; attempt++) {
-    if (current.id !== model.id || attempt > 0) {
-      log.warn("upstream rejected — fallback used", {
-        from: model.id,
-        to: current.id,
-        fromUpstream: currentUpstream.id,
-        status: transientError?.status,
-        durationMs: Date.now() - requestStartedAt,
-        attempt,
-        error: transientError?.errorMsg.slice(0, 100),
-      });
-    }
-
-    const headers = new Headers({
-      "content-type": "application/json",
-      ...currentUpstream.requestHeaders(current),
-    });
-    const outboundBody = JSON.stringify({ ...chatBody, model: current.id });
-
-    let upstreamRes: Response;
+  if (!parsed.value.stream) {
+    const text = await upstreamRes.text();
+    let json: any;
     try {
-      upstreamRes = await relayFetch(relay, currentUpstream.chatUrl, {
-        method: "POST",
-        headers,
-        body: outboundBody,
-        duplex: "half",
-      });
-    } catch (err) {
-      transientError = { status: 0, errorMsg: String(err) };
-      const next = pickFailover(catalog, current, tried);
-      if (!next) break;
-      tried.add(next.id);
-      current = next;
-      currentUpstream = catalog.upstreamBySource(current.source)!;
-      continue;
-    }
-
-    if (upstreamRes.status >= 400) {
-      const text = await upstreamRes.text();
-      let errorMsg = text.slice(0, 256) || "upstream error";
-      try {
-        const json = JSON.parse(text);
-        errorMsg = json?.error?.message ?? json?.message ?? errorMsg;
-      } catch {
-        // ignore
-      }
-
-      const transient = upstreamRes.status === 429 || upstreamRes.status >= 500;
-      if (!transient) {
-        log.warn("upstream rejected", {
-          model: current.id,
-          upstream: currentUpstream.id,
-          status: upstreamRes.status,
-          durationMs: Date.now() - requestStartedAt,
-          error: errorMsg.slice(0, 100),
-        });
-        sendAnthropicError(res, upstreamRes.status, errorMsg);
-        return;
-      }
-
-      transientError = { status: upstreamRes.status, errorMsg };
-      const next = pickFailover(catalog, current, tried);
-      if (!next) break;
-      tried.add(next.id);
-      current = next;
-      currentUpstream = catalog.upstreamBySource(current.source)!;
-      continue;
-    }
-
-    if (!parsed.value.stream) {
-      const text = await upstreamRes.text();
-      let json: any;
-      try {
-        json = JSON.parse(text);
-      } catch {
-        sendAnthropicError(res, 502, "invalid upstream response");
-        return;
-      }
-      const message = openAiCompletionToAnthropicMessage(json, current.id);
-      const usage = extractUsage(json);
-      if (usage) {
-        const fields: Record<string, unknown> = {
-          model: current.id,
-          upstream: currentUpstream.id,
-          durationMs: Date.now() - requestStartedAt,
-          ...usage,
-        };
-        if (current.id !== model.id) fields.failoverFrom = model.id;
-        log.info("anthropic done", fields);
-      }
-      sendJson(res, upstreamRes.status === 200 ? 200 : upstreamRes.status, message);
+      json = JSON.parse(text);
+    } catch {
+      sendAnthropicError(res, 502, "invalid upstream response");
       return;
     }
-
-    res.writeHead(upstreamRes.status, {
-      "content-type": "text/event-stream",
-      "cache-control": "no-cache",
-      "connection": "keep-alive",
-      ...CORS_HEADERS,
-    });
-    const encoder = new AnthropicStreamEncoder();
-    let streamUsage: TokenUsage | null = null;
-    let streamClosed = false;
-    if (upstreamRes.body) {
-      for await (const frame of readSseStream(
-        upstreamRes.body as unknown as import("node:stream/web").ReadableStream,
-      )) {
-        if (frame.data === "[DONE]") {
-          streamClosed = true;
-          for (const ev of encoder.close()) res.write(ev);
-          break;
-        }
-        let json: any;
-        try { json = JSON.parse(frame.data); } catch { continue; }
-        const usage = extractUsage(json);
-        if (usage) streamUsage = usage;
-        for (const ev of encoder.push(json, current.id)) res.write(ev);
-      }
-    }
-    // some upstreams end the SSE body without a [DONE] frame; the client
-    // still needs the closing anthropic events or it waits forever
-    if (!streamClosed) {
-      for (const ev of encoder.close()) res.write(ev);
-    }
-    if (streamUsage) {
+    const message = openAiCompletionToAnthropicMessage(json, current.id);
+    const usage = extractUsage(json);
+    if (usage) {
       const fields: Record<string, unknown> = {
         model: current.id,
         upstream: currentUpstream.id,
         durationMs: Date.now() - requestStartedAt,
-        ...streamUsage,
+        ...usage,
       };
       if (current.id !== model.id) fields.failoverFrom = model.id;
       log.info("anthropic done", fields);
     }
-    res.end();
+    sendJson(res, upstreamRes.status === 200 ? 200 : upstreamRes.status, message);
     return;
   }
 
-  // fell out of the loop: every candidate rejected with 429/5xx
-  const final = transientError ?? { status: 502, errorMsg: "no upstream candidates left" };
-  log.warn("upstream rejected", {
-    model: model.id,
-    upstream: currentUpstream.id,
-    status: final.status || 502,
-    durationMs: Date.now() - requestStartedAt,
-    attempts: tried.size,
-    error: final.errorMsg.slice(0, 100),
+  res.writeHead(upstreamRes.status, {
+    "content-type": "text/event-stream",
+    "cache-control": "no-cache",
+    "connection": "keep-alive",
+    ...CORS_HEADERS,
   });
-  sendAnthropicError(res, final.status || 502, final.errorMsg);
+  const encoder = new AnthropicStreamEncoder();
+  let streamUsage: TokenUsage | null = null;
+  let streamClosed = false;
+  if (upstreamRes.body) {
+    for await (const frame of readSseStream(
+      upstreamRes.body as unknown as import("node:stream/web").ReadableStream,
+    )) {
+      if (frame.data === "[DONE]") {
+        streamClosed = true;
+        for (const ev of encoder.close()) res.write(ev);
+        break;
+      }
+      let json: any;
+      try { json = JSON.parse(frame.data); } catch { continue; }
+      const usage = extractUsage(json);
+      if (usage) streamUsage = usage;
+      for (const ev of encoder.push(json, current.id)) res.write(ev);
+    }
+  }
+  // Some upstreams end the SSE body without a [DONE] frame. Clients still
+  // need the closing Anthropic events or they wait forever.
+  if (!streamClosed) {
+    for (const ev of encoder.close()) res.write(ev);
+  }
+  if (streamUsage) {
+    const fields: Record<string, unknown> = {
+      model: current.id,
+      upstream: currentUpstream.id,
+      durationMs: Date.now() - requestStartedAt,
+      ...streamUsage,
+    };
+    if (current.id !== model.id) fields.failoverFrom = model.id;
+    log.info("anthropic done", fields);
+  }
+  res.end();
 }
 
 function sendAnthropicError(
   res: http.ServerResponse,
   status: number,
   message: string,
+  secretTypes?: SecretType[],
 ): void {
   sendJson(res, status, {
     type: "error",
     error: { type: "invalid_request_error", message },
+    ...(secretTypes ? { secret_types: secretTypes } : {}),
   });
 }
 
 export function createServer(opts: ServerOptions): http.Server {
   const { catalog, rateLimiter, port, log, startedAt } = opts;
+  const security = opts.security ?? DEFAULT_SECURITY_CONFIG;
+
+  const visibleRelayState = () => {
+    const relay = loadRelayState();
+    return {
+      ...relay,
+      enabled: isRelayAllowed(security) ? relay.enabled : false,
+      securityMode: security.mode,
+      locked: !isRelayAllowed(security),
+    };
+  };
 
   return http.createServer((req, res) => {
     const ip = req.socket.remoteAddress ?? "unknown";
@@ -1024,18 +1074,23 @@ export function createServer(opts: ServerOptions): http.Server {
     }
 
     if (url === "/healthz") {
-      const relay = loadRelayState();
+      const relay = visibleRelayState();
       sendJson(res, 200, {
         status: "ok",
         uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
         modelCount: catalog.models.length,
         relay: { enabled: relay.enabled, url: relay.url },
+        security: {
+          mode: security.mode,
+          allowedUpstreams: security.allowedUpstreams,
+          allowCrossProviderFailover: security.allowCrossProviderFailover,
+        },
       });
       return;
     }
 
     if (url === "/bansos/status") {
-      const relay = loadRelayState();
+      const relay = visibleRelayState();
       const payload: StatusPayload = {
         status: "ok",
         uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
@@ -1043,6 +1098,11 @@ export function createServer(opts: ServerOptions): http.Server {
         modelCount: catalog.models.length,
         models: catalog.models.map((m) => m.id),
         relay: { enabled: relay.enabled, url: relay.url },
+        security: {
+          mode: security.mode,
+          allowedUpstreams: security.allowedUpstreams,
+          allowCrossProviderFailover: security.allowCrossProviderFailover,
+        },
       };
       sendJson(res, 200, payload);
       return;
@@ -1114,12 +1174,17 @@ export function createServer(opts: ServerOptions): http.Server {
     }
 
     if (method === "GET" && url === "/bansos/relay") {
-      const relay = loadRelayState();
-      sendJson(res, 200, relay);
+      sendJson(res, 200, visibleRelayState());
       return;
     }
 
     if (method === "POST" && url === "/bansos/relay/probe") {
+      if (!isRelayAllowed(security)) {
+        sendJson(res, 403, {
+          error: { message: "relay is disabled by strict security mode", type: "security_policy_error" },
+        });
+        return;
+      }
       void readBody(req).then(async (bodyText) => {
         let targetUrl = "";
         if (bodyText) {
@@ -1168,6 +1233,12 @@ export function createServer(opts: ServerOptions): http.Server {
     }
 
     if (method === "POST" && url === "/bansos/relay") {
+      if (!isRelayAllowed(security)) {
+        sendJson(res, 403, {
+          error: { message: "relay mutation is disabled by strict security mode", type: "security_policy_error" },
+        });
+        return;
+      }
       void readBody(req).then((bodyText) => {
         let body: Record<string, unknown> = {};
         if (bodyText) {
@@ -1201,17 +1272,17 @@ export function createServer(opts: ServerOptions): http.Server {
     }
 
     if (method === "POST" && (url === "/v1/responses" || url === "/responses")) {
-      void handleResponses(req, res, catalog, log);
+      void handleResponses(req, res, catalog, log, security);
       return;
     }
 
     if (method === "POST" && (url === "/v1/chat/completions" || url === "/chat/completions")) {
-      void handleChat(req, res, catalog, log);
+      void handleChat(req, res, catalog, log, security);
       return;
     }
 
     if (method === "POST" && (url === "/v1/messages" || url === "/messages")) {
-      void handleAnthropic(req, res, catalog, log);
+      void handleAnthropic(req, res, catalog, log, security);
       return;
     }
 

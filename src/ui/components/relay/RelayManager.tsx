@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "preact/hooks";
+import { Lock } from "lucide-preact";
 import type { RelayStateResponse, NotificationType, ProbeStatus } from "../../types";
 import { fetchRelayState, updateRelayState, probeRelay } from "../../services/api";
 import { RelayHeader } from "./RelayHeader";
@@ -221,6 +222,23 @@ export function RelayManager({ daemonPort: _daemonPort, onStateChange }: RelayMa
 
   return (
     <div className="space-y-4 sm:space-y-6">
+      {relayState?.locked && (
+        <div className="rounded-xl border border-emerald-900/60 bg-emerald-950/20 p-6 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <Lock className="h-5 w-5" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-base font-bold text-white">Relay locked by strict security mode</h2>
+              <p className="text-sm text-[#a1a1aa] leading-relaxed">
+                Relay egress, relay probing, and relay configuration changes are disabled. Requests use direct
+                egress only after the selected provider is explicitly allowed in{" "}
+                <code className="text-white font-mono">security.allowedUpstreams</code>.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       <RelayHeader
         isEnabled={isEnabled}
         activeUrl={relayState?.url}

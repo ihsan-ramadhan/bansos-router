@@ -44,8 +44,9 @@ export async function relayFetch(
   state: RelayState,
   targetUrl: string,
   init: RequestInit = {},
+  relayPermitted = true,
 ): Promise<Response> {
-  if (!state.enabled || !state.url) return fetch(targetUrl, init);
+  if (!relayPermitted || !state.enabled || !state.url) return fetch(targetUrl, init);
 
   const u = new URL(targetUrl);
   if (!ALLOWED_TARGETS.includes(u.origin)) return fetch(targetUrl, init);
