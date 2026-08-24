@@ -10,14 +10,11 @@ export function NotFound({ onGoHome }: NotFoundProps) {
       <div className="h-14 w-14 rounded-xl bg-[#202028] border border-[#2c2c36] flex items-center justify-center text-amber-400 mb-4 shadow-sm">
         <AlertCircle className="h-7 w-7" />
       </div>
-      <div className="text-[11px] font-bold tracking-wider uppercase text-amber-400 mb-1">
-        HTTP 404
-      </div>
-      <h1 className="text-xl font-bold text-white mb-2 tracking-tight">
+      <h1 className="text-lg font-bold text-white mb-1.5 tracking-tight">
         Page Not Found
       </h1>
-      <p className="text-xs text-[#9393a0] max-w-sm mb-6 leading-relaxed">
-        The requested path or resource does not exist on this Bansos Router daemon instance.
+      <p className="text-xs text-[#9393a0] max-w-sm mb-5 leading-relaxed">
+        This page does not exist.
       </p>
       {onGoHome ? (
         <button

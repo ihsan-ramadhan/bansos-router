@@ -1,6 +1,12 @@
 @import "tailwindcss";
 
 @layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    tab-size: 2;
+    overscroll-behavior-y: none;
+  }
+
   body {
     background-color: #111113;
     color: #f4f4f6;
@@ -8,6 +14,9 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     min-height: 100vh;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    overscroll-behavior-y: none;
   }
 
   ::selection {
@@ -22,6 +31,8 @@
   summary,
   a {
     cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
 
   button:disabled,
@@ -37,12 +48,69 @@
     outline-offset: 1px;
   }
 
+  /* Remove number input spin buttons */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
   /* Reset appearance on forms */
-  input, select, textarea, button {
+  input:not([type="range"]), select, textarea, button {
     font-family: inherit;
     appearance: none;
     -webkit-appearance: none;
     -moz-appearance: none;
+  }
+
+  /* Custom Slider Styling */
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    outline: none;
+    touch-action: pan-y;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #ffffff;
+    cursor: pointer;
+    border: 2px solid #2b64e0;
+    box-shadow: 0 0 8px rgba(43, 100, 224, 0.4);
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+  }
+  input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+    box-shadow: 0 0 12px rgba(43, 100, 224, 0.7);
+  }
+  input[type="range"]::-webkit-slider-thumb:active {
+    transform: scale(1.25);
+    background: #60a5fa;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #ffffff;
+    cursor: pointer;
+    border: 2px solid #2b64e0;
+    box-shadow: 0 0 8px rgba(43, 100, 224, 0.4);
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+  }
+  input[type="range"]::-moz-range-thumb:hover {
+    transform: scale(1.15);
+    box-shadow: 0 0 12px rgba(43, 100, 224, 0.7);
+  }
+  input[type="range"]::-moz-range-thumb:active {
+    transform: scale(1.25);
+    background: #60a5fa;
   }
 
   /* Remove textarea resize handles */
@@ -53,17 +121,17 @@
   /* Custom scrollbar */
   * {
     scrollbar-width: thin;
-    scrollbar-color: rgba(43, 100, 224, 0.45) transparent;
+    scrollbar-color: rgba(43, 100, 224, 0.35) transparent;
   }
   *::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
   }
   *::-webkit-scrollbar-track {
     background: transparent;
   }
   *::-webkit-scrollbar-thumb {
-    background: rgba(43, 100, 224, 0.45);
+    background: rgba(43, 100, 224, 0.35);
     border-radius: 9999px;
   }
   *::-webkit-scrollbar-thumb:hover {
@@ -72,4 +140,13 @@
   *::-webkit-scrollbar-corner {
     background: transparent;
   }
+}
+
+/* Utility for hiding scrollbar when needed */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

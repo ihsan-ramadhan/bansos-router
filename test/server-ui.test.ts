@@ -156,7 +156,6 @@ test("404 returns HTML for browser navigation and JSON for API requests", async 
     assert.equal(resHtml.status, 404);
     assert.match(resHtml.headers.get("content-type") ?? "", /text\/html/);
     const html = await resHtml.text();
-    assert.ok(html.includes("404"));
     assert.ok(html.includes("Page Not Found"));
   } finally {
     await close();

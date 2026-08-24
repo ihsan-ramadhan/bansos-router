@@ -1237,16 +1237,15 @@ export function createServer(opts: ServerOptions): http.Server {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>404 — Page Not Found | Bansos Router</title>
+  <title>Page Not Found | Bansos Router</title>
 </head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#111113;color:#f4f4f6;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:1.5rem;box-sizing:border-box;">
-  <div style="max-width:440px;width:100%;text-align:center;background:#16161a;border:1px solid #23232a;border-radius:1rem;padding:2.5rem 2rem;box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);">
+  <div style="max-width:400px;width:100%;text-align:center;background:#16161a;border:1px solid #23232a;border-radius:1rem;padding:2.5rem 2rem;box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);">
     <div style="display:inline-flex;align-items:center;justify-content:center;width:3rem;height:3rem;border-radius:0.75rem;background:#202028;border:1px solid #2c2c36;margin-bottom:1.25rem;">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#eab308" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
     </div>
-    <div style="font-size:0.75rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:#eab308;margin-bottom:0.25rem;">HTTP 404</div>
-    <h1 style="font-size:1.25rem;font-weight:700;margin:0 0 0.5rem 0;color:#ffffff;letter-spacing:-0.025em;">Page Not Found</h1>
-    <p style="font-size:0.875rem;color:#9393a0;margin:0 0 1.5rem 0;line-height:1.5;">The requested URL or resource does not exist on this Bansos Router daemon instance.</p>
+    <h1 style="font-size:1.125rem;font-weight:700;margin:0 0 0.5rem 0;color:#ffffff;letter-spacing:-0.025em;">Page Not Found</h1>
+    <p style="font-size:0.8125rem;color:#9393a0;margin:0 0 1.5rem 0;line-height:1.5;">This page does not exist.</p>
     <a href="/" style="display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;background:#2b64e0;color:#ffffff;font-weight:600;font-size:0.8125rem;padding:0.625rem 1.25rem;border-radius:0.5rem;text-decoration:none;transition:background 0.15s ease;cursor:pointer;">
       <span>← Back to Dashboard</span>
     </a>
