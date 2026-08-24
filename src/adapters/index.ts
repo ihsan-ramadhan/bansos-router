@@ -18,13 +18,47 @@ function claudeCodeAdapter(): HarnessAdapter {
     wire: "anthropic",
     configPaths: ["~/.claude/settings.json"],
     render(ctx: SetupContext): ConfigWrite[] {
-      const haikuModel = ctx.specificModel ? ctx.defaultModel : (ctx.models.find((m) => !m.reasoning)?.id ?? "mimo-v2.5-free");
+      const validModels = ctx.models.filter(
+        (m) => !m.id.toLowerCase().includes("safety")
+      );
+      const nonReasoning = validModels.filter((m) => !m.reasoning);
+      const reasoningModels = validModels.filter((m) => m.reasoning);
+
+      const sortedReasoning = [...reasoningModels].sort((a, b) => {
+        if (b.contextWindow !== a.contextWindow) {
+          return b.contextWindow - a.contextWindow;
+        }
+        return b.maxTokens - a.maxTokens;
+      });
+
+      const sortedNonReasoning = [...nonReasoning].sort((a, b) => {
+        if (b.contextWindow !== a.contextWindow) {
+          return b.contextWindow - a.contextWindow;
+        }
+        return b.maxTokens - a.maxTokens;
+      });
+
+      const defaultModelDef = ctx.models.find((m) => m.id === ctx.defaultModel);
+
+      // Haiku (fast non-reasoning), Opus (top reasoning), Sonnet (daily reasoning)
+      const haikuModel = ctx.specificModel
+        ? ctx.defaultModel
+        : (sortedNonReasoning[0]?.id ?? ctx.defaultModel);
+
+      const opusModel = ctx.specificModel
+        ? ctx.defaultModel
+        : (sortedReasoning[0]?.id ?? reasoningModels[0]?.id ?? ctx.defaultModel);
+
+      const sonnetModel = ctx.specificModel
+        ? ctx.defaultModel
+        : (defaultModelDef?.reasoning ? defaultModelDef.id : (sortedReasoning[1]?.id ?? sortedReasoning[0]?.id ?? ctx.defaultModel));
+
       const env = {
         ANTHROPIC_BASE_URL: ctx.baseUrl.replace(/\/v1$/, ""),
         ANTHROPIC_AUTH_TOKEN: "bansos",
         ANTHROPIC_DEFAULT_HAIKU_MODEL: haikuModel,
-        ANTHROPIC_DEFAULT_SONNET_MODEL: ctx.defaultModel,
-        ANTHROPIC_DEFAULT_OPUS_MODEL: ctx.defaultModel,
+        ANTHROPIC_DEFAULT_SONNET_MODEL: sonnetModel,
+        ANTHROPIC_DEFAULT_OPUS_MODEL: opusModel,
         CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1",
       };
       return [
@@ -307,6 +341,8 @@ function jcodeAdapter(): HarnessAdapter {
     wire: "chat",
     configPaths: ["~/.jcode/config.toml", "~/.config/jcode/openai-compatible.env"],
     render(ctx: SetupContext): ConfigWrite[] {
+      const targetModel = ctx.models.find((m) => m.id === ctx.defaultModel);
+      const contextWindow = targetModel?.contextWindow || 256000;
       const toml = [
         `default_provider = "openai-compatible"`,
         `default_model = "${ctx.defaultModel}"`,
@@ -316,11 +352,11 @@ function jcodeAdapter(): HarnessAdapter {
         `base_url = "${ctx.baseUrl}"`,
         `auth = "bearer"`,
         `model_catalog = true`,
-        `context_window = 1000000`,
+        `context_window = ${contextWindow}`,
       ];
       const envLines = [
         `# ${START_MARKER}`,
-        `JCODE_OPENAI_COMPAT_API_BASE=http://127.0.0.1:17070`,
+        `JCODE_OPENAI_COMPAT_API_BASE=${ctx.baseUrl.replace(/\/v1$/, "")}`,
         `OPENAI_COMPAT_API_KEY=bansos`,
         `JCODE_OPENAI_COMPAT_LOCAL_ENABLED=1`,
         `# ${END_MARKER}`,
@@ -440,14 +476,15 @@ function clineAdapter(): HarnessAdapter {
     wire: "chat",
     configPaths: ["~/.config/cline/config.json", "~/.cline/config.json"],
     render(ctx: SetupContext): ConfigWrite[] {
+      const targetModel = ctx.models.find((m) => m.id === ctx.defaultModel);
       const cfg = {
         apiProvider: "openai-compatible",
         openAiBaseUrl: ctx.baseUrl,
         openAiApiKey: "bansos",
         openAiModelId: ctx.defaultModel,
         openAiCustomModelInfo: {
-          contextWindow: 262144,
-          maxTokens: 65536,
+          contextWindow: targetModel?.contextWindow || 262144,
+          maxTokens: targetModel?.maxTokens || 65536,
         },
       };
       return [
@@ -478,14 +515,15 @@ function rooAdapter(): HarnessAdapter {
     wire: "chat",
     configPaths: ["~/.config/roo-cline/config.json", "~/.roo-cline/config.json"],
     render(ctx: SetupContext): ConfigWrite[] {
+      const targetModel = ctx.models.find((m) => m.id === ctx.defaultModel);
       const cfg = {
         apiProvider: "openai-compatible",
         openAiBaseUrl: ctx.baseUrl,
         openAiApiKey: "bansos",
         openAiModelId: ctx.defaultModel,
         openAiCustomModelInfo: {
-          contextWindow: 262144,
-          maxTokens: 65536,
+          contextWindow: targetModel?.contextWindow || 262144,
+          maxTokens: targetModel?.maxTokens || 65536,
         },
       };
       return [

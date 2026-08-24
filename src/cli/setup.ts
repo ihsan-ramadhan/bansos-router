@@ -250,6 +250,23 @@ function undoAdapter(adapter: HarnessAdapter, ctx: SetupContext): void {
   }
 }
 
+function pickSmartDefaultModel(models: ModelDef[]): string {
+  const valid = models.filter((m) => !m.id.toLowerCase().includes("safety"));
+  const reasoning = valid.filter((m) => m.reasoning).sort((a, b) => {
+    if (b.contextWindow !== a.contextWindow) return b.contextWindow - a.contextWindow;
+    return b.maxTokens - a.maxTokens;
+  });
+  if (reasoning.length > 0) return reasoning[0]!.id;
+
+  const nonReasoning = valid.sort((a, b) => {
+    if (b.contextWindow !== a.contextWindow) return b.contextWindow - a.contextWindow;
+    return b.maxTokens - a.maxTokens;
+  });
+  if (nonReasoning.length > 0) return nonReasoning[0]!.id;
+
+  return DEFAULT_MODEL;
+}
+
 export async function runSetup(argv: string[]): Promise<number> {
   const args = parseArgs(argv);
   if (args.harnesses.length === 0) {
@@ -260,9 +277,10 @@ export async function runSetup(argv: string[]): Promise<number> {
   const config = loadConfig();
   const baseUrl = `http://${config.bind}:${config.port}/v1`;
   const models = await getSetupModels(baseUrl);
+  const defaultModel = args.model ?? pickSmartDefaultModel(models);
   const ctx: SetupContext = {
     baseUrl,
-    defaultModel: args.model ?? DEFAULT_MODEL,
+    defaultModel,
     models,
     specificModel: Boolean(args.model),
   };

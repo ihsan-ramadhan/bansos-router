@@ -44,6 +44,23 @@ export interface ServerOptions {
 
 const ALLOWED_METHODS = new Set(["GET", "POST", "OPTIONS"]);
 
+export function pickSmartDefaultModel(models: ModelDef[]): string {
+  const valid = models.filter((m) => !m.id.toLowerCase().includes("safety"));
+  const reasoning = valid.filter((m) => m.reasoning).sort((a, b) => {
+    if (b.contextWindow !== a.contextWindow) return b.contextWindow - a.contextWindow;
+    return b.maxTokens - a.maxTokens;
+  });
+  if (reasoning.length > 0) return reasoning[0]!.id;
+
+  const nonReasoning = valid.sort((a, b) => {
+    if (b.contextWindow !== a.contextWindow) return b.contextWindow - a.contextWindow;
+    return b.maxTokens - a.maxTokens;
+  });
+  if (nonReasoning.length > 0) return nonReasoning[0]!.id;
+
+  return "tencent/hy3:free";
+}
+
 function applyRelayMutation(
   initialState: RelayState,
   body: Record<string, unknown>,
@@ -1089,9 +1106,13 @@ export function createServer(opts: ServerOptions): http.Server {
         sendJson(res, 404, { error: { message: `adapter "${id}" not found` } });
         return;
       }
-      const defaultModel = model || (catalog.models[0]?.id ?? "tencent/hy3:free");
+      const defaultModel = model || pickSmartDefaultModel(catalog.models);
+      const reqHost = req.headers.host || `127.0.0.1:${port}`;
+      const isHttps = Boolean((req.socket as import("node:tls").TLSSocket)?.encrypted);
+      const proto = isHttps ? "https" : "http";
+      const baseUrl = `${proto}://${reqHost}/v1`;
       const ctx = {
-        baseUrl: `http://127.0.0.1:${port}/v1`,
+        baseUrl,
         defaultModel,
         models: catalog.models,
         specificModel: Boolean(model),

@@ -270,6 +270,7 @@ test("jcode toml-block patches existing [providers.openai-compatible] without du
   assert.match(out, /base_url = "http:\/\/127\.0\.0\.1:17070\/v1"/);
   assert.match(out, /model_catalog = true/);
   assert.doesNotMatch(out, /model_catalog = false/);
+  assert.match(out, /context_window = 262144/);
 
   // untouched neighbours survive
   assert.match(out, /\[keybindings\]/);
@@ -292,4 +293,40 @@ test("jcode toml-block on fresh file keeps root keys at top and single table", (
   const idxRoot = out.indexOf('default_provider = "openai-compatible"');
   const idxTable = out.indexOf("[providers.openai-compatible]");
   assert.ok(idxRoot !== -1 && idxTable !== -1 && idxRoot < idxTable);
+});
+
+test("claude-code adapter maps smart tiers in auto mode and pinned model in specific mode", () => {
+  const adapter = findAdapter("claude-code")!;
+  assert.ok(adapter);
+
+  // Auto mode with seeded models (includes reasoning and non-reasoning)
+  const autoWrites = adapter.render({
+    baseUrl: "http://127.0.0.1:17070/v1",
+    defaultModel: "mimo-v2.5-free",
+    models: SEEDED_MODELS,
+    specificModel: false,
+  });
+  const autoParsed = JSON.parse(autoWrites[0]!.content);
+  assert.equal(autoParsed.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:17070");
+  assert.equal(autoParsed.env.ANTHROPIC_AUTH_TOKEN, "bansos");
+  // Haiku should pick non-reasoning model
+  const haikuDef = SEEDED_MODELS.find((m) => m.id === autoParsed.env.ANTHROPIC_DEFAULT_HAIKU_MODEL);
+  assert.ok(haikuDef && !haikuDef.reasoning);
+  // Sonnet & Opus should pick reasoning models
+  const sonnetDef = SEEDED_MODELS.find((m) => m.id === autoParsed.env.ANTHROPIC_DEFAULT_SONNET_MODEL);
+  const opusDef = SEEDED_MODELS.find((m) => m.id === autoParsed.env.ANTHROPIC_DEFAULT_OPUS_MODEL);
+  assert.ok(sonnetDef && sonnetDef.reasoning);
+  assert.ok(opusDef && opusDef.reasoning);
+
+  // Specific model pinned mode
+  const pinnedWrites = adapter.render({
+    baseUrl: "http://127.0.0.1:17070/v1",
+    defaultModel: "custom-pinned-model",
+    models: SEEDED_MODELS,
+    specificModel: true,
+  });
+  const pinnedParsed = JSON.parse(pinnedWrites[0]!.content);
+  assert.equal(pinnedParsed.env.ANTHROPIC_DEFAULT_HAIKU_MODEL, "custom-pinned-model");
+  assert.equal(pinnedParsed.env.ANTHROPIC_DEFAULT_SONNET_MODEL, "custom-pinned-model");
+  assert.equal(pinnedParsed.env.ANTHROPIC_DEFAULT_OPUS_MODEL, "custom-pinned-model");
 });
