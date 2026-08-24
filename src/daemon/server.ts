@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { Readable, Transform } from "node:stream";
 import type { Logger } from "../logger";
 import type { ModelDef, Upstream } from "../upstreams/types";
+import { pickSmartDefaultModel } from "../upstreams/types";
 import { parseChatTurn, sanitizeChatBody } from "../protocols/openai-chat";
 import { parseResponsesTurn, renderResponse, ResponsesStreamEncoder } from "../protocols/responses";
 import {
@@ -44,22 +45,7 @@ export interface ServerOptions {
 
 const ALLOWED_METHODS = new Set(["GET", "POST", "OPTIONS"]);
 
-export function pickSmartDefaultModel(models: ModelDef[]): string {
-  const valid = models.filter((m) => !m.id.toLowerCase().includes("safety"));
-  const reasoning = valid.filter((m) => m.reasoning).sort((a, b) => {
-    if (b.contextWindow !== a.contextWindow) return b.contextWindow - a.contextWindow;
-    return b.maxTokens - a.maxTokens;
-  });
-  if (reasoning.length > 0) return reasoning[0]!.id;
-
-  const nonReasoning = valid.sort((a, b) => {
-    if (b.contextWindow !== a.contextWindow) return b.contextWindow - a.contextWindow;
-    return b.maxTokens - a.maxTokens;
-  });
-  if (nonReasoning.length > 0) return nonReasoning[0]!.id;
-
-  return "tencent/hy3:free";
-}
+export { pickSmartDefaultModel };
 
 function applyRelayMutation(
   initialState: RelayState,

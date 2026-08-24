@@ -5,7 +5,7 @@ import { ADAPTERS, findAdapter } from "../adapters";
 import type { HarnessAdapter, SetupContext } from "../adapters/types";
 import { loadConfig } from "../daemon/state";
 import { SEEDED_MODELS } from "../upstreams";
-import { modelDef, type ModelDef } from "../upstreams/types";
+import { modelDef, pickSmartDefaultModel, type ModelDef } from "../upstreams/types";
 import {
   applyBlockWrite,
   applyMergeWrite,
@@ -248,23 +248,6 @@ function undoAdapter(adapter: HarnessAdapter, ctx: SetupContext): void {
       console.log("  ✗ ~/.9router/db/data.sqlite: bansos keys removed");
     }
   }
-}
-
-function pickSmartDefaultModel(models: ModelDef[]): string {
-  const valid = models.filter((m) => !m.id.toLowerCase().includes("safety"));
-  const reasoning = valid.filter((m) => m.reasoning).sort((a, b) => {
-    if (b.contextWindow !== a.contextWindow) return b.contextWindow - a.contextWindow;
-    return b.maxTokens - a.maxTokens;
-  });
-  if (reasoning.length > 0) return reasoning[0]!.id;
-
-  const nonReasoning = valid.sort((a, b) => {
-    if (b.contextWindow !== a.contextWindow) return b.contextWindow - a.contextWindow;
-    return b.maxTokens - a.maxTokens;
-  });
-  if (nonReasoning.length > 0) return nonReasoning[0]!.id;
-
-  return DEFAULT_MODEL;
 }
 
 export async function runSetup(argv: string[]): Promise<number> {

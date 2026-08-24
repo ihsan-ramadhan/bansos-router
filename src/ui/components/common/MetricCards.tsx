@@ -1,5 +1,5 @@
 import { useState, useEffect } from "preact/hooks";
-import type { DaemonStatus } from "../types/ui";
+import type { DaemonStatus } from "../../types";
 import { Server, Cpu, Clock, ShieldCheck, ShieldAlert } from "lucide-preact";
 
 interface MetricCardsProps {

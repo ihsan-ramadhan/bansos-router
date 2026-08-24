@@ -42,6 +42,22 @@ export function modelDef(partial: Omit<ModelDef, "cost"> & { cost?: ModelCost })
   return { cost: ZERO_COST, ...partial };
 }
 
+export function compareModelsByCapacity(a: ModelDef, b: ModelDef): number {
+  if (b.contextWindow !== a.contextWindow) return b.contextWindow - a.contextWindow;
+  return b.maxTokens - a.maxTokens;
+}
+
+export function pickSmartDefaultModel(models: ModelDef[], fallback = "tencent/hy3:free"): string {
+  const valid = models.filter((m) => !m.id.toLowerCase().includes("safety"));
+  const reasoning = valid.filter((m) => m.reasoning).sort(compareModelsByCapacity);
+  if (reasoning.length > 0) return reasoning[0]!.id;
+
+  const nonReasoning = [...valid].sort(compareModelsByCapacity);
+  if (nonReasoning.length > 0) return nonReasoning[0]!.id;
+
+  return fallback;
+}
+
 // null means unreachable; keep last-known models
 export interface Upstream {
   id: string;

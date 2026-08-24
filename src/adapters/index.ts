@@ -1,5 +1,6 @@
 import type { HarnessAdapter, SetupContext, ConfigWrite } from "./types";
 import { START_MARKER, END_MARKER } from "./types";
+import { compareModelsByCapacity } from "../upstreams/types";
 
 const tomlBlock = (): Pick<ConfigWrite, "mode" | "markers"> => ({
   mode: "overwrite-block",
@@ -24,19 +25,8 @@ function claudeCodeAdapter(): HarnessAdapter {
       const nonReasoning = validModels.filter((m) => !m.reasoning);
       const reasoningModels = validModels.filter((m) => m.reasoning);
 
-      const sortedReasoning = [...reasoningModels].sort((a, b) => {
-        if (b.contextWindow !== a.contextWindow) {
-          return b.contextWindow - a.contextWindow;
-        }
-        return b.maxTokens - a.maxTokens;
-      });
-
-      const sortedNonReasoning = [...nonReasoning].sort((a, b) => {
-        if (b.contextWindow !== a.contextWindow) {
-          return b.contextWindow - a.contextWindow;
-        }
-        return b.maxTokens - a.maxTokens;
-      });
+      const sortedReasoning = [...reasoningModels].sort(compareModelsByCapacity);
+      const sortedNonReasoning = [...nonReasoning].sort(compareModelsByCapacity);
 
       const defaultModelDef = ctx.models.find((m) => m.id === ctx.defaultModel);
 
@@ -49,9 +39,14 @@ function claudeCodeAdapter(): HarnessAdapter {
         ? ctx.defaultModel
         : (sortedReasoning[0]?.id ?? reasoningModels[0]?.id ?? ctx.defaultModel);
 
-      const sonnetModel = ctx.specificModel
-        ? ctx.defaultModel
-        : (defaultModelDef?.reasoning ? defaultModelDef.id : (sortedReasoning[1]?.id ?? sortedReasoning[0]?.id ?? ctx.defaultModel));
+      let sonnetModel = ctx.defaultModel;
+      if (!ctx.specificModel) {
+        if (defaultModelDef?.reasoning) {
+          sonnetModel = defaultModelDef.id;
+        } else {
+          sonnetModel = sortedReasoning[1]?.id ?? sortedReasoning[0]?.id ?? ctx.defaultModel;
+        }
+      }
 
       const env = {
         ANTHROPIC_BASE_URL: ctx.baseUrl.replace(/\/v1$/, ""),
@@ -469,6 +464,35 @@ function continueAdapter(): HarnessAdapter {
   };
 }
 
+const OPENAI_COMPAT_UNDO_KEYS = [
+  "apiProvider",
+  "openAiBaseUrl",
+  "openAiApiKey",
+  "openAiModelId",
+  "openAiCustomModelInfo",
+];
+
+function renderOpenAiCompatConfig(ctx: SetupContext, configPath: string): ConfigWrite[] {
+  const targetModel = ctx.models.find((m) => m.id === ctx.defaultModel);
+  const cfg = {
+    apiProvider: "openai-compatible",
+    openAiBaseUrl: ctx.baseUrl,
+    openAiApiKey: "bansos",
+    openAiModelId: ctx.defaultModel,
+    openAiCustomModelInfo: {
+      contextWindow: targetModel?.contextWindow || 262144,
+      maxTokens: targetModel?.maxTokens || 65536,
+    },
+  };
+  return [
+    {
+      path: configPath,
+      content: `${JSON.stringify(cfg, null, 2)}\n`,
+      mode: "merge",
+    },
+  ];
+}
+
 function clineAdapter(): HarnessAdapter {
   return {
     id: "cline",
@@ -476,35 +500,12 @@ function clineAdapter(): HarnessAdapter {
     wire: "chat",
     configPaths: ["~/.config/cline/config.json", "~/.cline/config.json"],
     render(ctx: SetupContext): ConfigWrite[] {
-      const targetModel = ctx.models.find((m) => m.id === ctx.defaultModel);
-      const cfg = {
-        apiProvider: "openai-compatible",
-        openAiBaseUrl: ctx.baseUrl,
-        openAiApiKey: "bansos",
-        openAiModelId: ctx.defaultModel,
-        openAiCustomModelInfo: {
-          contextWindow: targetModel?.contextWindow || 262144,
-          maxTokens: targetModel?.maxTokens || 65536,
-        },
-      };
-      return [
-        {
-          path: "~/.config/cline/config.json",
-          content: `${JSON.stringify(cfg, null, 2)}\n`,
-          mode: "merge",
-        },
-      ];
+      return renderOpenAiCompatConfig(ctx, "~/.config/cline/config.json");
     },
     undo(): string[] {
       return ["~/.config/cline/config.json", "~/.cline/config.json"];
     },
-    undoKeys: [
-      "apiProvider",
-      "openAiBaseUrl",
-      "openAiApiKey",
-      "openAiModelId",
-      "openAiCustomModelInfo",
-    ],
+    undoKeys: OPENAI_COMPAT_UNDO_KEYS,
   };
 }
 
@@ -515,35 +516,12 @@ function rooAdapter(): HarnessAdapter {
     wire: "chat",
     configPaths: ["~/.config/roo-cline/config.json", "~/.roo-cline/config.json"],
     render(ctx: SetupContext): ConfigWrite[] {
-      const targetModel = ctx.models.find((m) => m.id === ctx.defaultModel);
-      const cfg = {
-        apiProvider: "openai-compatible",
-        openAiBaseUrl: ctx.baseUrl,
-        openAiApiKey: "bansos",
-        openAiModelId: ctx.defaultModel,
-        openAiCustomModelInfo: {
-          contextWindow: targetModel?.contextWindow || 262144,
-          maxTokens: targetModel?.maxTokens || 65536,
-        },
-      };
-      return [
-        {
-          path: "~/.config/roo-cline/config.json",
-          content: `${JSON.stringify(cfg, null, 2)}\n`,
-          mode: "merge",
-        },
-      ];
+      return renderOpenAiCompatConfig(ctx, "~/.config/roo-cline/config.json");
     },
     undo(): string[] {
       return ["~/.config/roo-cline/config.json", "~/.roo-cline/config.json"];
     },
-    undoKeys: [
-      "apiProvider",
-      "openAiBaseUrl",
-      "openAiApiKey",
-      "openAiModelId",
-      "openAiCustomModelInfo",
-    ],
+    undoKeys: OPENAI_COMPAT_UNDO_KEYS,
   };
 }
 

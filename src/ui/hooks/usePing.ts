@@ -1,18 +1,6 @@
 import { useState, useCallback, useRef } from "preact/hooks";
-import type { ModelItem, PingResult } from "../types/ui";
+import type { ModelItem, PingResult, PingSummary, PingProgress } from "../types";
 import { pingModel } from "../services/api";
-
-export interface PingSummary {
-  total: number;
-  ok: number;
-  rateLimited: number;
-  error: number;
-}
-
-export interface PingProgress {
-  current: number;
-  total: number;
-}
 
 export function usePing() {
   const [pingResults, setPingResults] = useState<Record<string, PingResult>>({});
