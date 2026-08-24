@@ -904,11 +904,13 @@ async function handleAnthropic(
     });
     const encoder = new AnthropicStreamEncoder();
     let streamUsage: TokenUsage | null = null;
+    let streamClosed = false;
     if (upstreamRes.body) {
       for await (const frame of readSseStream(
         upstreamRes.body as unknown as import("node:stream/web").ReadableStream,
       )) {
         if (frame.data === "[DONE]") {
+          streamClosed = true;
           for (const ev of encoder.close()) res.write(ev);
           break;
         }
@@ -918,6 +920,11 @@ async function handleAnthropic(
         if (usage) streamUsage = usage;
         for (const ev of encoder.push(json, current.id)) res.write(ev);
       }
+    }
+    // some upstreams end the SSE body without a [DONE] frame; the client
+    // still needs the closing anthropic events or it waits forever
+    if (!streamClosed) {
+      for (const ev of encoder.close()) res.write(ev);
     }
     if (streamUsage) {
       const fields: Record<string, unknown> = {
