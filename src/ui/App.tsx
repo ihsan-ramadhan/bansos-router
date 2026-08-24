@@ -231,7 +231,7 @@ export function App() {
               }`}
             >
               <Shield className="h-4 w-4" />
-              <span>Relay Egress</span>
+              <span>Relay Proxy</span>
             </button>
 
             <button
@@ -280,7 +280,7 @@ export function App() {
           />
         )}
 
-        {/* Relay */}
+        {/* Relay Proxy */}
         {activeTab === "relay" && (
           <RelayManager
             daemonPort={status?.port ?? 17070}
