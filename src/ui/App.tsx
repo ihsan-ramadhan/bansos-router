@@ -30,8 +30,10 @@ export function App() {
   const {
     pingResults,
     isPingingAll,
+    pingProgress,
     pingSingle,
     pingAll,
+    cancelPing,
     clearPingResults,
   } = usePing();
 
@@ -253,7 +255,7 @@ export function App() {
         {/* Metrics */}
         <MetricCards status={status} loading={loadingStatus} />
 
-        {/* Catalog */}
+        {/* Model Catalog */}
         {activeTab === "catalog" && (
           <ModelCatalog
             models={models}
@@ -262,8 +264,10 @@ export function App() {
             refreshing={refreshingCatalog}
             pingResults={pingResults}
             isPingingAll={isPingingAll}
+            pingProgress={pingProgress}
             onPingModel={pingSingle}
             onPingAll={pingAll}
+            onCancelPing={cancelPing}
             onClearPings={clearPingResults}
           />
         )}
