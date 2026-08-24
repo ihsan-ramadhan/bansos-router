@@ -324,6 +324,10 @@ export class AnthropicStreamEncoder {
         const ti = typeof tc.index === "number" ? tc.index : 0;
         let blk = this.toolBlocks.get(ti);
         if (!blk) {
+          if (this.thinkingStarted && !this.thinkingStopped && this.thinkingIndex !== null) {
+            out.push(sseEvent("content_block_stop", { type: "content_block_stop", index: this.thinkingIndex }));
+            this.thinkingStopped = true;
+          }
           if (this.textStarted && !this.textStopped && this.textIndex !== null) {
             out.push(sseEvent("content_block_stop", { type: "content_block_stop", index: this.textIndex }));
             this.textStopped = true;
