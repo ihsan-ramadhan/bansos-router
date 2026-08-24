@@ -56,7 +56,7 @@ docker compose up -d
 
 | Command | Purpose |
 |---|---|
-| `bansos start [--bg] [--port N] [--bind H]` | Run the daemon (foreground, or detached with `--bg`) |
+| `bansos start [--bg] [--port N] [--bind H] [--unsafe-allow-non-loopback]` | Run the daemon (foreground, or detached with `--bg`) |
 | `bansos logs` | Tail the daemon log in real time (for a `--bg` daemon), same output as `bansos start` |
 | `bansos stop` | Stop all running daemons |
 | `bansos status [--json]` | Daemon status (port, model count, alive models); reports every running daemon on the auto-bump range (17070-17090) |
@@ -69,6 +69,44 @@ docker compose up -d
 | `bansos --version` | Print version |
 | `bansos <command> --help` / `bansos help <command>` | Per-command usage, defaults, exit codes, examples |
 | `bansosd` | Alias for the daemon (e.g. `bansosd --bg`) |
+
+## Strict security mode
+
+Strict mode is opt-in and fail-closed. Add a `security` block to
+`~/.bansos/config.json` and explicitly list every provider that may receive
+requests:
+
+```json
+{
+  "port": 17070,
+  "bind": "127.0.0.1",
+  "security": {
+    "mode": "strict",
+    "allowedUpstreams": ["zen"],
+    "allowCrossProviderFailover": false
+  }
+}
+```
+
+With `mode: "strict"`:
+
+- non-loopback binds are rejected before the daemon listens;
+- relay egress, relay probing, and relay mutation are disabled in the CLI,
+  API, and Web UI;
+- only exact upstream IDs in `allowedUpstreams` may receive requests;
+- cross-provider failover is disabled for Chat Completions, Responses, and
+  Anthropic Messages;
+- common API keys, PATs, cloud access keys, private keys, and credential
+  assignments are blocked locally with HTTP 422 before external transmission;
+- request/response bodies, credentials, cookies, tool output, and raw upstream
+  error bodies are excluded from daemon logs.
+
+An empty `allowedUpstreams` array blocks all external LLM requests until a
+provider is explicitly permitted. Built-in IDs are `zen`, `kilo`, and `llm7`;
+local gateways use `local:<name>`. If a non-loopback listener is intentionally
+required, both the risk and the override must be explicit via
+`--unsafe-allow-non-loopback` or
+`security.unsafeAllowNonLoopbackBind: true`.
 
 Supported harnesses for `bansos setup`: `claude-code`, `aider`, `opencode`,
 `hermes`, `goose`, `openclaw`, `antigravity`, `jcode`, `9router`, `continue`, `cline`, `roo`.

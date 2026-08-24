@@ -8,6 +8,11 @@ export interface DaemonStatus {
     enabled: boolean;
     url: string;
   };
+  security?: {
+    mode: "normal" | "strict";
+    allowedUpstreams: string[];
+    allowCrossProviderFailover: boolean;
+  };
 }
 
 export interface ModelItem {
@@ -67,6 +72,8 @@ export interface RelayStateResponse {
   enabled: boolean;
   url: string;
   relays: KnownRelay[];
+  securityMode?: "normal" | "strict";
+  locked?: boolean;
 }
 
 export interface PingResult {
