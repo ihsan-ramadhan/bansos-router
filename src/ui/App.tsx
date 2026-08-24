@@ -218,7 +218,7 @@ export function App() {
               }`}
             >
               <Wrench className="h-4 w-4" />
-              <span>Harness Setup</span>
+              <span>Agent Setup</span>
             </button>
 
             <button
@@ -272,7 +272,7 @@ export function App() {
           />
         )}
 
-        {/* Harness */}
+        {/* Agent Setup */}
         {activeTab === "harness" && (
           <HarnessGenerator
             models={models}
