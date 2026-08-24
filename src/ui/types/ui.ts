@@ -1,3 +1,5 @@
+export type WireProtocol = "chat" | "responses" | "anthropic";
+
 export interface DaemonStatus {
   status: string;
   uptimeSeconds: number;
@@ -82,6 +84,7 @@ export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
   reasoning?: string;
+  protocol?: WireProtocol;
   metrics?: CompletionMetrics;
   error?: string;
 }
