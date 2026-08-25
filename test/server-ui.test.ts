@@ -47,6 +47,26 @@ test("GET / serves HTML", async () => {
   }
 });
 
+test("GET /favicon.png serves the logo icon", async () => {
+  const { baseUrl, close } = await setupTestServer();
+  try {
+    for (const path of ["/favicon.png", "/favicon.ico", "/apple-touch-icon.png"]) {
+      const res = await fetch(`${baseUrl}${path}`);
+      assert.equal(res.status, 200, path);
+      const body = new Uint8Array(await res.arrayBuffer());
+      if (path.endsWith(".ico")) {
+        // ICO header: reserved=0x0000, type=0x0001 (little-endian)
+        assert.deepEqual([...body.slice(0, 4)], [0x00, 0x00, 0x01, 0x00], path);
+      } else {
+        // PNG magic bytes
+        assert.deepEqual([...body.slice(0, 4)], [0x89, 0x50, 0x4e, 0x47], path);
+      }
+    }
+  } finally {
+    await close();
+  }
+});
+
 test("GET /bansos/adapters lists available adapters", async () => {
   const { baseUrl, close } = await setupTestServer();
   try {

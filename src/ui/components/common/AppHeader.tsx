@@ -1,4 +1,4 @@
-import { Cpu, Wrench, Shield, MessageSquare, Zap } from "lucide-preact";
+import { Cpu, Wrench, Shield, MessageSquare } from "lucide-preact";
 import type { DaemonStatus } from "../../types";
 
 export type NavTab = "models" | "agent" | "relay" | "playground";
@@ -43,9 +43,11 @@ export function AppHeader({
         <div className="h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-4">
           {/* Logo */}
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg bg-[#232329] border border-[#2e2e38] flex items-center justify-center text-[#3b82f6] shadow-xs shrink-0">
-              <Zap className="h-4 w-4 sm:h-5 sm:w-5 fill-[#3b82f6]/20 text-[#3b82f6]" />
-            </div>
+            <img
+              src="/favicon.png"
+              alt="Bansos Router"
+              className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg border border-[#2e2e38] shadow-xs shrink-0"
+            />
             <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
               <span className="font-semibold text-sm sm:text-[15px] tracking-tight text-white truncate">
                 Bansos Router
@@ -87,7 +89,7 @@ export function AppHeader({
           <button
             type="button"
             onClick={() => onSelectTab("models")}
-            className={`shrink-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 border-b-2 text-xs sm:text-[13px] font-medium transition whitespace-nowrap cursor-pointer min-h-[42px] ${
+            className={`shrink-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 border-b-2 text-xs sm:text-[13px] font-medium transition whitespace-nowrap cursor-pointer min-h-10.5 ${
               activeTab === "models"
                 ? "border-[#2b64e0] text-white"
                 : "border-transparent text-[#9393a0] hover:text-[#e4e4e7] hover:border-[#32323d]"
@@ -100,7 +102,7 @@ export function AppHeader({
           <button
             type="button"
             onClick={() => onSelectTab("agent")}
-            className={`shrink-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 border-b-2 text-xs sm:text-[13px] font-medium transition whitespace-nowrap cursor-pointer min-h-[42px] ${
+            className={`shrink-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 border-b-2 text-xs sm:text-[13px] font-medium transition whitespace-nowrap cursor-pointer min-h-10.5 ${
               activeTab === "agent"
                 ? "border-[#2b64e0] text-white"
                 : "border-transparent text-[#9393a0] hover:text-[#e4e4e7] hover:border-[#32323d]"
@@ -113,7 +115,7 @@ export function AppHeader({
           <button
             type="button"
             onClick={() => onSelectTab("relay")}
-            className={`shrink-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 border-b-2 text-xs sm:text-[13px] font-medium transition whitespace-nowrap cursor-pointer min-h-[42px] ${
+            className={`shrink-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 border-b-2 text-xs sm:text-[13px] font-medium transition whitespace-nowrap cursor-pointer min-h-10.5 ${
               activeTab === "relay"
                 ? "border-[#2b64e0] text-white"
                 : "border-transparent text-[#9393a0] hover:text-[#e4e4e7] hover:border-[#32323d]"
@@ -126,7 +128,7 @@ export function AppHeader({
           <button
             type="button"
             onClick={() => onSelectTab("playground")}
-            className={`shrink-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 border-b-2 text-xs sm:text-[13px] font-medium transition whitespace-nowrap cursor-pointer min-h-[42px] ${
+            className={`shrink-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 border-b-2 text-xs sm:text-[13px] font-medium transition whitespace-nowrap cursor-pointer min-h-10.5 ${
               activeTab === "playground"
                 ? "border-[#2b64e0] text-white"
                 : "border-transparent text-[#9393a0] hover:text-[#e4e4e7] hover:border-[#32323d]"

@@ -92,6 +92,8 @@ const STATIC_ROOT_FILES = new Set([
   "/index.html",
   "/favicon.ico",
   "/favicon.svg",
+  "/favicon.png",
+  "/apple-touch-icon.png",
   "/manifest.json",
   "/robots.txt",
 ]);
@@ -1264,6 +1266,8 @@ export function createServer(opts: ServerOptions): http.Server {
         cleanUrl.startsWith("/assets/") ||
         url === "/favicon.ico" ||
         url === "/favicon.svg" ||
+        url === "/favicon.png" ||
+        url === "/apple-touch-icon.png" ||
         url === "/manifest.json" ||
         url === "/robots.txt")
     ) {

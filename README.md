@@ -1,7 +1,15 @@
+<p align="center">
+  <img src="assets/logo.png" alt="bansos-router logo" width="140" />
+</p>
+
 # bansos-router
+
+<div align="center">
 
 Free, keyless coding models for every coding harness, through one local
 daemon. Works without accounts or API keys.
+
+</div>
 
 Status: M0-M3 are working. OpenAI Chat Completions (`/v1/chat/completions`),
 Anthropic Messages (`/v1/messages`), and OpenAI Responses (`/v1/responses`, for
