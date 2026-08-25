@@ -22,7 +22,7 @@ bansos start --bg       # detached daemon on 127.0.0.1:17070
 bansos setup opencode   # configure any supported harness
 ```
 
-For **[pi](https://github.com/earendil-works/pi-coding-agent)**, install the companion extension ([`extensions/pi`](extensions/pi/README.md)):
+For **[pi](https://github.com/earendil-works/pi)**, install the companion extension ([`extensions/pi`](extensions/pi/README.md)):
 
 ```bash
 pi install npm:pi-bansos-router
