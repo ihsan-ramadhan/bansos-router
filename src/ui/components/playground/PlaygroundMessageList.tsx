@@ -5,6 +5,8 @@ interface PlaygroundMessageListProps {
   messages: ChatMessage[];
   isLoading: boolean;
   selectedModel: string;
+  pendingModel?: string | null;
+  pendingProtocol?: string | null;
   liveReasoning: string;
   liveContent: string;
   globalError: string | null;
@@ -18,6 +20,8 @@ export function PlaygroundMessageList({
   messages,
   isLoading,
   selectedModel,
+  pendingModel,
+  pendingProtocol,
   liveReasoning,
   liveContent,
   globalError,
@@ -64,7 +68,12 @@ export function PlaygroundMessageList({
               ) : (
                 <>
                   <Bot className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                  <span className="text-white truncate">{selectedModel}</span>
+                  <span className="text-white truncate">{msg.model ?? selectedModel}</span>
+                  {msg.protocol && (
+                    <span className="px-1 rounded bg-[#262630] text-[10px] font-mono font-normal text-[#a1a1aa] shrink-0">
+                      {msg.protocol}
+                    </span>
+                  )}
                 </>
               )}
             </div>
@@ -137,7 +146,12 @@ export function PlaygroundMessageList({
         <div className="flex flex-col space-y-2 rounded-xl p-3 sm:p-3.5 border bg-[#141418] border-[#24242e] mr-1.5 sm:mr-8 transition">
           <div className="flex items-center gap-1.5 font-semibold text-[11px]">
             <Bot className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-            <span className="text-white truncate">{selectedModel}</span>
+            <span className="text-white truncate">{pendingModel ?? selectedModel}</span>
+            {pendingProtocol && (
+              <span className="px-1 rounded bg-[#262630] text-[10px] font-mono font-normal text-[#a1a1aa] shrink-0">
+                {pendingProtocol}
+              </span>
+            )}
           </div>
 
           {/* Live thinking */}

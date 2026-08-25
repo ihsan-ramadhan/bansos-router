@@ -16,6 +16,7 @@ export interface ChatMessage {
   content: string;
   reasoning?: string;
   protocol?: WireProtocol;
+  model?: string;
   metrics?: CompletionMetrics;
   error?: string;
 }
