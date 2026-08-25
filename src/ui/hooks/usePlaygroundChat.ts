@@ -41,6 +41,8 @@ export function usePlaygroundChat({
   const [rawPayload, setRawPayload] = useState<string | null>(null);
   const [rawChunks, setRawChunks] = useState<string[]>([]);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const [pendingModel, setPendingModel] = useState<string | null>(null);
+  const [pendingProtocol, setPendingProtocol] = useState<WireProtocol | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -50,6 +52,8 @@ export function usePlaygroundChat({
       abortControllerRef.current = null;
     }
     setIsLoading(false);
+    setPendingModel(null);
+    setPendingProtocol(null);
   }
 
   function handleClearChat() {
@@ -70,12 +74,12 @@ export function usePlaygroundChat({
     }));
   }
 
-  async function processNonStreamResponse(res: Response, startTime: number) {
+  async function processNonStreamResponse(res: Response, startTime: number, targetModel: string, targetProtocol: WireProtocol) {
     const data = await res.json();
     const endTime = performance.now();
     const totalMs = Math.round(endTime - startTime);
 
-    const parsed = parseNonStreamPayload(data, selectedProtocol);
+    const parsed = parseNonStreamPayload(data, targetProtocol);
     const { cleanContent, reasoning } = extractReasoningFromThinkTags(
       parsed.content,
       parsed.reasoning || ""
@@ -101,7 +105,8 @@ export function usePlaygroundChat({
         role: "assistant",
         content: cleanContent,
         reasoning,
-        protocol: selectedProtocol,
+        protocol: targetProtocol,
+        model: targetModel,
         metrics,
       },
     ]);
@@ -109,7 +114,7 @@ export function usePlaygroundChat({
     setRawChunks([JSON.stringify(data, null, 2)]);
   }
 
-  async function processStreamResponse(res: Response, startTime: number) {
+  async function processStreamResponse(res: Response, startTime: number, targetModel: string, targetProtocol: WireProtocol) {
     const reader = res.body?.getReader();
     if (!reader) return;
 
@@ -146,7 +151,7 @@ export function usePlaygroundChat({
             continue;
           }
 
-          const { delta, reasoningDelta } = extractFrameDeltas(chunk, selectedProtocol);
+          const { delta, reasoningDelta } = extractFrameDeltas(chunk, targetProtocol);
           if (delta || reasoningDelta) {
             if (!firstTokenTime) {
               firstTokenTime = performance.now();
@@ -182,7 +187,8 @@ export function usePlaygroundChat({
         role: "assistant",
         content: cleanContent,
         reasoning,
-        protocol: selectedProtocol,
+        protocol: targetProtocol,
+        model: targetModel,
         metrics,
       },
     ]);
@@ -208,8 +214,11 @@ export function usePlaygroundChat({
     setUserPrompt("");
 
     const targetModel = selectedModel || models[0]?.id || "tencent/hy3:free";
+    const targetProtocol = selectedProtocol;
+    setPendingModel(targetModel);
+    setPendingProtocol(targetProtocol);
     const { endpoint, payload } = buildPayloadForProtocol({
-      protocol: selectedProtocol,
+      protocol: targetProtocol,
       model: targetModel,
       messages: updatedMessages,
       systemPrompt,
@@ -245,9 +254,9 @@ export function usePlaygroundChat({
       }
 
       if (!stream) {
-        await processNonStreamResponse(res, startTime);
+        await processNonStreamResponse(res, startTime, targetModel, targetProtocol);
       } else {
-        await processStreamResponse(res, startTime);
+        await processStreamResponse(res, startTime, targetModel, targetProtocol);
       }
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
@@ -259,13 +268,16 @@ export function usePlaygroundChat({
             role: "assistant",
             content: liveContent || "Failed to generate response.",
             reasoning: liveReasoning || undefined,
-            protocol: selectedProtocol,
+            protocol: targetProtocol,
+            model: targetModel,
             error: errorMsg,
           },
         ]);
       }
     } finally {
       setIsLoading(false);
+      setPendingModel(null);
+      setPendingProtocol(null);
       abortControllerRef.current = null;
     }
   }
@@ -281,6 +293,8 @@ export function usePlaygroundChat({
     rawPayload,
     rawChunks,
     globalError,
+    pendingModel,
+    pendingProtocol,
     handleSendMessage,
     handleStop,
     handleClearChat,

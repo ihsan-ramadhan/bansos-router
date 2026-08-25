@@ -59,6 +59,8 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
     rawPayload,
     rawChunks,
     globalError,
+    pendingModel,
+    pendingProtocol,
     handleSendMessage,
     handleStop,
     handleClearChat,
@@ -318,6 +320,8 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
                   messages={messages}
                   isLoading={isLoading}
                   selectedModel={selectedModel}
+                  pendingModel={pendingModel}
+                  pendingProtocol={pendingProtocol}
                   liveReasoning={liveReasoning}
                   liveContent={liveContent}
                   globalError={globalError}
