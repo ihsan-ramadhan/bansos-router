@@ -5,7 +5,7 @@ import type {
   AdapterRenderResponse,
   RelayStateResponse,
   RelayUpdatePayload,
-} from "../types/ui";
+} from "../types";
 
 const BASE_URL = "";
 

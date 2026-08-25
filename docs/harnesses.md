@@ -87,15 +87,12 @@ Claude Code and Aider can take env vars. The adapter offers two modes:
   `~/.bashrc`/`~/.zshrc` inside markers. Preferred by users who want the
   change only in one shell.
 
-### 3.3 Model pinning
+### 3.3 Model pinning & smart tiering
 
-`bansos setup <harness> --model <id>` pins one specific model. Without it,
-adapters that require explicit model lists (OpenCode, Goose, OpenClaw) write
-the full live/seeded free model catalog so every free model is selectable in
-their model pickers. Claude Code maps haiku to a fast non-reasoning model and
-sonnet/opus to the flagship reasoning model. Other harnesses (Aider, Codex,
-Hermes, Antigravity, JCode) set their default model to the primary free model
-and can switch freely via `/v1/models`.
+`bansos setup <harness> --model <id>` pins one specific model. Without `--model`, adapters apply intelligent defaults:
+- **Claude Code**: Maps tiers automatically (`haiku` → fast non-reasoning, `sonnet` → daily reasoning, `opus` → highest-capacity reasoning) and sets `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`.
+- **OpenCode, Goose, OpenClaw, Continue**: Register all catalog models so every model is selectable in the harness.
+- **Aider, Codex, Hermes, Antigravity, JCode, Cline, Roo, 9Router**: Default to the primary model (`tencent/hy3:free`) and switch freely via `/v1/models`.
 
 ## 4. Per-harness setup snippets (target output)
 
@@ -106,9 +103,10 @@ and can switch freely via `/v1/models`.
   "env": {
     "ANTHROPIC_BASE_URL": "http://127.0.0.1:17070",
     "ANTHROPIC_AUTH_TOKEN": "bansos",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "<non-reasoning-id>",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "<reasoning-id>",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "<reasoning-id>"
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "<fast-non-reasoning-id>",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "<flagship-reasoning-id>",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "<top-capacity-reasoning-id>",
+    "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
   }
 }
 ```

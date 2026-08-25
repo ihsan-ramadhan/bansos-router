@@ -5,7 +5,7 @@ import { ADAPTERS, findAdapter } from "../adapters";
 import type { HarnessAdapter, SetupContext } from "../adapters/types";
 import { loadConfig } from "../daemon/state";
 import { SEEDED_MODELS } from "../upstreams";
-import { modelDef, type ModelDef } from "../upstreams/types";
+import { modelDef, pickSmartDefaultModel, type ModelDef } from "../upstreams/types";
 import {
   applyBlockWrite,
   applyMergeWrite,
@@ -260,9 +260,10 @@ export async function runSetup(argv: string[]): Promise<number> {
   const config = loadConfig();
   const baseUrl = `http://${config.bind}:${config.port}/v1`;
   const models = await getSetupModels(baseUrl);
+  const defaultModel = args.model ?? pickSmartDefaultModel(models);
   const ctx: SetupContext = {
     baseUrl,
-    defaultModel: args.model ?? DEFAULT_MODEL,
+    defaultModel,
     models,
     specificModel: Boolean(args.model),
   };

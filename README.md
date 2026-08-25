@@ -140,9 +140,11 @@ works out of the box.
 
 ## Available models
 
-All upstreams are text-only and keyless. By default, `bansos setup` automatically
-registers all available free models into harnesses with explicit model lists (like
-OpenCode, Goose, OpenClaw, and Continue), using `tencent/hy3:free` as the primary default.
+By default, `bansos setup` automatically configures intelligent defaults per harness:
+- **Claude Code**: Maps tiers automatically (`haiku` → fast non-reasoning, `sonnet` → daily reasoning, `opus` → highest-capacity reasoning).
+- **Explicit list harnesses** (OpenCode, Goose, OpenClaw, Continue): Registers all available models, with `tencent/hy3:free` as primary default.
+- **Single-model harnesses** (Aider, Codex, Hermes, Antigravity, JCode, Cline, Roo, 9Router): Defaults to `tencent/hy3:free`.
+
 Pass `--model <id>` if you wish to pin a specific single model. Context and max output
 are token counts. The live catalog is ~33 models and changes as upstreams rotate
 free tiers; run `bansos models` or `bansos ping` to see what is alive right now.
