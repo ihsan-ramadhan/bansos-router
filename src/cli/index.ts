@@ -290,8 +290,16 @@ async function runStart(args: string[]): Promise<number> {
   );
   child.unref();
   fs.closeSync(out);
-  console.log(`started daemon in background (pid ${child.pid}), log: ${logFile}`);
-  console.log(`watch it live with: bansos logs`);
+  const config = await import("../daemon/state").then((m) => m.loadConfig());
+  const effectivePort = port ?? config.port ?? DEFAULT_PORT;
+  const effectiveBind = bind ?? config.bind ?? "127.0.0.1";
+  const baseUrl = `http://${effectiveBind}:${effectivePort}`;
+
+  console.log(`\n● bansosd started in background (pid ${child.pid})`);
+  console.log(`  ├── Web UI   : ${baseUrl}`);
+  console.log(`  ├── API Base : ${baseUrl}/v1`);
+  console.log(`  └── Log file : ${logFile}`);
+  console.log(`\nwatch logs live with: bansos logs\n`);
   return 0;
 }
 

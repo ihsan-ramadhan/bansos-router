@@ -1,20 +1,13 @@
-<p align="center">
-  <img src="assets/logo.png" alt="bansos-router logo" width="140" />
-</p>
+<div align="center">
+
+<img src="assets/logo.png" alt="bansos-router logo" width="140" />
 
 # bansos-router
-
-<div align="center">
 
 Free, keyless coding models for every coding harness, through one local
 daemon. Works without accounts or API keys.
 
 </div>
-
-Status: M0-M3 are working. OpenAI Chat Completions (`/v1/chat/completions`),
-Anthropic Messages (`/v1/messages`), and OpenAI Responses (`/v1/responses`, for
-Codex CLI) are live, along with `bansos setup` and the pi extension. Docker
-deployment is supported. Full roadmap in `docs/architecture.md`.
 
 ## Quick start
 
@@ -22,19 +15,22 @@ deployment is supported. Full roadmap in `docs/architecture.md`.
 npm i -g bansos-router
 ```
 
-Start the daemon, then point a harness at it:
+Start the daemon and point your coding harness at it:
 
 ```bash
 bansos start --bg       # detached daemon on 127.0.0.1:17070
-bansos setup opencode   # writes the config for your harness
+bansos setup opencode   # configure any supported harness
 ```
 
-Open `http://127.0.0.1:17070` in your browser to access the Web UI dashboard (explore models, probe live latency, generate harness configs, manage relay egress, and test completions).
+For **[pi](https://github.com/earendil-works/pi-coding-agent)**, install the companion extension ([`extensions/pi`](extensions/pi/README.md)):
 
-Any OpenAI-compatible or Anthropic-compatible client can now use
-`http://127.0.0.1:17070` (chat at `/v1/chat/completions`, Claude Code at
-`/v1/messages`, Codex at `/v1/responses`). `bansos setup <harness>` merges or appends config blocks, and
-`--undo` removes them again.
+```bash
+pi install npm:pi-bansos-router
+```
+
+Supported harnesses for `bansos setup`: `claude-code`, `aider`, `opencode`, `codex`, `hermes`, `goose`, `openclaw`, `antigravity`, `jcode`, `9router`, `continue`, `cline`, and `roo`. See [docs/harnesses.md](docs/harnesses.md) for harness-specific details.
+
+Open `http://127.0.0.1:17070` in your browser for the Web UI dashboard (model catalog, live latency ping, 1-click config generator, relay manager, playground).
 
 ## Docker
 
@@ -72,7 +68,7 @@ docker compose up -d
 | `bansos ping [model] [--json]` | Probe live latency and rate-limit status of all models (or a specific model) |
 | `bansos refresh` | Ask the daemon to re-run health checks now |
 | `bansos setup <harness...> [--model <id>] [--dry-run] [--undo]` | Write, update, or undo harness configs |
-| `bansos relay <on\|off\|status\|url\|use\|list\|remove>` | Manage relay egress (deploy comes in M4) |
+| `bansos relay <on\|off\|status\|url\|use\|list\|remove>` | Manage relay egress |
 | `bansos doctor` | Diagnose daemon reachability and harness config validity |
 | `bansos --version` | Print version |
 | `bansos <command> --help` / `bansos help <command>` | Per-command usage, defaults, exit codes, examples |
@@ -98,29 +94,12 @@ requests:
 
 With `mode: "strict"`:
 
-- non-loopback binds are rejected before the daemon listens;
-- relay egress, relay probing, and relay mutation are disabled in the CLI,
-  API, and Web UI;
-- only exact upstream IDs in `allowedUpstreams` may receive requests;
-- cross-provider failover is disabled for Chat Completions, Responses, and
-  Anthropic Messages;
-- common API keys, PATs, cloud access keys, private keys, and credential
-  assignments are blocked locally with HTTP 422 before external transmission;
-- request/response bodies, credentials, cookies, tool output, and raw upstream
-  error bodies are excluded from daemon logs.
-
-An empty `allowedUpstreams` array blocks all external LLM requests until a
-provider is explicitly permitted. Built-in IDs are `zen`, `kilo`, and `llm7`;
-local gateways use `local:<name>`. If a non-loopback listener is intentionally
-required, both the risk and the override must be explicit via
-`--unsafe-allow-non-loopback` or
-`security.unsafeAllowNonLoopbackBind: true`.
-
-Supported harnesses for `bansos setup`: `claude-code`, `aider`, `opencode`,
-`hermes`, `goose`, `openclaw`, `antigravity`, `jcode`, `9router`, `continue`, `cline`, `roo`.
-pi is handled by the separate extension. `codex` writes its config too; its
-`wire_api = "responses"` is served by the daemon (M3), so `bansos setup codex`
-works out of the box.
+- Non-loopback binds rejected unless `--unsafe-allow-non-loopback` passed.
+- Relay egress, probing, and mutation disabled across CLI, API, Web UI.
+- Only exact upstreams in `allowedUpstreams` receive requests (empty list blocks all).
+- Cross-provider failover disabled.
+- API keys, PATs, private keys, and credentials blocked with HTTP 422 before egress.
+- Sensitive values and raw upstream errors suppressed from logs.
 
 ## What it does
 
@@ -132,14 +111,12 @@ works out of the box.
   Codex, Hermes, Goose, OpenClaw, Antigravity, JCode, 9Router, Continue, Cline, and Roo Code.
 - Web UI dashboard served at `http://127.0.0.1:17070/` with model catalog explorer,
   live ping probes, 1-click harness setup generator, relay egress manager, and test playground.
-- The pi extension (`pi install npm:pi-bansos-router`) registers the `bansosr`
-  provider, so every free model shows up in pi's `/model` picker. There is
+- The pi extension ([`pi-bansos-router`](extensions/pi/README.md)) registers the
+  `bansosr` provider, so every free model shows up in pi's `/model` picker. There is
   also a `/bansosr` command for status. If the daemon is not running when pi
-  starts, the extension starts it and stops it again when pi exits. A daemon
-  you started yourself is left alone.
+  starts, the extension starts it and stops it again on exit.
 - The catalog is health-checked: live `:free` models replace stale seeds on a
-  timer. Relay egress can route around rate limits (bring your own relay URL,
-  auto-deploy lands in M4), and there is a per-IP rate limiter.
+  timer. Relay egress can route around rate limits, and there is a per-IP rate limiter.
 - If a model is rejected with `429`/`5xx`, the daemon auto-fails over to the
   closest equivalent model on a different upstream (same reasoning level,
   context window, and effort capability), retrying up to two extra candidates
@@ -150,10 +127,8 @@ works out of the box.
 
 By default, `bansos setup` automatically configures intelligent defaults per harness:
 - **Claude Code**: Maps tiers automatically (`haiku` → fast non-reasoning, `sonnet` → daily reasoning, `opus` → highest-capacity reasoning).
-- **Explicit list harnesses** (OpenCode, Goose, OpenClaw, Continue): Registers all available models, with `tencent/hy3:free` as primary default.
-- **Single-model harnesses** (Aider, Codex, Hermes, Antigravity, JCode, Cline, Roo, 9Router): Defaults to `tencent/hy3:free`.
-
-Pass `--model <id>` if you wish to pin a specific single model. Context and max output
+- **Multi-model harnesses** (`opencode`, `goose`, `openclaw`, `continue`, `9router`, `jcode`): Registers all available models (or dynamic `/v1/models` provider) with `tencent/hy3:free` as primary default.
+- **Single-model harnesses** (`aider`, `codex`, `hermes`, `antigravity`, `cline`, `roo`): Defaults to `tencent/hy3:free`. Pass `--model <id>` to pin a specific model. Context and max output
 are token counts. The live catalog is ~33 models and changes as upstreams rotate
 free tiers; run `bansos models` or `bansos ping` to see what is alive right now.
 
