@@ -1,6 +1,6 @@
 {
   "name": "pi-bansos-router",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "pi extension for bansos-router — free keyless coding models via local daemon",
   "main": "dist/index.js",
   "type": "module",

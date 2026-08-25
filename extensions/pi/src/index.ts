@@ -6,7 +6,7 @@ const DEFAULT_PORT = 17070;
 const BASE_URL = `http://127.0.0.1:${DEFAULT_PORT}/v1`;
 const HEALTHZ_URL = `http://127.0.0.1:${DEFAULT_PORT}/healthz`;
 const MODELS_URL = `http://127.0.0.1:${DEFAULT_PORT}/v1/models`;
-const EXTENSION_VERSION = "0.2.0";
+const EXTENSION_VERSION = "0.2.1";
 
 function isNewer(current: string, latest: string): boolean {
   const parse = (v: string) => v.replace(/^v/, "").split(".").map((n) => parseInt(n, 10) || 0);
