@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    name: Typecheck, Test, Build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20, 22, 24]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node ${{ matrix.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Typecheck (root)
+        run: npm run typecheck
+
+      - name: Test (root)
+        run: npm test
+
+      - name: Build (root)
+        run: npm run build
+
+      - name: Install pi extension dependencies
+        run: cd extensions/pi && npm ci
+
+      - name: Typecheck (pi extension)
+        run: cd extensions/pi && npm run typecheck
+
+      - name: Build (pi extension)
+        run: cd extensions/pi && npm run build
