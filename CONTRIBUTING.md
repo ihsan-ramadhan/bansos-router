@@ -121,4 +121,4 @@ cd extensions/pi && npm run typecheck && npm run build
 
 ## Roadmap
 
-See `docs/architecture.md` for the milestone plan (M0 through M5). `/v1/responses` (M3, Codex CLI) and one click relay deploy (M4) are the next major items.
+See `docs/architecture.md` for the milestone plan (M0 through M5). one click relay deploy (M4) are the next major items.
