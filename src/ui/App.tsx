@@ -66,7 +66,7 @@ export function App() {
         <MetricCards status={status} loading={loadingStatus} daemonAddress={daemonAddress} />
 
         {/* Tab 1: Model Catalog */}
-        {activeTab === "models" && (
+        <div className={activeTab === "models" ? "block" : "hidden"}>
           <ModelCatalog
             models={models}
             loading={loadingModels}
@@ -80,36 +80,36 @@ export function App() {
             onCancelPing={cancelPing}
             onClearPings={clearPingResults}
           />
-        )}
+        </div>
 
         {/* Tab 2: Agent Setup */}
-        {activeTab === "agent" && (
+        <div className={activeTab === "agent" ? "block" : "hidden"}>
           <AgentSetup
             models={models}
             daemonPort={daemonPort}
           />
-        )}
+        </div>
 
         {/* Tab 3: Relay Proxy */}
-        {activeTab === "relay" && (
+        <div className={activeTab === "relay" ? "block" : "hidden"}>
           <RelayManager
             daemonPort={daemonPort}
             onStateChange={loadStatus}
           />
-        )}
+        </div>
 
         {/* Tab 4: Playground */}
-        {activeTab === "playground" && (
+        <div className={activeTab === "playground" ? "block" : "hidden"}>
           <Playground
             models={models}
             daemonPort={daemonPort}
           />
-        )}
+        </div>
 
         {/* Tab 5: Activity & Usage */}
-        {activeTab === "activity" && (
+        <div className={activeTab === "activity" ? "block" : "hidden"}>
           <ActivityView />
-        )}
+        </div>
       </main>
 
       {/* Footer */}

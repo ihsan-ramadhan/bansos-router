@@ -99,14 +99,14 @@ export async function pingModel(
   }
 }
 
-export async function fetchUsage(): Promise<UsageStats> {
-  const res = await fetch(`${BASE_URL}/bansos/usage`);
+export async function fetchUsage(window: "today" | "7d" | "30d" | "60d" | "all" = "all"): Promise<UsageStats> {
+  const res = await fetch(`${BASE_URL}/bansos/usage?window=${window}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch usage`);
   return res.json();
 }
 
-export async function fetchEvents(limit = 100): Promise<ActivityEvent[]> {
-  const res = await fetch(`${BASE_URL}/bansos/events?limit=${limit}`);
+export async function fetchEvents(limit = 100, window: "today" | "7d" | "30d" | "60d" | "all" = "all"): Promise<ActivityEvent[]> {
+  const res = await fetch(`${BASE_URL}/bansos/events?limit=${limit}&window=${window}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch events`);
   const body = (await res.json()) as { events: ActivityEvent[] };
   return body.events;

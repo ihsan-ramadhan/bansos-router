@@ -90,6 +90,7 @@ function ModelRow({ label, requests, ok, inputTokens, outputTokens, sub }: Aggre
 }
 
 export function ActivityView() {
+  const [window, setWindow] = useState<"today" | "7d" | "30d" | "60d" | "all">("today");
   const [usage, setUsage] = useState<UsageStats | null>(null);
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,7 +100,7 @@ export function ActivityView() {
   async function load(showSpinner = false) {
     try {
       if (showSpinner) setRefreshing(true);
-      const [u, e] = await Promise.all([fetchUsage(), fetchEvents(100)]);
+      const [u, e] = await Promise.all([fetchUsage(window), fetchEvents(100, window)]);
       setUsage(u);
       setEvents(e);
       setError(null);
@@ -115,7 +116,7 @@ export function ActivityView() {
     void load();
     const timer = setInterval(() => void load(), 3000);
     return () => clearInterval(timer);
-  }, []);
+  }, [window]);
 
   const topModels = useMemo(() => {
     if (!usage) return [];
@@ -140,19 +141,45 @@ export function ActivityView() {
         <div className="flex items-center gap-2 min-w-0">
           <Activity className="h-4 w-4 sm:h-5 sm:w-5 text-[#60a5fa] shrink-0" />
           <h2 className="text-sm sm:text-base font-semibold text-white truncate">Activity & Usage</h2>
-          <span className="text-[10px] sm:text-[11px] px-2 py-0.5 rounded-full bg-[#202028] text-[#a1a1aa] border border-[#2c2c36] font-medium shrink-0">
-            Live (resets on restart)
-          </span>
         </div>
-        <button
-          type="button"
-          onClick={() => void load(true)}
-          disabled={refreshing}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#1a1a20] border border-[#282832] text-[11px] text-[#d4d4d8] hover:text-white hover:border-[#32323d] transition cursor-pointer disabled:opacity-50 shrink-0"
-        >
-          <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
-          <span>Refresh</span>
-        </button>
+
+        {/* Time Window Filters & Refresh */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center bg-[#16161a] border border-[#23232a] rounded-lg p-0.5 text-[11px]">
+            {(
+              [
+                { id: "today", label: "Today" },
+                { id: "7d", label: "7 Days" },
+                { id: "30d", label: "30 Days" },
+                { id: "60d", label: "60 Days" },
+                { id: "all", label: "All" },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setWindow(t.id)}
+                className={`px-2 py-1 rounded-md transition font-medium cursor-pointer ${
+                  window === t.id
+                    ? "bg-[#282832] text-white shadow-xs"
+                    : "text-[#8b8b96] hover:text-white"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void load(true)}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#1a1a20] border border-[#282832] text-[11px] text-[#d4d4d8] hover:text-white hover:border-[#32323d] transition cursor-pointer disabled:opacity-50 shrink-0"
+          >
+            <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -297,6 +324,7 @@ export function ActivityView() {
               <thead className="bg-[#121215] text-[10px] sm:text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider">
                 <tr>
                   <th className="py-2.5 px-3 sm:px-4">When</th>
+                  <th className="py-2.5 px-3 sm:px-4">Status</th>
                   <th className="py-2.5 px-3 sm:px-4">Type</th>
                   <th className="py-2.5 px-3 sm:px-4">Model</th>
                   <th className="py-2.5 px-3 sm:px-4">Upstream</th>
@@ -308,6 +336,17 @@ export function ActivityView() {
                 {events.map((e) => (
                   <tr key={e.id} className="border-b border-[#202026] last:border-0">
                     <td className="py-2.5 px-3 sm:px-4 text-[#a1a1aa] whitespace-nowrap">{timeAgo(e.timestamp)}</td>
+                    <td className="py-2.5 px-3 sm:px-4">
+                      {e.status === "ok" ? (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-800/40 font-mono">
+                          200 OK
+                        </span>
+                      ) : (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-950/40 text-rose-400 border border-rose-800/40 font-mono">
+                          ERR
+                        </span>
+                      )}
+                    </td>
                     <td className="py-2.5 px-3 sm:px-4">
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#202028] text-[#a1a1aa] border border-[#2c2c36] font-medium">
                         {KIND_LABEL[e.kind]}

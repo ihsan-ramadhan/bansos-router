@@ -664,6 +664,16 @@ async function handleChat(
     sanitizedBody,
   );
   if ("status" in result) {
+    activity.record({
+      kind: "chat",
+      model: parsed.value.model,
+      requestedModel: parsed.value.model,
+      upstream: catalog.resolve(parsed.value.model)?.source ?? "unknown",
+      inputTokens: 0,
+      outputTokens: 0,
+      durationMs: Date.now() - requestStartedAt,
+      status: "error",
+    });
     sendJson(res, result.status, {
       error: { message: result.message, type: result.type ?? "upstream_error", status: result.status },
       ...(result.secretTypes ? { secret_types: result.secretTypes } : {}),
@@ -813,6 +823,16 @@ async function handleResponses(
     sanitizedBody,
   );
   if ("status" in result) {
+    activity.record({
+      kind: "responses",
+      model: parsed.value.model,
+      requestedModel: parsed.value.model,
+      upstream: catalog.resolve(parsed.value.model)?.source ?? "unknown",
+      inputTokens: 0,
+      outputTokens: 0,
+      durationMs: Date.now() - requestStartedAt,
+      status: "error",
+    });
     sendJson(res, result.status, {
       error: { message: result.message, type: result.type ?? "upstream_error", status: result.status },
       ...(result.secretTypes ? { secret_types: result.secretTypes } : {}),
@@ -976,6 +996,16 @@ async function handleAnthropic(
     chatBody,
   );
   if ("status" in result) {
+    activity.record({
+      kind: "anthropic",
+      model: parsed.value.model,
+      requestedModel: parsed.value.model,
+      upstream: model?.source ?? "unknown",
+      inputTokens: 0,
+      outputTokens: 0,
+      durationMs: Date.now() - requestStartedAt,
+      status: "error",
+    });
     sendAnthropicError(res, result.status, result.message, result.secretTypes);
     return;
   }
@@ -1264,15 +1294,18 @@ export function createServer(opts: ServerOptions): http.Server {
     }
 
     if (method === "GET" && url === "/bansos/usage") {
-      sendJson(res, 200, activity.getUsage());
+      const parsedUrl = new URL(rawUrl, "http://127.0.0.1");
+      const window = (parsedUrl.searchParams.get("window") || "all") as import("./activity").TimeWindow;
+      sendJson(res, 200, activity.getUsage(window));
       return;
     }
 
     if (method === "GET" && url === "/bansos/events") {
       const parsedUrl = new URL(rawUrl, "http://127.0.0.1");
       const limitParam = Number(parsedUrl.searchParams.get("limit"));
+      const window = (parsedUrl.searchParams.get("window") || "all") as import("./activity").TimeWindow;
       const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 500) : 100;
-      sendJson(res, 200, { events: activity.getEvents(limit) });
+      sendJson(res, 200, { events: activity.getEvents(limit, window) });
       return;
     }
 
