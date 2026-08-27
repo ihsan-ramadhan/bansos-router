@@ -150,37 +150,42 @@ free tiers; run `bansos models` or `bansos ping` to see what is alive right now.
 |---|---|---|---|
 | `kilo-auto/free` | no | 256k | 10k |
 | `stepfun/step-3.7-flash:free` | no | 262k | 262k |
-| `nvidia/nemotron-3-ultra-550b-a55b:free` | yes | 1M | 65k |
-| `nvidia/nemotron-3-super-120b-a12b:free` | yes | 262k | 262k |
-| `nvidia/nemotron-3.5-lightning:free` | yes | 1M | 65k |
-| `nvidia/nemotron-3.5-content-safety:free` | yes | 128k | 8k |
 | `tencent/hy3:free` | yes | 262k | 128k |
-| `liquid/lfm-2.5-2.6b:free` | no | 128k | 8k |
-| `dots-studio/dots-3-note-preview:free` | no | 128k | 8k |
 | `poolside/laguna-s-2.1:free` | yes | 262k | 32k |
-| `cohere/north-mini-code:free` | no | 256k | 64k |
+| `dots-studio/dots-3-note-preview:free` | no | 512k | 10k |
+| `liquid/lfm-2.5-2.6b:free` | no | 128k | 8k |
+| `nvidia/nemotron-3.5-lightning:free` | yes | 1M | 65k |
+| `thinkingmachines/inkling-small:free` | no | 1M | 10k |
+| `thinkingmachines/inkling:free` | no | 1M | 10k |
 | `poolside/laguna-xs-2.1:free` | no | 262k | 32k |
-| `thinkingmachines/inkling:free` | no | 262k | 10k |
-| `thinkingmachines/inkling-small:free` | no | 262k | 10k |
+| `cohere/north-mini-code:free` | no | 256k | 64k |
+| `nvidia/nemotron-3.5-content-safety:free` | yes | 128k | 8k |
+| `nvidia/nemotron-3-ultra-550b-a55b:free` | yes | 1M | 65k |
+| `minimax/minimax-m3:free` | no | 1M | 10k |
 | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | yes | 256k | 65k |
+| `minimax/minimax-m2.7:free` | no | 196k | 10k |
+| `nvidia/nemotron-3-super-120b-a12b:free` | yes | 262k | 262k |
 | `openrouter/free` | no | 200k | 65k |
 
 ### LLM7
 
 | model id | reasoning | context | max output |
 |---|---|---|---|
-| `DeepSeek-V4-Flash-0731` | yes | 400k | 131k |
-| `meta-Llama-3.1-8B-Instruct-Turbo` | no | 128k | 16k |
-| `gemini-3.1-flash-lite` | no | 256k | 65k |
-| `minimax-m2.7` | yes | 180k | 32k |
-| `gpt-oss:20b` | no | 128k | 16k |
-| `mistral-Nemo-Instruct-2407` | no | 128k | 16k |
 | `codestral-latest` | no | 32k | 8k |
+| `deepseek-v3.2` | yes | 128k | 16k |
+| `gemini-3.1-flash-lite` | no | 256k | 65k |
+| `gpt-oss` | yes | 131k | 16k |
+| `meta-Llama-3.1-8B-Instruct-Turbo` | no | 128k | 16k |
+| `minimax-m2.7` | yes | 180k | 32k |
+| `mistral-Nemo-Instruct-2407` | no | 128k | 16k |
 | `default` | no | 128k | 8k |
 | `fast` | no | 128k | 8k |
 
 Notes:
 
+- The tables above are generated from a live `/v1/models` snapshot, not the
+  static seed. The seeded defaults (in `src/upstreams/*`) are used only until
+  the daemon's first successful refresh; the live catalog replaces them.
 - Kilo's `:free` models are liveness-gated: the daemon re-checks the kilo
   catalog on a timer and drops models that are no longer offered free.
 - Zen's `/v1/models` lists *claude-\** ids that differ from the free coding
