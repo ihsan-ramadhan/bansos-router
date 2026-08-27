@@ -124,7 +124,7 @@ type ModelDef = {
 v1 seed (pinned seeds + live refresh; liveness drops dead ids, live `:free`
 ids from the kilo API join at runtime):
 
-**OpenCode Zen (8 seeded):** `x-preview-f-free` (Ox Alpha Free), `mimo-v2.5-free`,
+**OpenCode Zen (7 seeded):** `mimo-v2.5-free`,
 `nemotron-3-ultra-free`, `big-pickle`, `laguna-s-2.1-free`, `hy3-free`, `nemotron-3.5-lightning-free`,
 `muse-spark-1.2-contributor-free`
 

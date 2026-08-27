@@ -81,13 +81,11 @@ export async function runPing(argv: string[]): Promise<number> {
 
   let targets: string[] = [];
   if (targetModel) {
-    const isOxAlias = targetModel === "ox-alpha-free" || targetModel === "0x-alpha-free" || targetModel === "ox-alpha" || targetModel === "0x-alpha";
     // exact match, suffix match, or known alias match
     const matched = models.find(
       (m) =>
         m.id === targetModel ||
-        m.id.endsWith(`/${targetModel}`) ||
-        (isOxAlias && m.id === "x-preview-f-free"),
+        m.id.endsWith(`/${targetModel}`),
     );
     if (!matched) {
       console.error(`bansos ping: unknown model "${targetModel}"`);

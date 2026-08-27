@@ -49,7 +49,7 @@ Harnesses: claude-code, aider, opencode, codex, hermes, goose,
 Examples:
   bansos start --bg              # daemon in background, then:
   bansos setup codex             # wire Codex CLI to the router
-  bansos ping x-preview-f-free   # probe one model
+  bansos ping hy3-free           # probe one model
   bansos status --json           # machine-readable status
 
 "bansosd" still works as an alias for the daemon (e.g. "bansosd --bg").

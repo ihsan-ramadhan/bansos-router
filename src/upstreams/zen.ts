@@ -73,16 +73,6 @@ export const ZEN_MODELS: ModelDef[] = [
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
   }),
   modelDef({
-    id: "x-preview-f-free",
-    name: "Ox Alpha Free",
-    source: "zen",
-    reasoning: true,
-    contextWindow: 1_000_000,
-    maxTokens: 65_536,
-    input: ["text"],
-    compat: { supportsReasoningEffort: true, supportsDeveloperRole: false },
-  }),
-  modelDef({
     id: "muse-spark-1.2-contributor-free",
     name: "Muse Spark 1.2 Contributor Free",
     source: "zen",

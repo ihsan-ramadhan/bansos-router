@@ -47,11 +47,6 @@ export class RuntimeCatalog {
   resolve(id: string): ModelDef | undefined {
     const direct = this.byId.get(id);
     if (direct) return direct;
-    // alias fallback for Zen model renames (e.g. ox-alpha-free -> x-preview-f-free)
-    if (id === "ox-alpha-free" || id === "0x-alpha-free" || id === "ox-alpha" || id === "0x-alpha") {
-      const mapped = this.byId.get("x-preview-f-free");
-      if (mapped) return mapped;
-    }
     // tolerant fallback: e.g. "hy3:free" matches "tencent/hy3:free"
     for (const [k, m] of this.byId) {
       if (k.endsWith(`/${id}`)) return m;

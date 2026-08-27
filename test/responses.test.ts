@@ -51,7 +51,7 @@ test("parseResponsesTurn: instructions -> system, input[] items -> messages", ()
 
 test("parseResponsesTurn: reasoning.effort and max_output_tokens mapped", () => {
   const r = parseResponsesTurn({
-    model: "x-preview-f-free",
+    model: "nemotron-3-ultra-free",
     input: "think",
     reasoning: { effort: "high" },
     max_output_tokens: 2048,

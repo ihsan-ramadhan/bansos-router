@@ -136,7 +136,6 @@ free tiers; run `bansos models` or `bansos ping` to see what is alive right now.
 
 | model id | reasoning | context | max output |
 |---|---|---|---|
-| `x-preview-f-free` | yes | 1M | 65k |
 | `mimo-v2.5-free` | no | 1M | 131k |
 | `nemotron-3-ultra-free` | yes | 1M | 65k |
 | `big-pickle` | yes | 200k | 32k |

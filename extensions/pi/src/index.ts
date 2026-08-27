@@ -102,7 +102,6 @@ export default async function (pi: ExtensionAPI) {
 
   if (models.length === 0) {
     models = [
-      { id: "x-preview-f-free", name: "Ox Alpha Free (Zen)", context_window: 1000000, max_tokens: 65536, reasoning: true },
       { id: "hy3-free", name: "Tencent HY3 Free (Zen)", context_window: 256000, max_tokens: 65536, reasoning: true },
       { id: "mimo-v2.5-free", name: "Mimo V2.5 Free (Zen)", context_window: 1048576, max_tokens: 131072, reasoning: false },
       { id: "nemotron-3-ultra-free", name: "Nemotron 3 Ultra (Zen)", context_window: 1000000, max_tokens: 65536, reasoning: true },
