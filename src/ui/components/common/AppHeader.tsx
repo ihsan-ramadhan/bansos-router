@@ -55,9 +55,6 @@ export function AppHeader({
               <span className="text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-0.5 rounded-full bg-[#202028] text-[#a1a1aa] border border-[#2c2c36] font-mono shrink-0">
                 v{__APP_VERSION__}
               </span>
-              <span className="hidden md:inline-flex text-[11px] px-2 py-0.5 rounded-full bg-[#202028] text-[#60a5fa] border border-[#2b64e0]/30 font-medium shrink-0">
-                Free & Keyless
-              </span>
             </div>
           </div>
 
@@ -114,6 +111,19 @@ export function AppHeader({
 
           <button
             type="button"
+            onClick={() => onSelectTab("activity")}
+            className={`shrink-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 border-b-2 text-xs sm:text-[13px] font-medium transition whitespace-nowrap cursor-pointer min-h-10.5 ${
+              activeTab === "activity"
+                ? "border-[#2b64e0] text-white"
+                : "border-transparent text-[#9393a0] hover:text-[#e4e4e7] hover:border-[#32323d]"
+            }`}
+          >
+            <Activity className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+            <span>Activity</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => onSelectTab("relay")}
             className={`shrink-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 border-b-2 text-xs sm:text-[13px] font-medium transition whitespace-nowrap cursor-pointer min-h-10.5 ${
               activeTab === "relay"
@@ -138,18 +148,6 @@ export function AppHeader({
             <span>Playground</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => onSelectTab("activity")}
-            className={`shrink-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 border-b-2 text-xs sm:text-[13px] font-medium transition whitespace-nowrap cursor-pointer min-h-10.5 ${
-              activeTab === "activity"
-                ? "border-[#2b64e0] text-white"
-                : "border-transparent text-[#9393a0] hover:text-[#e4e4e7] hover:border-[#32323d]"
-            }`}
-          >
-            <Activity className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-            <span>Activity</span>
-          </button>
         </nav>
       </div>
     </header>
