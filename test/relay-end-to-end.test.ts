@@ -6,6 +6,7 @@ import { RuntimeCatalog } from "../src/daemon/catalog";
 import { RateLimiter } from "../src/daemon/rate-limit";
 import { createLogger } from "../src/logger";
 import { SEEDED_MODELS, DEFAULT_UPSTREAMS } from "../src/upstreams";
+import { DEFAULT_SECURITY_CONFIG } from "../src/security/policy";
 import { runRelay } from "../src/cli/relay";
 import { loadRelayState, saveRelayState } from "../src/relay/egress";
 import { modelDef, type ModelDef } from "../src/upstreams/types";
@@ -185,38 +186,41 @@ test("Relay CLI: runRelay commands execute cleanly", async () => {
   const originalState = loadRelayState();
 
   try {
+
+    const runRelayNormal = (args: string[]) => runRelay(args, DEFAULT_SECURITY_CONFIG);
+
     // 1. bansos relay url <url>
-    const codeAdd = await runRelay(["url", "https://cli-relay.example.com"]);
+    const codeAdd = await runRelayNormal(["url", "https://cli-relay.example.com"]);
     assert.equal(codeAdd, 0);
 
     // 2. bansos relay use <url>
-    const codeUse = await runRelay(["use", "https://cli-relay.example.com"]);
+    const codeUse = await runRelayNormal(["use", "https://cli-relay.example.com"]);
     assert.equal(codeUse, 0);
     const stateAfterUse = loadRelayState();
     assert.equal(stateAfterUse.enabled, true);
     assert.equal(stateAfterUse.url, "https://cli-relay.example.com");
 
     // 3. bansos relay off
-    const codeOff = await runRelay(["off"]);
+    const codeOff = await runRelayNormal(["off"]);
     assert.equal(codeOff, 0);
     assert.equal(loadRelayState().enabled, false);
 
     // 4. bansos relay on
-    const codeOn = await runRelay(["on"]);
+    const codeOn = await runRelayNormal(["on"]);
     assert.equal(codeOn, 0);
     assert.equal(loadRelayState().enabled, true);
 
     // 5. bansos relay list & status
-    assert.equal(await runRelay(["list"]), 0);
-    assert.equal(await runRelay(["status"]), 0);
+    assert.equal(await runRelayNormal(["list"]), 0);
+    assert.equal(await runRelayNormal(["status"]), 0);
 
     // 6. bansos relay remove (active cannot be removed without switching)
-    const codeRemoveActive = await runRelay(["remove", "https://cli-relay.example.com"]);
+    const codeRemoveActive = await runRelayNormal(["remove", "https://cli-relay.example.com"]);
     assert.equal(codeRemoveActive, 1);
 
     // Add and switch to another relay
-    await runRelay(["use", "https://another-relay.example.com"]);
-    const codeRemoveOld = await runRelay(["remove", "https://cli-relay.example.com"]);
+    await runRelayNormal(["use", "https://another-relay.example.com"]);
+    const codeRemoveOld = await runRelayNormal(["remove", "https://cli-relay.example.com"]);
     assert.equal(codeRemoveOld, 0);
   } finally {
     saveRelayState(originalState);

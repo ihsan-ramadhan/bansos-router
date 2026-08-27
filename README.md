@@ -61,7 +61,7 @@ docker compose up -d
 | Command | Purpose |
 |---|---|
 | `bansos start [--bg] [--port N] [--bind H] [--unsafe-allow-non-loopback]` | Run the daemon (foreground, or detached with `--bg`) |
-| `bansos logs` | Tail the daemon log in real time (for a `--bg` daemon), same output as `bansos start` |
+| `bansos logs [--activity]` | Tail the daemon log in real time (every mode — daemon always logs to `~/.bansos/logs/bansosd.log`); `--activity` prints the structured request feed shown in the web UI "Activity" tab |
 | `bansos stop` | Stop all running daemons |
 | `bansos status [--json]` | Daemon status (port, model count, alive models); reports every running daemon on the auto-bump range (17070-17090) |
 | `bansos models [--json]` | List live catalog from `/v1/models` |

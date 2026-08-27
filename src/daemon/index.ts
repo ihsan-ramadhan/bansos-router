@@ -2,6 +2,7 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
+import stream from "node:stream";
 import { spawn } from "node:child_process";
 import {
   loadConfig,
@@ -16,25 +17,51 @@ import { buildUpstreams, SEEDED_MODELS } from "../upstreams";
 import { VERSION } from "../update";
 import { RuntimeCatalog } from "./catalog";
 import { RateLimiter } from "./rate-limit";
+import { ActivityStore } from "./activity";
 import { createServer } from "./server";
 
 export const DEFAULT_PORT = 17070;
 export const MAX_PORT = 17090;
+
+const LOG_DIR = path.join(BANSOS_DIR, "logs");
+const LOG_FILE = path.join(LOG_DIR, "bansosd.log");
+
+function createTeeStream(
+  a: NodeJS.WritableStream,
+  b: NodeJS.WritableStream,
+): NodeJS.WritableStream {
+  const tee = new stream.PassThrough();
+  tee.on("data", (chunk) => {
+    try {
+      a.write(chunk);
+    } catch {
+      // ignore write errors on one destination
+    }
+    try {
+      b.write(chunk);
+    } catch {
+      // ignore write errors on the other destination
+    }
+  });
+  return tee;
+}
 
 interface CliArgs {
   port?: number;
   bind?: string;
   bg: boolean;
   unsafeAllowNonLoopback: boolean;
+  bgChild: boolean;
 }
 
 function parseArgs(argv: string[]): CliArgs {
-  const args: CliArgs = { bg: false, unsafeAllowNonLoopback: false };
+  const args: CliArgs = { bg: false, unsafeAllowNonLoopback: false, bgChild: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--port" || arg === "-p") args.port = Number(argv[++i]);
     else if (arg === "--bind") args.bind = argv[++i];
     else if (arg === "--bg") args.bg = true;
+    else if (arg === "--bg-child") args.bgChild = true;
     else if (arg === "--unsafe-allow-non-loopback") args.unsafeAllowNonLoopback = true;
     else if (arg === "--version" || arg === "-v") {
       console.log(VERSION);
@@ -64,8 +91,8 @@ function startServer(
   port: number,
   bind: string,
   config: BansosConfig,
+  log: ReturnType<typeof createLogger>,
 ): Promise<{ server: http.Server; port: number; catalog: RuntimeCatalog }> {
-  const log = createLogger({ prefix: "bansosd" });
   const upstreams = buildUpstreams(config.localUpstreams);
   const catalog = new RuntimeCatalog(upstreams, log, config.security);
 
@@ -77,6 +104,7 @@ function startServer(
     limit: Number(process.env.BANSOS_RATE_LIMIT) || 300,
     windowMs: 60_000,
   });
+  const activity = new ActivityStore();
 
   const server = createServer({
     catalog,
@@ -85,6 +113,7 @@ function startServer(
     log,
     startedAt,
     security: config.security,
+    activity,
   });
 
   // initial health-check pass, then refresh on the configured interval
@@ -98,7 +127,7 @@ function startServer(
       server.once("error", (err: NodeJS.ErrnoException) => {
         if (err.code === "EADDRINUSE" && attempt < MAX_PORT) {
           log.warn(`port ${port} busy — trying ${port + 1}`);
-          resolve(startServer(port + 1, bind, config));
+          resolve(startServer(port + 1, bind, config, log));
           return;
         }
         reject(err);
@@ -111,7 +140,6 @@ function startServer(
 
 async function main(argv: string[]): Promise<void> {
   const args = parseArgs(argv[0] === "daemon" ? argv.slice(1) : argv);
-  const log = createLogger({ prefix: "bansosd" });
 
   const config = loadConfig();
   const port = args.port ?? config.port ?? DEFAULT_PORT;
@@ -119,10 +147,9 @@ async function main(argv: string[]): Promise<void> {
   assertBindAllowed(bind, config.security, args.unsafeAllowNonLoopback);
 
   if (args.bg) {
-    const logDir = path.join(BANSOS_DIR, "logs");
-    fs.mkdirSync(logDir, { recursive: true });
-    const logFile = path.join(logDir, "bansosd.log");
-    const out = fs.openSync(logFile, "a");
+    const log = createLogger({ prefix: "bansosd" });
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+    const out = fs.openSync(LOG_FILE, "a");
     const child = spawn(
       process.execPath,
       [
@@ -133,6 +160,8 @@ async function main(argv: string[]): Promise<void> {
         "--bind",
         bind,
         ...(args.unsafeAllowNonLoopback ? ["--unsafe-allow-non-loopback"] : []),
+        // marker so the child knows it is the file-backed instance
+        "--bg-child",
       ],
       {
         stdio: ["ignore", out, out] as unknown as import("node:child_process").StdioOptions,
@@ -141,12 +170,22 @@ async function main(argv: string[]): Promise<void> {
     );
     child.unref();
     fs.closeSync(out);
-    log.info(`started in background (pid ${child.pid}), log: ${logFile}`);
+    log.info(`started in background (pid ${child.pid}), log: ${LOG_FILE}`);
     return;
   }
 
+  // foreground (and the --bg child): always log to a file so `bansos logs`
+  // works in every mode, while still echoing to stdout for an interactive run.
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+  const fileStream = fs.createWriteStream(LOG_FILE, { flags: "a" });
+  const isBgChild = args.bgChild === true;
+  // A --bg child already has its stdout/stderr redirected to the file, so write
+  // the file once. A normal foreground daemon tees to both stdout and the file.
+  const out = isBgChild ? fileStream : createTeeStream(process.stdout, fileStream);
+  const log = createLogger({ prefix: "bansosd", out });
+
   // run an initial health-check pass, then refresh periodically
-  const { server, port: actualPort, catalog } = await startServer(port, bind, config);
+  const { server, port: actualPort, catalog } = await startServer(port, bind, config, log);
   log.info(`bansosd listening on http://${bind}:${actualPort}`);
 
   if (process.env.BANSOS_LOG !== "json") {

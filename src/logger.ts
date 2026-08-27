@@ -21,6 +21,7 @@ export interface LoggerOptions {
   level?: LogLevel;
   json?: boolean;
   prefix?: string;
+  out?: NodeJS.WritableStream;
 }
 
 const SAFE_FIELD_NAMES = new Set([
@@ -89,6 +90,7 @@ export function createLogger(opts: LoggerOptions = {}): Logger {
   const level = opts.level ?? "info";
   const json = opts.json ?? process.env.BANSOS_LOG === "json";
   const prefix = opts.prefix ?? "";
+  const out = opts.out ?? process.stdout;
 
   const write = (lvl: LogLevel, msg: string, fields?: Record<string, unknown>) => {
     if (LEVEL_ORDER[lvl] < LEVEL_ORDER[level]) return;
@@ -97,12 +99,12 @@ export function createLogger(opts: LoggerOptions = {}): Logger {
     const line = prefix ? `[${prefix}] ${safeMessage}` : safeMessage;
     const filteredFields = safeFields(fields, messageScan.secretTypes);
     if (json) {
-      process.stdout.write(
+      out.write(
         `${JSON.stringify({ timestamp: new Date().toISOString(), level: lvl, msg: safeMessage, ...filteredFields })}\n`,
       );
     } else {
       const tag = lvl === "error" ? "✗" : lvl === "warn" ? "⚠" : lvl === "debug" ? "·" : "✓";
-      process.stdout.write(`${tag} ${line}${renderFields(filteredFields)}\n`);
+      out.write(`${tag} ${line}${renderFields(filteredFields)}\n`);
     }
   };
 
@@ -111,7 +113,7 @@ export function createLogger(opts: LoggerOptions = {}): Logger {
     info: (m, f) => write("info", m, f),
     warn: (m, f) => write("warn", m, f),
     error: (m, f) => write("error", m, f),
-    child: (p) => createLogger({ level, json, prefix: p }),
+    child: (p) => createLogger({ level, json, prefix: p, out }),
   };
 }
 

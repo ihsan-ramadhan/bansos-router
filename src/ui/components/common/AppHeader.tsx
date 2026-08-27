@@ -1,7 +1,7 @@
-import { Cpu, Wrench, Shield, MessageSquare } from "lucide-preact";
+import { Cpu, Wrench, Shield, MessageSquare, Activity } from "lucide-preact";
 import type { DaemonStatus } from "../../types";
 
-export type NavTab = "models" | "agent" | "relay" | "playground";
+export type NavTab = "models" | "agent" | "relay" | "playground" | "activity";
 
 interface AppHeaderProps {
   activeTab: NavTab;
@@ -136,6 +136,19 @@ export function AppHeader({
           >
             <MessageSquare className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
             <span>Playground</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onSelectTab("activity")}
+            className={`shrink-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 border-b-2 text-xs sm:text-[13px] font-medium transition whitespace-nowrap cursor-pointer min-h-10.5 ${
+              activeTab === "activity"
+                ? "border-[#2b64e0] text-white"
+                : "border-transparent text-[#9393a0] hover:text-[#e4e4e7] hover:border-[#32323d]"
+            }`}
+          >
+            <Activity className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+            <span>Activity</span>
           </button>
         </nav>
       </div>

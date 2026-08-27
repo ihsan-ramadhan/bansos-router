@@ -14,6 +14,7 @@ import {
   type SecurityConfig,
 } from "../security/policy";
 import { scanRequestBody, type SecretType } from "../security/secret-guard";
+import { ActivityStore, type ActivityKind } from "./activity";
 import type { ModelDef, Upstream } from "../upstreams/types";
 import { pickSmartDefaultModel } from "../upstreams/types";
 import { parseChatTurn, sanitizeChatBody } from "../protocols/openai-chat";
@@ -36,6 +37,8 @@ import { readSseStream } from "../protocols/stream";
 import type { RuntimeCatalog } from "./catalog";
 import type { RateLimiter } from "./rate-limit";
 
+let activity: ActivityStore = new ActivityStore();
+
 export interface StatusPayload {
   status: "ok";
   uptimeSeconds: number;
@@ -57,6 +60,7 @@ export interface ServerOptions {
   log: Logger;
   startedAt: number;
   security?: SecurityConfig;
+  activity?: ActivityStore;
 }
 
 const ALLOWED_METHODS = new Set(["GET", "POST", "OPTIONS"]);
@@ -113,6 +117,10 @@ const API_EXACT_PATHS = new Set([
   "/bansos/relay/",
   "/bansos/relay/probe",
   "/bansos/relay/probe/",
+  "/bansos/usage",
+  "/bansos/usage/",
+  "/bansos/events",
+  "/bansos/events/",
   "/chat/completions",
   "/chat/completions/",
   "/messages",
@@ -342,7 +350,15 @@ function findUsageObject(tail: string): Record<string, unknown> | null {
 
 // pass-through that watches the tail of the SSE bytes for a usage object and
 // logs it once, ensuring a terminating `data: [DONE]` frame is emitted if missing.
-export function logUsageTransform(model: string, upstream: string, log: Logger, startedAt: number): Transform {
+export function logUsageTransform(
+  model: string,
+  upstream: string,
+  log: Logger,
+  startedAt: number,
+  requestedModel?: string,
+  activity?: ActivityStore,
+  kind: ActivityKind = "chat",
+): Transform {
   let tail = "";
   let reported = false;
   return new Transform({
@@ -355,6 +371,17 @@ export function logUsageTransform(model: string, upstream: string, log: Logger, 
           if (usage) {
             reported = true;
             log.info("chat done", { model, upstream, durationMs: Date.now() - startedAt, ...usage });
+            activity?.record({
+              kind,
+              model,
+              requestedModel: requestedModel ?? model,
+              upstream,
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              durationMs: Date.now() - startedAt,
+              status: "ok",
+              ...(requestedModel && requestedModel !== model ? { failoverFrom: requestedModel } : {}),
+            });
           }
         }
       }
@@ -670,6 +697,17 @@ async function handleChat(
         };
         if (current.id !== model.id) fields.failoverFrom = model.id;
         log.info("chat done", fields);
+        activity.record({
+          kind: "chat",
+          model: current.id,
+          requestedModel: model.id,
+          upstream: currentUpstream.id,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          durationMs: Date.now() - requestStartedAt,
+          status: "ok",
+          ...(current.id !== model.id ? { failoverFrom: model.id } : {}),
+        });
       }
     } catch {
       // usage is informational only; the plain response still goes out
@@ -682,7 +720,7 @@ async function handleChat(
     Readable.fromWeb(
       upstreamRes.body as import("node:stream/web").ReadableStream,
     )
-      .pipe(logUsageTransform(current.id, currentUpstream.id, log, requestStartedAt))
+      .pipe(logUsageTransform(current.id, currentUpstream.id, log, requestStartedAt, model.id, activity, "chat"))
       .pipe(res);
   } else {
     res.end();
@@ -809,6 +847,17 @@ async function handleResponses(
       };
       if (current.id !== resolved.id) fields.failoverFrom = resolved.id;
       log.info("responses done", fields);
+      activity.record({
+        kind: "responses",
+        model: current.id,
+        requestedModel: resolved.id,
+        upstream: currentUpstream.id,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        durationMs: Date.now() - requestStartedAt,
+        status: "ok",
+        ...(current.id !== resolved.id ? { failoverFrom: resolved.id } : {}),
+      });
     }
     const out = renderResponse(json, current.id);
     res.writeHead(upstreamRes.status, { "content-type": "application/json", ...CORS_HEADERS });
@@ -852,6 +901,17 @@ async function handleResponses(
     };
     if (current.id !== resolved.id) fields.failoverFrom = resolved.id;
     log.info("responses done", fields);
+    activity.record({
+      kind: "responses",
+      model: current.id,
+      requestedModel: resolved.id,
+      upstream: currentUpstream.id,
+      inputTokens: streamUsage.inputTokens,
+      outputTokens: streamUsage.outputTokens,
+      durationMs: Date.now() - requestStartedAt,
+      status: "ok",
+      ...(current.id !== resolved.id ? { failoverFrom: resolved.id } : {}),
+    });
   }
   res.end();
 }
@@ -947,6 +1007,17 @@ async function handleAnthropic(
       };
       if (current.id !== model.id) fields.failoverFrom = model.id;
       log.info("anthropic done", fields);
+      activity.record({
+        kind: "anthropic",
+        model: current.id,
+        requestedModel: model.id,
+        upstream: currentUpstream.id,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        durationMs: Date.now() - requestStartedAt,
+        status: "ok",
+        ...(current.id !== model.id ? { failoverFrom: model.id } : {}),
+      });
     }
     sendJson(res, upstreamRes.status === 200 ? 200 : upstreamRes.status, message);
     return;
@@ -991,6 +1062,17 @@ async function handleAnthropic(
     };
     if (current.id !== model.id) fields.failoverFrom = model.id;
     log.info("anthropic done", fields);
+    activity.record({
+      kind: "anthropic",
+      model: current.id,
+      requestedModel: model.id,
+      upstream: currentUpstream.id,
+      inputTokens: streamUsage.inputTokens,
+      outputTokens: streamUsage.outputTokens,
+      durationMs: Date.now() - requestStartedAt,
+      status: "ok",
+      ...(current.id !== model.id ? { failoverFrom: model.id } : {}),
+    });
   }
   res.end();
 }
@@ -1011,6 +1093,7 @@ function sendAnthropicError(
 export function createServer(opts: ServerOptions): http.Server {
   const { catalog, rateLimiter, port, log, startedAt } = opts;
   const security = opts.security ?? DEFAULT_SECURITY_CONFIG;
+  activity = opts.activity ?? new ActivityStore();
 
   const visibleRelayState = () => {
     const relay = loadRelayState();
@@ -1177,6 +1260,19 @@ export function createServer(opts: ServerOptions): http.Server {
 
     if (method === "GET" && url === "/bansos/relay") {
       sendJson(res, 200, visibleRelayState());
+      return;
+    }
+
+    if (method === "GET" && url === "/bansos/usage") {
+      sendJson(res, 200, activity.getUsage());
+      return;
+    }
+
+    if (method === "GET" && url === "/bansos/events") {
+      const parsedUrl = new URL(rawUrl, "http://127.0.0.1");
+      const limitParam = Number(parsedUrl.searchParams.get("limit"));
+      const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 500) : 100;
+      sendJson(res, 200, { events: activity.getEvents(limit) });
       return;
     }
 

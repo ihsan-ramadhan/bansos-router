@@ -7,6 +7,7 @@ import { ModelCatalog } from "./components/models/ModelCatalog";
 import { AgentSetup } from "./components/agent/AgentSetup";
 import { RelayManager } from "./components/relay/RelayManager";
 import { Playground } from "./components/playground/Playground";
+import { ActivityView } from "./components/activity/ActivityView";
 import { useDaemonStatus } from "./hooks/useDaemonStatus";
 import { usePing } from "./hooks/usePing";
 import { ExternalLink } from "lucide-preact";
@@ -51,7 +52,7 @@ export function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-[116px] sm:pt-[128px] pb-6 sm:pb-8 space-y-4 sm:space-y-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-29 sm:pt-32 pb-6 sm:pb-8 space-y-4 sm:space-y-6">
         {/* Offline Alert Banner */}
         {!isConnected && !isConnecting && (
           <OfflineBanner
@@ -103,6 +104,11 @@ export function App() {
             models={models}
             daemonPort={daemonPort}
           />
+        )}
+
+        {/* Tab 5: Activity & Usage */}
+        {activeTab === "activity" && (
+          <ActivityView />
         )}
       </main>
 

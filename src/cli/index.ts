@@ -25,6 +25,7 @@ Commands:
   ping        probe health and latency of model(s)
   refresh     re-run health checks
   logs        tail the daemon log live
+  usage       show request usage + token totals (--json)
   relay       manage relay egress
   doctor      diagnose setup
 
@@ -152,11 +153,16 @@ Exit codes: 0 refreshed, 1 daemon unreachable.
   logs: `bansos logs — tail ~/.bansos/logs/bansosd.log live
 
 Usage:
-  bansos logs
+  bansos logs [--activity]
 
-Shows the last 50 lines, then follows appends (500ms poll). Ctrl+C stops.
-Only useful after "bansos start --bg"; a foreground daemon already prints.
-Exit codes: 1 when no log file exists yet.
+Shows the last 50 lines of the daemon log, then follows appends (500ms poll).
+Ctrl+C stops. Works for both "bansos start" (foreground) and "bansos start --bg":
+the daemon now records every run to ~/.bansos/logs/bansosd.log.
+
+  --activity   instead of the raw log file, print the structured request feed
+              shown in the web UI "Activity" tab (model, tokens, latency,
+              failover, status) — the same source the UI polls.
+Exit codes: 1 when no log file exists yet (or the daemon is unreachable with --activity).
 `,
   relay: `bansos relay — manage relay egress for keyless upstreams
 
@@ -173,6 +179,18 @@ Usage:
 Checks daemon reachability and every harness config file, prints an update
 notice when one exists.
 Exit codes: 0 healthy, 1 any check failed.
+`,
+  usage: `bansos usage — show request usage and token totals
+
+Usage:
+  bansos usage [--json]
+
+Flags:
+  --json    emit the raw /bansos/usage document instead of a summary table
+
+Requires a running daemon (bansos start). Aggregates reset when the daemon
+restarts. Use the "Activity" tab in the web UI for a live, per-request feed.
+Exit codes: 0 daemon reachable, 1 daemon unreachable.
 `,
 };
 
@@ -218,7 +236,7 @@ async function main(): Promise<number> {
     case "stop":
       return runStop();
     case "logs":
-      return runLogs();
+      return runLogs(args.slice(1));
     case "status":
       return runStatus(json);
     case "ping":
@@ -226,6 +244,8 @@ async function main(): Promise<number> {
     case "models":
     case "refresh":
       return runStatusOrModels(args[0], json);
+    case "usage":
+      return runUsage(json);
     case "relay":
       return runRelay(args.slice(1));
     case "doctor":
@@ -306,11 +326,57 @@ async function runStart(args: string[]): Promise<number> {
 // tail ~/.bansos/logs/bansosd.log in real time: same output the foreground
 // daemon prints, for a background (--bg) daemon. Polls the file size (500ms)
 // and prints appends; Ctrl+C (or SIGTERM) stops the watch.
-async function runLogs(): Promise<number> {
+async function runLogs(args: string[]): Promise<number> {
+  const activity = args.includes("--activity");
+  const config = await import("../daemon/state").then((m) => m.loadConfig());
+  const base = `http://127.0.0.1:${config.port}`;
+
+  if (activity) {
+    let res: Response;
+    try {
+      res = await fetch(`${base}/bansos/events?limit=100`);
+    } catch {
+      console.error(`bansos logs: daemon not reachable at ${base} — start it with "bansos start"`);
+      return 1;
+    }
+    if (!res.ok) {
+      console.error(`bansos logs: daemon returned HTTP ${res.status}`);
+      return 1;
+    }
+    const body = (await res.json()) as { events: Array<{
+      id: number;
+      timestamp: number;
+      kind: string;
+      model: string;
+      upstream: string;
+      inputTokens: number;
+      outputTokens: number;
+      durationMs: number;
+      status: string;
+      failoverFrom?: string;
+    }> };
+    if (body.events.length === 0) {
+      console.log("(no activity yet)");
+      return 0;
+    }
+    const time = (ts: number) => new Date(ts).toLocaleTimeString();
+    const fmt = (n: number) =>
+      n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k` : String(n);
+    for (const e of body.events) {
+      const status = e.status === "ok" ? "✓" : "✗";
+      const fo = e.failoverFrom ? ` (failover ${e.failoverFrom}→${e.model})` : "";
+      console.log(
+        `${time(e.timestamp)} ${status} ${e.kind} ${e.model} [${e.upstream}] ` +
+          `${fmt(e.inputTokens)}/${fmt(e.outputTokens)} tok ${e.durationMs}ms${fo}`,
+      );
+    }
+    return 0;
+  }
+
   const logFile = path.join(BANSOS_DIR, "logs", "bansosd.log");
   if (!fs.existsSync(logFile)) {
     console.error(`bansos logs: no log file at ${logFile}`);
-    console.error(`  the daemon writes one when started with: bansos start --bg`);
+    console.error(`  the daemon writes one when started with: bansos start (or --bg)`);
     return 1;
   }
 
@@ -504,6 +570,80 @@ async function runStatus(json: boolean): Promise<number> {
   if (update.hasUpdate) {
     console.log(`\nUpdate available: ${update.current} -> ${update.latest} (run: npm i -g bansos-router)`);
   }
+  return 0;
+}
+
+interface UsageCliShape {
+  totalRequests: number;
+  okRequests: number;
+  errorRequests: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  failoverCount: number;
+  avgDurationMs: number;
+  perModel: Record<string, { requests: number; ok: number; inputTokens: number; outputTokens: number }>;
+  perUpstream: Record<string, { requests: number; ok: number }>;
+}
+
+async function runUsage(json: boolean): Promise<number> {
+  const config = await import("../daemon/state").then((m) => m.loadConfig());
+  const base = `http://127.0.0.1:${config.port}`;
+
+  let body: UsageCliShape;
+  try {
+    const res = await fetch(`${base}/bansos/usage`);
+    if (!res.ok) {
+      console.error(`bansos usage: daemon returned HTTP ${res.status}`);
+      return 1;
+    }
+    body = (await res.json()) as {
+      totalRequests: number;
+      okRequests: number;
+      errorRequests: number;
+      totalInputTokens: number;
+      totalOutputTokens: number;
+      failoverCount: number;
+      avgDurationMs: number;
+      perModel: Record<string, { requests: number; ok: number; inputTokens: number; outputTokens: number }>;
+      perUpstream: Record<string, { requests: number; ok: number }>;
+    };
+  } catch {
+    console.error(`bansos usage: daemon not reachable at ${base} — start it with "bansos start"`);
+    return 1;
+  }
+
+  if (json) {
+    console.log(JSON.stringify(body));
+    return 0;
+  }
+
+  const fmt = (n: number) =>
+    n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k` : String(n);
+  const dur = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`);
+
+  console.log(`\n● usage summary (resets on daemon restart)\n`);
+  console.log(`  requests    : ${body.totalRequests} (${body.okRequests} ok, ${body.errorRequests} err)`);
+  console.log(`  tokens in   : ${fmt(body.totalInputTokens)}`);
+  console.log(`  tokens out  : ${fmt(body.totalOutputTokens)}`);
+  console.log(`  avg latency : ${dur(body.avgDurationMs)}`);
+  console.log(`  failovers   : ${body.failoverCount}`);
+
+  const models = Object.entries(body.perModel).sort((a, b) => b[1].requests - a[1].requests);
+  if (models.length > 0) {
+    console.log(`\n  by model:`);
+    for (const [m, s] of models) {
+      console.log(`    ${m}  ${s.requests} reqs · ${fmt(s.inputTokens)}/${fmt(s.outputTokens)} tok`);
+    }
+  }
+
+  const upstreams = Object.entries(body.perUpstream).sort((a, b) => b[1].requests - a[1].requests);
+  if (upstreams.length > 0) {
+    console.log(`\n  by upstream:`);
+    for (const [u, s] of upstreams) {
+      console.log(`    ${u}  ${s.requests} reqs`);
+    }
+  }
+  console.log("");
   return 0;
 }
 

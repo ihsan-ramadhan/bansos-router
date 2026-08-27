@@ -5,6 +5,8 @@ import type {
   AdapterRenderResponse,
   RelayStateResponse,
   RelayUpdatePayload,
+  UsageStats,
+  ActivityEvent,
 } from "../types";
 
 const BASE_URL = "";
@@ -95,4 +97,17 @@ export async function pingModel(
     const latencyMs = Math.round(performance.now() - start);
     return { latencyMs, status: 0 };
   }
+}
+
+export async function fetchUsage(): Promise<UsageStats> {
+  const res = await fetch(`${BASE_URL}/bansos/usage`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch usage`);
+  return res.json();
+}
+
+export async function fetchEvents(limit = 100): Promise<ActivityEvent[]> {
+  const res = await fetch(`${BASE_URL}/bansos/events?limit=${limit}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch events`);
+  const body = (await res.json()) as { events: ActivityEvent[] };
+  return body.events;
 }
