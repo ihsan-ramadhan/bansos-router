@@ -106,7 +106,7 @@ lossless.
 
 - `nvidia/nemotron-3-super-120b-a12b:free` emits the response in the
   `reasoning` field instead of `content`, rendering blank in some clients.
-- **Normalization rule (must implement):** if an upstream response has
+- **Normalization rule (implemented):** if an upstream response has
   `reasoning`/`reasoning_content` but empty/missing `content`, and the inbound
   protocol expects content (Claude Code especially), synthesize:
   1. move `reasoning` → thinking block (Anthropic) or `reasoning` item
@@ -116,6 +116,15 @@ lossless.
      not stall — or a hard error with the reasoning text, configurable.
 - Stripping: for `reasoning:false` models, never send thinking params and drop
   any thinking blocks in history.
+
+### 3.4 Vision / multimodal
+
+Vision capability is advertised per-model via the `input` field on `/v1/models`
+(`input: ["text", "image"]`). The daemon detects it automatically for the Kilo
+and LLM7 upstreams from the live catalog (`architecture.input_modalities`), and
+from a manual seed for Zen (static catalog). Image parts are passed through to
+upstreams only when the resolved model lists `image` in `input`; otherwise the
+image block is dropped and the text is sent alone.
 
 ## 4. Streaming (SSE)
 

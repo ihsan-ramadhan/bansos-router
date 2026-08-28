@@ -111,6 +111,8 @@ With `mode: "strict"`:
   Codex, Hermes, Goose, OpenClaw, Antigravity, JCode, 9Router, Continue, Cline, and Roo Code.
 - Web UI dashboard served at `http://127.0.0.1:17070/` with model catalog explorer,
   live ping probes, 1-click harness setup generator, relay egress manager, and test playground.
+  The catalog shows per-model capabilities (Think / Vision badges) and a live
+  usage + activity tracker (requests, tokens, latency, error rate).
 - The pi extension ([`pi-bansos-router`](extensions/pi/README.md)) registers the
   `bansosr` provider, so every free model shows up in pi's `/model` picker. There is
   also a `/bansosr` command for status. If the daemon is not running when pi
@@ -134,52 +136,52 @@ free tiers; run `bansos models` or `bansos ping` to see what is alive right now.
 
 ### OpenCode Zen
 
-| model id | reasoning | context | max output |
-|---|---|---|---|
-| `mimo-v2.5-free` | no | 1M | 131k |
-| `nemotron-3-ultra-free` | yes | 1M | 65k |
-| `big-pickle` | yes | 200k | 32k |
-| `laguna-s-2.1-free` | yes | 262k | 32k |
-| `hy3-free` | yes | 256k | 65k |
-| `nemotron-3.5-lightning-free` | yes | 1M | 65k |
-| `muse-spark-1.2-contributor-free` | no | 1M | 65k |
+| model id | reasoning | vision | context | max output |
+|---|---|---|---|---|
+| `mimo-v2.5-free` | ❌ | ✓ | 1M | 131k |
+| `nemotron-3-ultra-free` | ✓ | ❌ | 1M | 65k |
+| `big-pickle` | ✓ | ❌ | 200k | 32k |
+| `laguna-s-2.1-free` | ✓ | ❌ | 262k | 32k |
+| `hy3-free` | ✓ | ❌ | 256k | 65k |
+| `nemotron-3.5-lightning-free` | ✓ | ❌ | 1M | 65k |
+| `muse-spark-1.2-contributor-free` | ❌ | ❌ | 1M | 65k |
 
 ### KiloCode gateway
 
-| model id | reasoning | context | max output |
-|---|---|---|---|
-| `kilo-auto/free` | no | 256k | 10k |
-| `stepfun/step-3.7-flash:free` | no | 262k | 262k |
-| `tencent/hy3:free` | yes | 262k | 128k |
-| `poolside/laguna-s-2.1:free` | yes | 262k | 32k |
-| `dots-studio/dots-3-note-preview:free` | no | 512k | 10k |
-| `liquid/lfm-2.5-2.6b:free` | no | 128k | 8k |
-| `nvidia/nemotron-3.5-lightning:free` | yes | 1M | 65k |
-| `thinkingmachines/inkling-small:free` | no | 1M | 10k |
-| `thinkingmachines/inkling:free` | no | 1M | 10k |
-| `poolside/laguna-xs-2.1:free` | no | 262k | 32k |
-| `cohere/north-mini-code:free` | no | 256k | 64k |
-| `nvidia/nemotron-3.5-content-safety:free` | yes | 128k | 8k |
-| `nvidia/nemotron-3-ultra-550b-a55b:free` | yes | 1M | 65k |
-| `minimax/minimax-m3:free` | no | 1M | 10k |
-| `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | yes | 256k | 65k |
-| `minimax/minimax-m2.7:free` | no | 196k | 10k |
-| `nvidia/nemotron-3-super-120b-a12b:free` | yes | 262k | 262k |
-| `openrouter/free` | no | 200k | 65k |
+| model id | reasoning | vision | context | max output |
+|---|---|---|---|---|
+| `kilo-auto/free` | ❌ | ❌ | 256k | 10k |
+| `stepfun/step-3.7-flash:free` | ❌ | ✓ | 262k | 262k |
+| `tencent/hy3:free` | ✓ | ❌ | 262k | 128k |
+| `poolside/laguna-s-2.1:free` | ✓ | ❌ | 262k | 32k |
+| `dots-studio/dots-3-note-preview:free` | ❌ | ✓ | 512k | 10k |
+| `liquid/lfm-2.5-2.6b:free` | ❌ | ❌ | 128k | 8k |
+| `nvidia/nemotron-3.5-lightning:free` | ✓ | ❌ | 1M | 65k |
+| `thinkingmachines/inkling-small:free` | ❌ | ✓ | 1M | 10k |
+| `thinkingmachines/inkling:free` | ❌ | ✓ | 1M | 10k |
+| `poolside/laguna-xs-2.1:free` | ❌ | ❌ | 262k | 32k |
+| `cohere/north-mini-code:free` | ❌ | ❌ | 256k | 64k |
+| `nvidia/nemotron-3.5-content-safety:free` | ✓ | ✓ | 128k | 8k |
+| `nvidia/nemotron-3-ultra-550b-a55b:free` | ✓ | ❌ | 1M | 65k |
+| `minimax/minimax-m3:free` | ❌ | ✓ | 1M | 10k |
+| `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | ✓ | ✓ | 256k | 65k |
+| `minimax/minimax-m2.7:free` | ❌ | ❌ | 196k | 10k |
+| `nvidia/nemotron-3-super-120b-a12b:free` | ✓ | ❌ | 262k | 262k |
+| `openrouter/free` | ❌ | ✓ | 200k | 65k |
 
 ### LLM7
 
-| model id | reasoning | context | max output |
-|---|---|---|---|
-| `codestral-latest` | no | 32k | 8k |
-| `deepseek-v3.2` | yes | 128k | 16k |
-| `gemini-3.1-flash-lite` | no | 256k | 65k |
-| `gpt-oss` | yes | 131k | 16k |
-| `meta-Llama-3.1-8B-Instruct-Turbo` | no | 128k | 16k |
-| `minimax-m2.7` | yes | 180k | 32k |
-| `mistral-Nemo-Instruct-2407` | no | 128k | 16k |
-| `default` | no | 128k | 8k |
-| `fast` | no | 128k | 8k |
+| model id | reasoning | vision | context | max output |
+|---|---|---|---|---|
+| `codestral-latest` | ❌ | ❌ | 32k | 8k |
+| `deepseek-v3.2` | ✓ | ❌ | 128k | 16k |
+| `gemini-3.1-flash-lite` | ❌ | ❌ | 256k | 65k |
+| `gpt-oss` | ✓ | ❌ | 131k | 16k |
+| `meta-Llama-3.1-8B-Instruct-Turbo` | ❌ | ❌ | 128k | 16k |
+| `minimax-m2.7` | ✓ | ❌ | 180k | 32k |
+| `mistral-Nemo-Instruct-2407` | ❌ | ❌ | 128k | 16k |
+| `default` | ❌ | ❌ | 128k | 8k |
+| `fast` | ❌ | ❌ | 128k | 8k |
 
 Notes:
 

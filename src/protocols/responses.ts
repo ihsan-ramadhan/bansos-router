@@ -160,11 +160,42 @@ function nextResponseId(): string {
   return `resp_${Date.now().toString(36)}${respSeq.toString(36)}`;
 }
 
+export function extractReasoningText(message: any): string {
+  if (!message || typeof message !== "object") return "";
+  const parts: string[] = [];
+  if (typeof message.reasoning === "string" && message.reasoning.length > 0) {
+    parts.push(message.reasoning);
+  }
+  const details = message.reasoning_details;
+  if (Array.isArray(details)) {
+    for (const d of details) {
+      if (d && typeof d.text === "string" && d.text.length > 0) parts.push(d.text);
+    }
+  }
+  const raw = parts.join("\n\n").trim();
+  if (!raw) return "";
+
+  const markers = ["\nanswer:", "answer is", "\njawaban:", "the answer is", "answear is", "conclusion:", "\nfinal answer"];
+  const lower = raw.toLowerCase();
+  for (const m of markers) {
+    const idx = lower.indexOf(m);
+    if (idx !== -1) {
+      const slice = raw.slice(idx + m.length).trim();
+      if (slice) return slice;
+    }
+  }
+  const paragraphs = raw.split(/\n\s*\n/).map((p: string) => p.trim()).filter(Boolean);
+  const last = paragraphs[paragraphs.length - 1];
+  return last ?? raw;
+}
+
 // build a non-streaming responses object from an openai chat completion.
 export function renderResponse(chatJson: any, model: string): unknown {
   const choice = chatJson?.choices?.[0] ?? {};
   const message = choice.message ?? {};
-  const text = typeof message.content === "string" ? message.content : "";
+  const direct = typeof message.content === "string" ? message.content : "";
+  // fall back to reasoning text only when the direct content is empty
+  const text = direct.length > 0 ? direct : extractReasoningText(message);
   const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
 
   const output: any[] = [];
@@ -222,6 +253,7 @@ export class ResponsesStreamEncoder {
   private textStarted = false;
   private textDone = false;
   private textBuffer = "";
+  private reasoningBuffer = "";
   private inputTokens = 0;
   private outputTokens = 0;
 
@@ -276,6 +308,21 @@ export class ResponsesStreamEncoder {
         delta: delta.content,
       }));
     }
+    const reasoningDelta =
+      (typeof delta.reasoning === "string" ? delta.reasoning : "") +
+      (typeof delta.reasoning_content === "string" ? delta.reasoning_content : "");
+    if (reasoningDelta.length > 0) {
+      this.textStarted = true;
+      this.reasoningBuffer += reasoningDelta;
+      // surface the reasoning as text deltas too, so a streaming client that
+      // only reads the output_text block still receives the answer.
+      out.push(renderResponsesEvent("response.output_text.delta", {
+        item_id: this.itemId,
+        output_index: 0,
+        content_index: 0,
+        delta: reasoningDelta,
+      }));
+    }
     return out;
   }
 
@@ -285,22 +332,23 @@ export class ResponsesStreamEncoder {
       // upstream produced no chunks; still emit a well-formed completed event
       this.open(this.model || "unknown");
     }
+    // prefer streamed content; fall back to accumulated reasoning text
+    const finalText = this.textBuffer.length > 0 ? this.textBuffer : this.reasoningBuffer;
     if (this.textStarted && !this.textDone) {
       this.textDone = true;
       out.push(renderResponsesEvent("response.output_text.done", {
         item_id: this.itemId,
         output_index: 0,
         content_index: 0,
-        text: this.textBuffer,
+        text: finalText,
       }));
       out.push(renderResponsesEvent("response.content_part.done", {
         output_index: 0,
         content_index: 0,
         item_id: this.itemId,
-        part: { type: "output_text", text: this.textBuffer, annotations: [] },
+        part: { type: "output_text", text: finalText, annotations: [] },
       }));
     }
-    const finalText = this.textBuffer;
     out.push(renderResponsesEvent("response.output_item.done", {
       output_index: 0,
       item: {

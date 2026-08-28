@@ -18,7 +18,7 @@ import { ActivityStore, type ActivityKind } from "./activity";
 import type { ModelDef, Upstream } from "../upstreams/types";
 import { pickSmartDefaultModel } from "../upstreams/types";
 import { parseChatTurn, sanitizeChatBody } from "../protocols/openai-chat";
-import { parseResponsesTurn, renderResponse, ResponsesStreamEncoder } from "../protocols/responses";
+import { parseResponsesTurn, renderResponse, extractReasoningText, ResponsesStreamEncoder } from "../protocols/responses";
 import {
   parseAnthropicRequest,
   openAiCompletionToAnthropicMessage,
@@ -696,8 +696,20 @@ async function handleChat(
   if (!parsed.value.stream) {
     // non-stream: buffer once to read usage, then forward the exact bytes
     const text = await upstreamRes.text();
+    let outText = text;
     try {
-      const usage = extractUsage(JSON.parse(text));
+      const json = JSON.parse(text);
+      const msg = json?.choices?.[0]?.message;
+      if (msg && typeof msg.content === "string" && msg.content.length === 0) {
+        const rt = extractReasoningText(msg);
+        if (rt) {
+          // patch only the message object, preserving byte-exact passthrough
+          // of every other field (usage, system_fingerprint, etc.)
+          json.choices[0].message = { ...msg, content: rt };
+          outText = JSON.stringify(json);
+        }
+      }
+      const usage = extractUsage(json);
       if (usage) {
         const fields: Record<string, unknown> = {
           model: current.id,
@@ -722,7 +734,7 @@ async function handleChat(
     } catch {
       // usage is informational only; the plain response still goes out
     }
-    res.end(text);
+    res.end(outText);
     return;
   }
 

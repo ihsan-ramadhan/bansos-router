@@ -172,3 +172,54 @@ test("ResponsesStreamEncoder: open/push/close emits spec event sequence", () => 
   assert.match(close, /"output":\[\{"id":"msg_/);
   assert.match(close, /"type":"output_text","text":"Hi"/);
 });
+
+test("renderResponse: empty content + reasoning falls back to reasoning text", () => {
+  const out = renderResponse(
+    {
+      id: "chatcmpl-2",
+      choices: [{
+        message: {
+          role: "assistant",
+          content: "",
+          reasoning: "The number in the image is 42.",
+        },
+        finish_reason: "stop",
+      }],
+      usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
+    },
+    "stepfun/step-3.7-flash:free",
+  ) as any;
+  assert.equal(out.output[0].content[0].text, "The number in the image is 42.");
+});
+
+test("renderResponse: non-empty content is kept untouched (no reasoning merge)", () => {
+  const out = renderResponse(
+    {
+      id: "chatcmpl-3",
+      choices: [{
+        message: {
+          role: "assistant",
+          content: "The answer is 42.",
+          reasoning: "I think the answer is 42 but let me double check.",
+        },
+        finish_reason: "stop",
+      }],
+      usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
+    },
+    "hy3-free",
+  ) as any;
+  assert.equal(out.output[0].content[0].text, "The answer is 42.");
+});
+
+test("ResponsesStreamEncoder: empty content but reasoning deltas surface as text", () => {
+  const enc = new ResponsesStreamEncoder();
+  enc.open("stepfun/step-3.7-flash:free");
+  // upstream drops the answer into reasoning deltas, no content delta at all
+  enc.push({ choices: [{ delta: { reasoning: "The number is " } }] });
+  enc.push({ choices: [{ delta: { reasoning: "42." } }] });
+  const close = enc.close().join("");
+  // intermediate done events must use the resolved text, not an empty buffer
+  assert.match(close, /event: response\.output_text\.done/);
+  assert.match(close, /"text":"The number is 42\."/);
+  assert.match(close, /"type":"output_text","text":"The number is 42\."/);
+});

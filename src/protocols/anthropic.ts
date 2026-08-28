@@ -1,4 +1,5 @@
 import { sseEvent } from "./stream";
+import { extractReasoningText } from "./responses";
 import type { ParseResult } from "./internal";
 
 export interface AnthropicParsedRequest {
@@ -81,7 +82,9 @@ function blocksToText(blocks: any[]): string {
   return t;
 }
 
-function imageToOpenAi(source: any): any | null {
+export function imageToOpenAi(block: any): any | null {
+  if (!block || typeof block !== "object" || block.type !== "image") return null;
+  const source = block.source;
   if (!source || typeof source !== "object") return null;
   if (source.type === "base64" && source.media_type && source.data) {
     return { type: "image_url", image_url: { url: `data:${source.media_type};base64,${source.data}` } };
@@ -203,8 +206,21 @@ export function openAiCompletionToAnthropicMessage(resp: any, model: string): Js
   const message = choice.message ?? {};
   const content: any[] = [];
 
-  if (typeof message.content === "string" && message.content.length > 0) {
-    content.push({ type: "text", text: message.content });
+  // some free upstreams (e.g. stepfun) drop the answer into `reasoning`
+  // instead of `content`. Fall back so Anthropic clients still get it. To keep
+  // the stream/non-stream representations consistent, surface the fallback as a
+  // `thinking` block (the streaming encoder does the same).
+  const text = typeof message.content === "string" && message.content.length > 0
+    ? message.content
+    : "";
+  const reasoning = typeof message.content === "string" && message.content.length > 0
+    ? ""
+    : extractReasoningText(message);
+  if (reasoning) {
+    content.push({ type: "thinking", thinking: reasoning });
+  }
+  if (text) {
+    content.push({ type: "text", text });
   }
   for (const tc of message.tool_calls ?? []) {
     let input: any = {};

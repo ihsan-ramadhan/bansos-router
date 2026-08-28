@@ -6,6 +6,10 @@ import { RuntimeCatalog } from "../src/daemon/catalog";
 import { RateLimiter } from "../src/daemon/rate-limit";
 import { createLogger } from "../src/logger";
 import { modelDef, type ModelDef, type Upstream } from "../src/upstreams/types";
+import {
+  openAiCompletionToAnthropicMessage,
+  imageToOpenAi,
+} from "../src/protocols/anthropic";
 
 // SSE frames an openai-compatible upstream would send. `done` controls whether
 // the terminating `data: [DONE]` frame is present — several upstreams omit it.
@@ -126,4 +130,53 @@ test("anthropic stream with upstream [DONE] emits message_stop exactly once", as
     await daemon.close();
     await upstream.close();
   }
+});
+
+test("imageToOpenAi: translates a base64 image block into an image_url part", () => {
+  const out = imageToOpenAi({
+    type: "image",
+    source: { type: "base64", media_type: "image/png", data: "AAAA" },
+  });
+  assert.ok(out);
+  assert.equal(out!.type, "image_url");
+  assert.equal(out!.image_url.url, "data:image/png;base64,AAAA");
+});
+
+test("imageToOpenAi: returns null for non-image blocks", () => {
+  assert.equal(imageToOpenAi({ type: "text", text: "hi" }), null);
+  assert.equal(imageToOpenAi(null), null);
+});
+
+test("openAiCompletionToAnthropicMessage: empty content + reasoning falls back to a thinking block", () => {
+  const msg = openAiCompletionToAnthropicMessage(
+    {
+      id: "chatcmpl-1",
+      choices: [{
+        message: { role: "assistant", content: "", reasoning: "The number is 42." },
+        finish_reason: "stop",
+      }],
+      usage: { prompt_tokens: 5, completion_tokens: 2 },
+    },
+    "stepfun/step-3.7-flash:free",
+  ) as any;
+  const thinking = msg.content.find((c: any) => c.type === "thinking");
+  assert.ok(thinking, "reasoning must surface as a thinking block");
+  assert.equal(thinking.thinking, "The number is 42.");
+});
+
+test("openAiCompletionToAnthropicMessage: non-empty content stays in a text block", () => {
+  const msg = openAiCompletionToAnthropicMessage(
+    {
+      id: "chatcmpl-2",
+      choices: [{
+        message: { role: "assistant", content: "42", reasoning: "I think it is 42." },
+        finish_reason: "stop",
+      }],
+      usage: { prompt_tokens: 5, completion_tokens: 1 },
+    },
+    "hy3-free",
+  ) as any;
+  const text = msg.content.find((c: any) => c.type === "text");
+  assert.ok(text);
+  assert.equal(text.text, "42");
 });
