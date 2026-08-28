@@ -116,8 +116,8 @@ function startServer(
     activity,
   });
 
-  // initial health-check pass, then refresh on the configured interval
-  void catalog.refresh();
+  // refresh on the configured interval (the first refresh runs in main()
+  // after the server is listening, so the startup banner reflects live state)
   if (config.refreshIntervalMs > 0) {
     setInterval(() => void catalog.refresh(), config.refreshIntervalMs);
   }
@@ -177,11 +177,16 @@ async function main(argv: string[]): Promise<void> {
   // foreground (and the --bg child): always log to a file so `bansos logs`
   // works in every mode, while still echoing to stdout for an interactive run.
   fs.mkdirSync(LOG_DIR, { recursive: true });
-  const fileStream = fs.createWriteStream(LOG_FILE, { flags: "a" });
   const isBgChild = args.bgChild === true;
-  // A --bg child already has its stdout/stderr redirected to the file, so write
-  // the file once. A normal foreground daemon tees to both stdout and the file.
-  const out = isBgChild ? fileStream : createTeeStream(process.stdout, fileStream);
+  // In --bg mode the parent already redirected this child's stdout/stderr to
+  // LOG_FILE, so log straight to stdout: a single writer to the file. Opening a
+  // second handle to the same file would duplicate every line.
+  const out = isBgChild
+    ? process.stdout
+    : (() => {
+        const fileStream = fs.createWriteStream(LOG_FILE, { flags: "a" });
+        return createTeeStream(process.stdout, fileStream);
+      })();
   const log = createLogger({ prefix: "bansosd", out });
 
   // run an initial health-check pass, then refresh periodically

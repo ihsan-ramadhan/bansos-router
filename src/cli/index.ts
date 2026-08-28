@@ -302,6 +302,7 @@ async function runStart(args: string[]): Promise<number> {
       ...(port !== undefined ? ["--port", String(port)] : []),
       ...(bind !== undefined ? ["--bind", bind] : []),
       ...(unsafeAllowNonLoopback ? ["--unsafe-allow-non-loopback"] : []),
+      "--bg-child",
     ],
     {
       stdio: ["ignore", out, out] as unknown as import("node:child_process").StdioOptions,
