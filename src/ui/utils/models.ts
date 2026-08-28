@@ -1,6 +1,6 @@
 import type { ModelItem, PingResult, FilterAndSortOptions } from "../types";
 
-export type CapabilityFilter = "all" | "reasoning" | "fast" | "megacontext";
+export type CapabilityFilter = "all" | "reasoning" | "fast" | "megacontext" | "vision";
 export type HealthFilter = "all" | "ok" | "429" | "error";
 export type ModelSortField = "default" | "model" | "reasoning" | "context" | "maxOutput" | "latency";
 
@@ -64,6 +64,9 @@ export function matchesCapability(m: ModelItem, capabilityFilter: CapabilityFilt
     const ctx = m.context_window || m.context_length || 0;
     return ctx >= 256000;
   }
+  if (capabilityFilter === "vision") {
+    return Array.isArray(m.input) && m.input.includes("image");
+  }
   return true;
 }
 
@@ -100,7 +103,9 @@ export function compareByField(
   const dir = sortAsc ? 1 : -1;
   if (sortField === "model") return dir * a.id.localeCompare(b.id);
   if (sortField === "reasoning") {
-    return dir * ((b.reasoning ? 1 : 0) - (a.reasoning ? 1 : 0));
+    const scoreA = (a.reasoning ? 2 : 0) + (Array.isArray(a.input) && a.input.includes("image") ? 1 : 0);
+    const scoreB = (b.reasoning ? 2 : 0) + (Array.isArray(b.input) && b.input.includes("image") ? 1 : 0);
+    return dir * (scoreB - scoreA);
   }
   if (sortField === "context") {
     return dir * ((b.context_window || b.context_length || 0) - (a.context_window || a.context_length || 0));

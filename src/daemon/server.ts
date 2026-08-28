@@ -1183,6 +1183,7 @@ export function createServer(opts: ServerOptions): http.Server {
           max_tokens: m.maxTokens,
           maxTokens: m.maxTokens,
           reasoning: m.reasoning,
+          input: m.input,
         })),
       });
       return;

@@ -279,14 +279,14 @@ export function ModelCatalog({
                   </div>
                 </th>
 
-                {/* Reasoning column */}
+                {/* Capabilities column */}
                 <th
                   onClick={() => handleSort("reasoning")}
                   className="py-3 px-3 sm:px-4 hover:text-white transition cursor-pointer group"
-                  title="Sort reasoning-enabled models"
+                  title="Sort by reasoning capability"
                 >
                   <div className="flex items-center gap-1.5">
-                    <span>Reasoning</span>
+                    <span>Capabilities</span>
                     {getSortIcon("reasoning", sortField, sortAsc)}
                   </div>
                 </th>

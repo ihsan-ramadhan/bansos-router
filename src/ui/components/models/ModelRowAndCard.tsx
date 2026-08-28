@@ -1,5 +1,5 @@
 import type { ModelItem, PingResult } from "../../types";
-import { Loader2, CheckCircle2, AlertTriangle, XCircle, Sparkles, Check, Copy, Zap } from "lucide-preact";
+import { Loader2, CheckCircle2, AlertTriangle, XCircle, Sparkles, Check, Copy, Zap, Eye } from "lucide-preact";
 import { formatTokens, getProviderBadgeColor } from "../../utils/models";
 
 export function ModelPingStatusCell({ ping }: { ping?: PingResult }) {
@@ -60,7 +60,7 @@ export function ModelCatalogRow({ model, ping, copiedId, onCopy, onPingModel }: 
     <tr className="hover:bg-[#1a1a20] transition-colors duration-150 group">
       {/* Model info */}
       <td className="py-3 px-3 sm:px-4">
-        <div className="flex flex-col gap-1 min-w-[160px] sm:min-w-[200px]">
+        <div className="flex flex-col gap-1 min-w-40 sm:min-w-50">
           <div className="flex items-center gap-2">
             <span className="font-mono font-medium text-white text-xs sm:text-[13px] group-hover:text-[#60a5fa] transition">
               {model.id}
@@ -94,15 +94,23 @@ export function ModelCatalogRow({ model, ping, copiedId, onCopy, onPingModel }: 
         </div>
       </td>
 
-      {/* Reasoning */}
+      {/* Capabilities */}
       <td className="py-3 px-3 sm:px-4 whitespace-nowrap">
-        {model.reasoning ? (
-          <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-emerald-400 bg-emerald-950/60 border border-emerald-800/50 px-2 py-0.5 rounded-md">
-            <Sparkles className="h-3 w-3 shrink-0" /> Yes
-          </span>
-        ) : (
-          <span className="text-[#52525c] text-[11px] font-mono">-</span>
-        )}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {model.reasoning && (
+            <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-emerald-400 bg-emerald-950/60 border border-emerald-800/50 px-2 py-0.5 rounded-md">
+              <Sparkles className="h-3 w-3 shrink-0" /> Think
+            </span>
+          )}
+          {Array.isArray(model.input) && model.input.includes("image") && (
+            <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-amber-400 bg-amber-950/60 border border-amber-800/50 px-2 py-0.5 rounded-md">
+              <Eye className="h-3 w-3 shrink-0" /> Vision
+            </span>
+          )}
+          {!model.reasoning && !(Array.isArray(model.input) && model.input.includes("image")) && (
+            <span className="text-[#52525c] text-[11px] font-mono">-</span>
+          )}
+        </div>
       </td>
 
       {/* Context */}
@@ -194,6 +202,11 @@ export function ModelCard({ model, ping, copiedId, onCopy, onPingModel }: ModelC
               <Sparkles className="h-2.5 w-2.5 shrink-0" /> Think
             </span>
           )}
+          {Array.isArray(model.input) && model.input.includes("image") && (
+            <span className="inline-flex items-center gap-0.5 text-[9px] font-medium text-amber-400 bg-amber-950/60 border border-amber-800/50 px-1.5 py-0.2 rounded-md shrink-0">
+              <Eye className="h-2.5 w-2.5 shrink-0" /> Vision
+            </span>
+          )}
         </div>
       </div>
 
@@ -218,7 +231,7 @@ export function ModelCard({ model, ping, copiedId, onCopy, onPingModel }: ModelC
             type="button"
             onClick={() => onPingModel(model)}
             disabled={isPinging}
-            className="min-h-[28px] inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-[#202026] hover:bg-[#282832] active:bg-[#1a1a20] border border-[#2a2a34] text-[11px] font-medium text-[#d4d4d8] hover:text-white transition cursor-pointer disabled:opacity-50 shrink-0"
+            className="min-h-7 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-[#202026] hover:bg-[#282832] active:bg-[#1a1a20] border border-[#2a2a34] text-[11px] font-medium text-[#d4d4d8] hover:text-white transition cursor-pointer disabled:opacity-50 shrink-0"
             title={`Ping live response from ${model.id}`}
           >
             {isPinging ? (

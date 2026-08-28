@@ -10,6 +10,7 @@ export interface ModelItem {
   max_tokens?: number;
   maxTokens?: number;
   reasoning?: boolean;
+  input?: Array<"text" | "image">;
 }
 
 export interface ModelsResponse {
@@ -50,7 +51,7 @@ export interface FilterAndSortOptions {
   searchQuery: string;
   selectedProvider: string;
   activeHealthChip: "all" | "ok" | "429" | "error";
-  capabilityFilter: "all" | "reasoning" | "fast" | "megacontext";
+  capabilityFilter: "all" | "reasoning" | "fast" | "megacontext" | "vision";
   sortField: "default" | "model" | "reasoning" | "context" | "maxOutput" | "latency";
   sortAsc: boolean;
   pingResults: Record<string, PingResult>;

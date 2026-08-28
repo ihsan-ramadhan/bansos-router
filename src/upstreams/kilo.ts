@@ -22,7 +22,7 @@ export const KILO_MODELS: ModelDef[] = [
     reasoning: false,
     contextWindow: 262_144,
     maxTokens: 262_144,
-    input: ["text"],
+    input: ["text", "image"],
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
   }),
   modelDef({
@@ -126,7 +126,17 @@ export const KILO_MODELS: ModelDef[] = [
     reasoning: true,
     contextWindow: 256_000,
     maxTokens: 65_536,
-    input: ["text"],
+    input: ["text", "image"],
+    compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
+  }),
+  modelDef({
+    id: "minimax/minimax-m3:free",
+    name: "MiniMax M3 Free",
+    source: "kilo",
+    reasoning: true,
+    contextWindow: 1_048_576,
+    maxTokens: 65_536,
+    input: ["text", "image"],
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
   }),
   modelDef({
@@ -136,10 +146,19 @@ export const KILO_MODELS: ModelDef[] = [
     reasoning: false,
     contextWindow: 200_000,
     maxTokens: 65_536,
-    input: ["text"],
+    input: ["text", "image"],
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
   }),
 ];
+
+interface KiloApiModel {
+  id: string;
+  name?: string;
+  context_length?: number;
+  isFree?: boolean;
+  architecture?: { input_modalities?: string[] };
+  supported_parameters?: string[];
+}
 
 export const kiloUpstream: Upstream = {
   id: "kilo",
@@ -151,9 +170,7 @@ export const kiloUpstream: Upstream = {
     try {
       const res = await fetch(KILO_CATALOG_URL);
       if (!res.ok) return null;
-      const json = (await res.json()) as {
-        data?: Array<{ id: string; name?: string; context_length?: number }>;
-      };
+      const json = (await res.json()) as { data?: KiloApiModel[] };
       const live = json.data ?? [];
       const free = live.filter(
         (m) => m.id.endsWith(":free") || KILO_MODELS.some((k) => k.id === m.id),
@@ -161,15 +178,26 @@ export const kiloUpstream: Upstream = {
       if (free.length === 0) return null;
       return free.map((m) => {
         const known = KILO_MODELS.find((k) => k.id === m.id);
-        if (known) return known;
+        const modalities = m.architecture?.input_modalities ?? [];
+        const input: ("text" | "image")[] = modalities.includes("image")
+          ? ["text", "image"]
+          : ["text"];
+        if (known) {
+          return modelDef({
+            ...known,
+            contextWindow: m.context_length ?? known.contextWindow,
+            reasoning: m.supported_parameters?.includes("reasoning") ?? known.reasoning,
+            input,
+          });
+        }
         return modelDef({
           id: m.id,
           name: m.name ? m.name : m.id,
           source: "kilo",
-          reasoning: false,
+          reasoning: m.supported_parameters?.includes("reasoning") ?? false,
           contextWindow: m.context_length ?? 200_000,
           maxTokens: 10_000,
-          input: ["text"],
+          input,
           compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
         });
       });

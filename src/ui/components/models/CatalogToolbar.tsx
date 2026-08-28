@@ -7,6 +7,7 @@ import {
   X,
   Layers,
   Sparkles,
+  Eye,
 } from "lucide-preact";
 import type { CapabilityFilter } from "../../utils/models";
 import { formatProviderLabel } from "../../utils/models";
@@ -71,7 +72,7 @@ export function CatalogToolbar({
 
       <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
         {/* Provider dropdown select (native styling / simple dropdown) */}
-        <div className="relative flex-1 sm:flex-initial min-w-0 sm:min-w-[120px]">
+        <div className="relative flex-1 sm:flex-initial min-w-0 sm:min-w-30">
           <ProviderDropdown
             selectedProvider={selectedProvider}
             onSelectProvider={onSelectProvider}
@@ -86,7 +87,7 @@ export function CatalogToolbar({
           <button
             type="button"
             onClick={onCancelPing}
-            className="min-h-[38px] flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-950/70 hover:bg-rose-900/80 active:bg-rose-950 border border-rose-700/60 text-xs font-medium text-rose-200 hover:text-white transition cursor-pointer shadow-xs animate-pulse shrink-0"
+            className="min-h-9.5 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-950/70 hover:bg-rose-900/80 active:bg-rose-950 border border-rose-700/60 text-xs font-medium text-rose-200 hover:text-white transition cursor-pointer shadow-xs animate-pulse shrink-0"
             title="Click to cancel active ping sequence"
           >
             <X className="h-3.5 w-3.5 text-rose-400 shrink-0" />
@@ -101,7 +102,7 @@ export function CatalogToolbar({
             type="button"
             onClick={onPingAll}
             disabled={filteredCount === 0}
-            className="min-h-[38px] flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#202028] hover:bg-[#282834] active:bg-[#1a1a20] border border-[#2c2c36] text-xs font-medium text-white transition disabled:opacity-50 cursor-pointer shrink-0"
+            className="min-h-9.5 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#202028] hover:bg-[#282834] active:bg-[#1a1a20] border border-[#2c2c36] text-xs font-medium text-white transition disabled:opacity-50 cursor-pointer shrink-0"
             title="Ping live latency and status for visible models"
           >
             <Zap className="h-3.5 w-3.5 text-amber-400 shrink-0" />
@@ -114,7 +115,7 @@ export function CatalogToolbar({
           type="button"
           onClick={onRefreshCatalog}
           disabled={refreshing}
-          className="min-h-[38px] flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#2b64e0] hover:bg-[#3872ee] active:bg-[#2353be] text-xs font-medium text-white transition shadow-xs disabled:opacity-50 cursor-pointer shrink-0"
+          className="min-h-9.5 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#2b64e0] hover:bg-[#3872ee] active:bg-[#2353be] text-xs font-medium text-white transition shadow-xs disabled:opacity-50 cursor-pointer shrink-0"
           title="Refresh models from upstream providers"
         >
           <RotateCcw className={`h-3.5 w-3.5 shrink-0 ${refreshing ? "animate-spin" : ""}`} />
@@ -143,7 +144,7 @@ function ProviderDropdown({
       <select
         value={selectedProvider}
         onChange={(e) => onSelectProvider((e.target as HTMLSelectElement).value)}
-        className="w-full sm:w-auto min-h-[38px] appearance-none bg-[#121215] hover:bg-[#18181d] border border-[#262630] hover:border-[#383846] rounded-lg pl-8 pr-7 py-1.5 text-xs font-medium text-[#d4d4d8] transition cursor-pointer"
+        className="w-full sm:w-auto min-h-9.5 appearance-none bg-[#121215] hover:bg-[#18181d] border border-[#262630] hover:border-[#383846] rounded-lg pl-8 pr-7 py-1.5 text-xs font-medium text-[#d4d4d8] transition cursor-pointer"
         aria-label="Filter by provider"
       >
         <option value="all">All Providers ({totalModelsCount})</option>
@@ -232,6 +233,20 @@ export function CapabilityFilterChips({
       >
         <Layers className="h-3.5 w-3.5 shrink-0" />
         <span>Large Context (≥ 256k)</span>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onSelectCapability(capabilityFilter === "vision" ? "all" : "vision")}
+        className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition border cursor-pointer ${
+          capabilityFilter === "vision"
+            ? "bg-amber-950/90 text-amber-300 border-amber-500 shadow-xs"
+            : "bg-[#18181f] border-[#262630] text-amber-400 hover:border-amber-700/60"
+        }`}
+        title="Filter models that accept image input (vision / multimodal)"
+      >
+        <Eye className="h-3.5 w-3.5 shrink-0" />
+        <span>Vision</span>
       </button>
     </div>
   );

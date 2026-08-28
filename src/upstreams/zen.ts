@@ -19,7 +19,7 @@ export const ZEN_MODELS: ModelDef[] = [
     reasoning: false,
     contextWindow: 1_048_576,
     maxTokens: 131_072,
-    input: ["text"],
+    input: ["text", "image"],
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
   }),
   modelDef({
