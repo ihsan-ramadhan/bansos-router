@@ -311,9 +311,21 @@ async function runStart(args: string[]): Promise<number> {
   );
   child.unref();
   fs.closeSync(out);
+  // the child may auto-bump the port (e.g. 17070 -> 17071) if it is taken;
+  // read the actual bound port back from state.json once the child has written
+  // it (it writes pid: child.pid after listening), so the printed URLs match reality.
   const config = await import("../daemon/state").then((m) => m.loadConfig());
-  const effectivePort = port ?? config.port ?? DEFAULT_PORT;
-  const effectiveBind = bind ?? config.bind ?? "127.0.0.1";
+  let effectivePort = port ?? config.port ?? DEFAULT_PORT;
+  let effectiveBind = bind ?? config.bind ?? "127.0.0.1";
+  for (let i = 0; i < 100; i++) {
+    const st = readJson<{ pid?: number; port?: number; bind?: string }>(STATE_FILE);
+    if (st && st.pid === child.pid && typeof st.port === "number") {
+      effectivePort = st.port;
+      if (typeof st.bind === "string") effectiveBind = st.bind;
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
   const baseUrl = `http://${effectiveBind}:${effectivePort}`;
 
   console.log(`\n● bansosd started in background (pid ${child.pid})`);
