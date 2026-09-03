@@ -67,13 +67,13 @@ test("opencode adapter populates all models by default or single model when spec
   // default: all models
   const allWrites = adapter.render({
     baseUrl: "http://127.0.0.1:17070/v1",
-    defaultModel: "hy3-free",
+    defaultModel: "mimo-v2.5-free",
     models: SEEDED_MODELS,
     specificModel: false,
   });
   const allParsed = JSON.parse(allWrites[0]!.content);
   assert.ok(Object.keys(allParsed.provider.bansos.models).length >= 10);
-  assert.ok(allParsed.provider.bansos.models["hy3-free"]);
+  assert.ok(allParsed.provider.bansos.models["mimo-v2.5-free"]);
   assert.ok(allParsed.provider.bansos.models["mimo-v2.5-free"]);
   assert.ok(allParsed.provider.bansos.models["kilo-auto/free"]);
 
@@ -182,7 +182,7 @@ test("continue adapter populates models array and supports merge", () => {
 
   const writes = adapter.render({
     baseUrl: "http://127.0.0.1:17070/v1",
-    defaultModel: "tencent/hy3:free",
+    defaultModel: "mimo-v2.5-free",
     models: SEEDED_MODELS,
     specificModel: false,
   });
@@ -204,7 +204,7 @@ test("cline and roo adapters render valid openai-compatible configs and support 
 
     const writes = adapter.render({
       baseUrl: "http://127.0.0.1:17070/v1",
-      defaultModel: "tencent/hy3:free",
+      defaultModel: "mimo-v2.5-free",
       models: SEEDED_MODELS,
       specificModel: true,
     });
@@ -216,7 +216,7 @@ test("cline and roo adapters render valid openai-compatible configs and support 
     assert.equal(parsed.apiProvider, "openai-compatible");
     assert.equal(parsed.openAiBaseUrl, "http://127.0.0.1:17070/v1");
     assert.equal(parsed.openAiApiKey, "bansos");
-    assert.equal(parsed.openAiModelId, "tencent/hy3:free");
+    assert.equal(parsed.openAiModelId, "mimo-v2.5-free");
 
     const merged = applyMergeWrite(JSON.stringify({ customSetting: true }), writes[0]!.content);
     const parsedMerged = JSON.parse(merged);
@@ -249,7 +249,7 @@ test("jcode toml-block patches existing [providers.openai-compatible] without du
   const adapter = findAdapter("jcode")!;
   const write = adapter.render({
     baseUrl: "http://127.0.0.1:17070/v1",
-    defaultModel: "tencent/hy3:free",
+    defaultModel: "mimo-v2.5-free",
     models: SEEDED_MODELS,
     specificModel: true,
   })[0]!;
@@ -264,13 +264,13 @@ test("jcode toml-block patches existing [providers.openai-compatible] without du
   const firstSection = out.split("\n").findIndex((l) => /^\s*\[/.test(l));
   const before = out.split("\n").slice(0, firstSection).join("\n");
   assert.match(before, /default_provider = "openai-compatible"/);
-  assert.match(before, /default_model = "tencent\/hy3:free"/);
+  assert.match(before, /default_model = "mimo-v2\.5-free"/);
 
   // patched values inside the existing section
   assert.match(out, /base_url = "http:\/\/127\.0\.0\.1:17070\/v1"/);
   assert.match(out, /model_catalog = true/);
   assert.doesNotMatch(out, /model_catalog = false/);
-  assert.match(out, /context_window = 262144/);
+  assert.match(out, /context_window = 200000/);
 
   // untouched neighbours survive
   assert.match(out, /\[keybindings\]/);
@@ -283,7 +283,7 @@ test("jcode toml-block on fresh file keeps root keys at top and single table", (
   const adapter = findAdapter("jcode")!;
   const write = adapter.render({
     baseUrl: "http://127.0.0.1:17070/v1",
-    defaultModel: "tencent/hy3:free",
+    defaultModel: "mimo-v2.5-free",
     models: SEEDED_MODELS,
     specificModel: true,
   })[0]!;

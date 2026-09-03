@@ -7,16 +7,6 @@ export const LLM7_ALIASES = ["default", "fast"] as const;
 
 export const LLM7_MODELS: ModelDef[] = [
   modelDef({
-    id: "DeepSeek-V4-Flash-0731",
-    name: "DeepSeek V4 Flash",
-    source: "llm7",
-    reasoning: true,
-    contextWindow: 400_000,
-    maxTokens: 131_072,
-    input: ["text"],
-    compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
-  }),
-  modelDef({
     id: "codestral-latest",
     name: "Codestral Latest",
     source: "llm7",
@@ -27,21 +17,11 @@ export const LLM7_MODELS: ModelDef[] = [
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
   }),
   modelDef({
-    id: "gemini-3.1-flash-lite",
-    name: "Gemini 3.1 Flash Lite",
-    source: "llm7",
-    reasoning: false,
-    contextWindow: 256_000,
-    maxTokens: 65_536,
-    input: ["text", "image"],
-    compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
-  }),
-  modelDef({
-    id: "gpt-oss:20b",
+    id: "gpt-oss",
     name: "GPT OSS 20B",
     source: "llm7",
-    reasoning: false,
-    contextWindow: 128_000,
+    reasoning: true,
+    contextWindow: 131_072,
     maxTokens: 16_384,
     input: ["text"],
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },

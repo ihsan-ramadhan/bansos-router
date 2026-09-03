@@ -8,10 +8,10 @@ import {
 } from "../src/protocols/responses";
 
 test("parseResponsesTurn: bare string input becomes a user message", () => {
-  const r = parseResponsesTurn({ model: "hy3-free", input: "hello world" });
+  const r = parseResponsesTurn({ model: "mimo-v2.5-free", input: "hello world" });
   assert.ok(r.ok);
   if (!r.ok) return;
-  assert.equal(r.value.model, "hy3-free");
+  assert.equal(r.value.model, "mimo-v2.5-free");
   assert.equal(r.value.messages.length, 1);
   const m0 = r.value.messages[0]!;
   assert.equal(m0.role, "user");
@@ -20,7 +20,7 @@ test("parseResponsesTurn: bare string input becomes a user message", () => {
 
 test("parseResponsesTurn: instructions -> system, input[] items -> messages", () => {
   const r = parseResponsesTurn({
-    model: "hy3-free",
+    model: "mimo-v2.5-free",
     instructions: "You are a helpful assistant.",
     input: [
       { role: "user", content: "hi" },
@@ -66,7 +66,7 @@ test("parseResponsesTurn: reasoning.effort and max_output_tokens mapped", () => 
 
 test("parseResponsesTurn: tools mapped to internal format without type field", () => {
   const r = parseResponsesTurn({
-    model: "hy3-free",
+    model: "mimo-v2.5-free",
     input: "use a tool",
     tools: [
       { type: "function", name: "get_weather", description: "get weather", parameters: { type: "object" } },
@@ -85,7 +85,7 @@ test("parseResponsesTurn: tools mapped to internal format without type field", (
 
 test("parseResponsesTurn: input array of content blocks", () => {
   const r = parseResponsesTurn({
-    model: "hy3-free",
+    model: "mimo-v2.5-free",
     input: [
       {
         role: "user",
@@ -107,7 +107,7 @@ test("parseResponsesTurn: input array of content blocks", () => {
 
 test("parseResponsesTurn: rejects missing model/input", () => {
   assert.equal(parseResponsesTurn({ input: "x" }).ok, false);
-  assert.equal(parseResponsesTurn({ model: "hy3-free" }).ok, false);
+  assert.equal(parseResponsesTurn({ model: "mimo-v2.5-free" }).ok, false);
 });
 
 test("renderResponse: chat completion -> responses object with message output", () => {
@@ -117,7 +117,7 @@ test("renderResponse: chat completion -> responses object with message output", 
       choices: [{ message: { role: "assistant", content: "Hi!" }, finish_reason: "stop" }],
       usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
     },
-    "hy3-free",
+    "mimo-v2.5-free",
   ) as any;
   assert.equal(out.object, "response");
   assert.equal(out.status, "completed");
@@ -138,7 +138,7 @@ test("renderResponse: tool_calls -> function_call output item", () => {
       }],
       usage: { prompt_tokens: 1, completion_tokens: 1 },
     },
-    "hy3-free",
+    "mimo-v2.5-free",
   ) as any;
   assert.equal(out.output[0].type, "function_call");
   assert.equal(out.output[0].name, "get_weather");
@@ -152,7 +152,7 @@ test("renderResponsesEvent: wraps payload with event and data lines", () => {
 
 test("ResponsesStreamEncoder: open/push/close emits spec event sequence", () => {
   const enc = new ResponsesStreamEncoder();
-  const open = enc.open("hy3-free").join("");
+  const open = enc.open("mimo-v2.5-free").join("");
   assert.match(open, /event: response\.created/);
   assert.match(open, /event: response\.in_progress/);
   assert.match(open, /event: response\.output_item\.added/);
@@ -206,7 +206,7 @@ test("renderResponse: non-empty content is kept untouched (no reasoning merge)",
       }],
       usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
     },
-    "hy3-free",
+    "mimo-v2.5-free",
   ) as any;
   assert.equal(out.output[0].content[0].text, "The answer is 42.");
 });

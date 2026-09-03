@@ -47,7 +47,8 @@ export class RuntimeCatalog {
   resolve(id: string): ModelDef | undefined {
     const direct = this.byId.get(id);
     if (direct) return direct;
-    // tolerant fallback: e.g. "hy3:free" matches "tencent/hy3:free"
+    // tolerant fallback: e.g. "laguna-xs-2.1:free" matches
+    // "poolside/laguna-xs-2.1:free"
     for (const [k, m] of this.byId) {
       if (k.endsWith(`/${id}`)) return m;
     }

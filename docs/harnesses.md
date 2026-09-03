@@ -92,7 +92,7 @@ Claude Code and Aider can take env vars. The adapter offers two modes:
 `bansos setup <harness> --model <id>` pins one specific model. Without `--model`, adapters apply intelligent defaults:
 - **Claude Code**: Maps tiers automatically (`haiku` -> fast non-reasoning, `sonnet` -> daily reasoning, `opus` -> highest-capacity reasoning) and sets `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`.
 - **OpenCode, Goose, OpenClaw, Continue**: Register all catalog models so every model is selectable in the harness.
-- **Aider, Codex, Hermes, Antigravity, JCode, Cline, Roo, 9Router**: Default to the primary model (`tencent/hy3:free`) and switch freely via `/v1/models`.
+- **Aider, Codex, Hermes, Antigravity, JCode, Cline, Roo, 9Router**: Default to the smart primary model (highest-context reasoning model in the catalog, currently `minimax/minimax-m3:free` at 1M) and switch freely via `/v1/models`.
 
 ## 4. Per-harness setup snippets (target output)
 
@@ -129,9 +129,10 @@ export AIDER_MODEL=<id>
       "npm": "@ai-sdk/openai-compatible",
       "options": { "baseURL": "http://127.0.0.1:17070/v1" },
       "models": {
-        "deepseek-v4-flash-free": {},
         "mimo-v2.5-free": {},
-        "nemotron-3-ultra-free": {}
+        "nemotron-3-ultra-free": {},
+        "big-pickle": {},
+        "ling-3.0-flash-fin-free": {}
         // ... all live free models registered by default
       }
     }

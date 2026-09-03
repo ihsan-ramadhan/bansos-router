@@ -47,7 +47,7 @@ export function compareModelsByCapacity(a: ModelDef, b: ModelDef): number {
   return b.maxTokens - a.maxTokens;
 }
 
-export function pickSmartDefaultModel(models: ModelDef[], fallback = "tencent/hy3:free"): string {
+export function pickSmartDefaultModel(models: ModelDef[], fallback = "mimo-v2.5-free"): string {
   const valid = models.filter((m) => !m.id.toLowerCase().includes("safety"));
   const reasoning = valid.filter((m) => m.reasoning).sort(compareModelsByCapacity);
   if (reasoning.length > 0) return reasoning[0]!.id;

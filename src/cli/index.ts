@@ -50,7 +50,7 @@ Harnesses: claude-code, aider, opencode, codex, hermes, goose,
 Examples:
   bansos start --bg              # daemon in background, then:
   bansos setup codex             # wire Codex CLI to the router
-  bansos ping hy3-free           # probe one model
+  bansos ping mimo-v2.5-free      # probe one model
   bansos status --json           # machine-readable status
 
 "bansosd" still works as an alias for the daemon (e.g. "bansosd --bg").
@@ -91,7 +91,8 @@ Usage:
   bansos setup <harness...> [--model <id>] [--dry-run] [--undo]
 
 Flags:
-  --model <id>  default model id written into configs (default tencent/hy3:free)
+  --model <id>  model id written into configs as the default
+                (default: highest-capacity reasoning model; run "bansos models")
   --dry-run     print what would be written, change nothing
   --undo        remove bansos blocks/keys previously written by setup
 
@@ -101,7 +102,7 @@ Notes:
 
 Examples:
   bansos setup codex
-  bansos setup claude-code aider --model hy3-free
+  bansos setup claude-code aider --model mimo-v2.5-free
   bansos setup codex --undo
 `,
   status: `bansos status - show daemon reachability and model count
@@ -141,7 +142,7 @@ Notes:
 Exit codes: 0 at least one model answered, 1 all failed/unreachable.
 
 Example:
-  bansos ping hy3-free
+  bansos ping mimo-v2.5-free
 `,
   refresh: `bansos refresh - ask the daemon to re-run upstream health checks now
 

@@ -10,15 +10,15 @@ const ZEN_STATIC_HEADERS = {
   "x-opencode-project": "default",
 };
 
-// pinned free models (carried over from pi-bansos)
+// pinned zen free models verified keyless on the chat completions wire
 export const ZEN_MODELS: ModelDef[] = [
   modelDef({
     id: "mimo-v2.5-free",
     name: "Mimo V2.5 Free",
     source: "zen",
-    reasoning: false,
-    contextWindow: 1_048_576,
-    maxTokens: 131_072,
+    reasoning: true,
+    contextWindow: 200_000,
+    maxTokens: 32_000,
     input: ["text", "image"],
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
   }),
@@ -28,9 +28,9 @@ export const ZEN_MODELS: ModelDef[] = [
     source: "zen",
     reasoning: true,
     contextWindow: 1_000_000,
-    maxTokens: 65_536,
+    maxTokens: 128_000,
     input: ["text"],
-    compat: { supportsReasoningEffort: true, supportsDeveloperRole: false },
+    compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
   }),
   modelDef({
     id: "big-pickle",
@@ -40,45 +40,35 @@ export const ZEN_MODELS: ModelDef[] = [
     contextWindow: 200_000,
     maxTokens: 32_000,
     input: ["text"],
-    compat: { supportsReasoningEffort: true, supportsDeveloperRole: false },
+    compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
   }),
   modelDef({
     id: "laguna-s-2.1-free",
     name: "Laguna S 2.1",
     source: "zen",
     reasoning: true,
-    contextWindow: 262_144,
-    maxTokens: 32_768,
+    contextWindow: 256_000,
+    maxTokens: 32_000,
     input: ["text"],
     compat: { supportsReasoningEffort: true, supportsDeveloperRole: false },
-  }),
-  modelDef({
-    id: "hy3-free",
-    name: "Tencent HY3 Free",
-    source: "zen",
-    reasoning: true,
-    contextWindow: 256_000,
-    maxTokens: 65_536,
-    input: ["text"],
-    compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
   }),
   modelDef({
     id: "nemotron-3.5-lightning-free",
     name: "Nemotron 3.5 Lightning Free",
     source: "zen",
     reasoning: true,
-    contextWindow: 1_000_000,
-    maxTokens: 65_536,
+    contextWindow: 262_144,
+    maxTokens: 262_144,
     input: ["text"],
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
   }),
   modelDef({
-    id: "muse-spark-1.2-contributor-free",
-    name: "Muse Spark 1.2 Contributor Free",
+    id: "ling-3.0-flash-fin-free",
+    name: "Ling 3.0 Flash Fin Free",
     source: "zen",
-    reasoning: false,
-    contextWindow: 1_000_000,
-    maxTokens: 65_536,
+    reasoning: true,
+    contextWindow: 262_144,
+    maxTokens: 32_768,
     input: ["text"],
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
   }),
@@ -91,9 +81,40 @@ export const zenUpstream: Upstream = {
   chatUrl: `${ZEN_BASE_URL}/chat/completions`,
 
   async fetchCatalog(): Promise<ModelDef[] | null> {
-    // zen's /models returns claude-* ids, not our free coding models;
-    // keep the seeded ZEN_MODELS instead of trusting that list
-    return null;
+    try {
+      const res = await fetch(`${ZEN_BASE_URL}/models`, {
+        headers: ZEN_STATIC_HEADERS,
+        signal: AbortSignal.timeout(6000),
+      });
+      if (!res.ok) return null;
+      const body = (await res.json()) as { data?: { id: string }[] };
+      const listed = new Set((body.data ?? []).map((m) => m.id));
+      if (listed.size === 0) return null;
+
+      const kept: ModelDef[] = [];
+      for (const m of ZEN_MODELS) {
+        if (listed.has(m.id)) {
+          kept.push(m);
+          continue;
+        }
+        const probe = await fetch(`${ZEN_BASE_URL}/chat/completions`, {
+          method: "POST",
+          headers: { "content-type": "application/json", ...ZEN_STATIC_HEADERS },
+          body: JSON.stringify({
+            model: m.id,
+            messages: [{ role: "user", content: "ping" }],
+            max_tokens: 4,
+            stream: false,
+          }),
+          signal: AbortSignal.timeout(15000),
+        });
+        if (probe.ok) kept.push(m);
+      }
+      if (kept.length === 0) return null; // transient gap: keep last-known
+      return kept;
+    } catch {
+      return null;
+    }
   },
 
   requestHeaders(): Record<string, string> {

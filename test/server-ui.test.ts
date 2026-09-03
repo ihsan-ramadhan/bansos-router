@@ -95,10 +95,10 @@ test("GET /bansos/adapters/render renders harness config", async () => {
     assert.ok(data.config[0]!.content.includes("ANTHROPIC_BASE_URL"));
 
     // Render with specific model
-    const resModel = await fetch(`${baseUrl}/bansos/adapters/render?id=aider&model=tencent/hy3:free`);
+    const resModel = await fetch(`${baseUrl}/bansos/adapters/render?id=aider&model=mimo-v2.5-free`);
     assert.equal(resModel.status, 200);
     const dataModel = (await resModel.json()) as { id: string; config: Array<{ content: string }> };
-    assert.ok(dataModel.config[0]!.content.includes("tencent/hy3:free"));
+    assert.ok(dataModel.config[0]!.content.includes("mimo-v2.5-free"));
 
     // Unknown adapter -> 404
     const resUnknown = await fetch(`${baseUrl}/bansos/adapters/render?id=non-existent-adapter`);

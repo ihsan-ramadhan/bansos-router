@@ -17,8 +17,6 @@ import {
   writeConfig,
 } from "./write";
 
-const DEFAULT_MODEL = "tencent/hy3:free";
-
 interface SetupArgs {
   harnesses: string[];
   model?: string;

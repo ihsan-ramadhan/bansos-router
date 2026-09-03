@@ -213,7 +213,7 @@ export function usePlaygroundChat({
     setMessages(updatedMessages);
     setUserPrompt("");
 
-    const targetModel = selectedModel || models[0]?.id || "tencent/hy3:free";
+    const targetModel = selectedModel || models[0]?.id || "mimo-v2.5-free";
     const targetProtocol = selectedProtocol;
     setPendingModel(targetModel);
     setPendingProtocol(targetProtocol);

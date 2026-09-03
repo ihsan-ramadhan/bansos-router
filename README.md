@@ -10,13 +10,6 @@ daemon. Works without accounts or API keys.
 </div>
 
 ## Quick start
-- Block relay probes/mutations to loopback, private, link-local, and reserved IPs
-- Validate Host header on loopback connections to prevent DNS rebinding
-- Restrict CORS headers to loopback origins only
-- Add comprehensive IP blocklists (IPv4/IPv6) for sensitive network ranges
-- Harden relay URL validation (scheme, credentials, length, malformed input)
-- Ensure mid-stream upstream failures never crash the daemon
-- Add hardening test suite covering all new protections
 
 ```bash
 npm i -g bansos-router
@@ -150,55 +143,52 @@ With `mode: "strict"`:
 
 By default, `bansos setup` automatically configures intelligent defaults per harness:
 - **Claude Code**: Maps tiers automatically (`haiku` -> fast non-reasoning, `sonnet` -> daily reasoning, `opus` -> highest-capacity reasoning).
-- **Multi-model harnesses** (`opencode`, `goose`, `openclaw`, `continue`, `9router`, `jcode`): Registers all available models (or dynamic `/v1/models` provider) with `tencent/hy3:free` as primary default.
-- **Single-model harnesses** (`aider`, `codex`, `hermes`, `antigravity`, `cline`, `roo`): Defaults to `tencent/hy3:free`. Pass `--model <id>` to pin a specific model. Context and max output
-are token counts. The live catalog is ~33 models and changes as upstreams rotate
-free tiers; run `bansos models` or `bansos ping` to see what is alive right now.
+- **Multi-model harnesses** (`opencode`, `goose`, `openclaw`, `continue`, `9router`, `jcode`): Registers all available models (or dynamic `/v1/models` provider) with the smart default (highest-context reasoning model, currently `minimax/minimax-m3:free` at 1M) as primary.
+- **Single-model harnesses** (`aider`, `codex`, `hermes`, `antigravity`, `cline`, `roo`): Same smart default. Pass `--model <id>` to pin a specific model. Context and max output
+are token counts. The seeded catalog is ~30 models and the live one changes as
+upstreams rotate free tiers; run `bansos models` or `bansos ping` to see what is
+alive right now.
 
 ### OpenCode Zen
 
 | model id | reasoning | vision | context | max output |
 |---|---|---|---|---|
-| `mimo-v2.5-free` | ✗ | ✓ | 1M | 131k |
-| `nemotron-3-ultra-free` | ✓ | ✗ | 1M | 65k |
+| `mimo-v2.5-free` | ✓ | ✓ | 200k | 32k |
+| `nemotron-3-ultra-free` | ✓ | ✗ | 1M | 128k |
 | `big-pickle` | ✓ | ✗ | 200k | 32k |
-| `laguna-s-2.1-free` | ✓ | ✗ | 262k | 32k |
-| `hy3-free` | ✓ | ✗ | 256k | 65k |
-| `nemotron-3.5-lightning-free` | ✓ | ✗ | 1M | 65k |
-| `muse-spark-1.2-contributor-free` | ✗ | ✗ | 1M | 65k |
+| `laguna-s-2.1-free` | ✓ | ✗ | 256k | 32k |
+| `nemotron-3.5-lightning-free` | ✓ | ✗ | 262k | 262k |
+| `ling-3.0-flash-fin-free` | ✓ | ✗ | 262k | 32k |
 
 ### KiloCode gateway
 
 | model id | reasoning | vision | context | max output |
 |---|---|---|---|---|
-| `kilo-auto/free` | ✗ | ✗ | 256k | 10k |
-| `stepfun/step-3.7-flash:free` | ✗ | ✓ | 262k | 262k |
-| `tencent/hy3:free` | ✓ | ✗ | 262k | 128k |
-| `poolside/laguna-s-2.1:free` | ✓ | ✗ | 262k | 32k |
-| `dots-studio/dots-3-note-preview:free` | ✗ | ✓ | 512k | 10k |
-| `liquid/lfm-2.5-2.6b:free` | ✗ | ✗ | 128k | 8k |
-| `nvidia/nemotron-3.5-lightning:free` | ✓ | ✗ | 1M | 65k |
-| `thinkingmachines/inkling-small:free` | ✗ | ✓ | 1M | 10k |
-| `thinkingmachines/inkling:free` | ✗ | ✓ | 1M | 10k |
-| `poolside/laguna-xs-2.1:free` | ✗ | ✗ | 262k | 32k |
-| `cohere/north-mini-code:free` | ✗ | ✗ | 256k | 64k |
-| `nvidia/nemotron-3.5-content-safety:free` | ✓ | ✓ | 128k | 8k |
+| `kilo-auto/free` | ✓ | ✗ | 256k | 10k |
+| `stepfun/step-3.7-flash:free` | ✓ | ✓ | 262k | 262k |
 | `nvidia/nemotron-3-ultra-550b-a55b:free` | ✓ | ✗ | 1M | 65k |
-| `minimax/minimax-m3:free` | ✗ | ✓ | 1M | 10k |
-| `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | ✓ | ✓ | 256k | 65k |
-| `minimax/minimax-m2.7:free` | ✗ | ✗ | 196k | 10k |
 | `nvidia/nemotron-3-super-120b-a12b:free` | ✓ | ✗ | 262k | 262k |
-| `openrouter/free` | ✗ | ✓ | 200k | 65k |
+| `nvidia/nemotron-3.5-lightning:free` | ✓ | ✗ | 1M | 65k |
+| `nvidia/nemotron-3.5-content-safety:free` | ✓ | ✓ | 128k | 8k |
+| `liquid/lfm-2.5-2.6b:free` | ✓ | ✗ | 65k | 8k |
+| `poolside/laguna-s-2.1:free` | ✓ | ✗ | 262k | 32k |
+| `cohere/north-mini-code:free` | ✓ | ✗ | 256k | 64k |
+| `poolside/laguna-xs-2.1:free` | ✓ | ✗ | 262k | 32k |
+| `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | ✓ | ✓ | 256k | 65k |
+| `minimax/minimax-m3:free` | ✓ | ✓ | 1M | 65k |
+| `minimax/minimax-m2.7:free` | ✓ | ✗ | 196k | 65k |
+| `inclusionai/ling-3.0-flash-fin:free` | ✓ | ✗ | 262k | 32k |
+| `dots-studio/dots-3-note-preview:free` | ✓ | ✓ | 512k | 65k |
+| `thinkingmachines/inkling:free` | ✓ | ✓ | 1M | 65k |
+| `thinkingmachines/inkling-small:free` | ✓ | ✓ | 1M | 65k |
+| `openrouter/free` | ✓ | ✓ | 200k | 65k |
 
 ### LLM7
 
 | model id | reasoning | vision | context | max output |
 |---|---|---|---|---|
 | `codestral-latest` | ✗ | ✗ | 32k | 8k |
-| `deepseek-v3.2` | ✓ | ✗ | 128k | 16k |
-| `gemini-3.1-flash-lite` | ✗ | ✗ | 256k | 65k |
 | `gpt-oss` | ✓ | ✗ | 131k | 16k |
-| `meta-Llama-3.1-8B-Instruct-Turbo` | ✗ | ✗ | 128k | 16k |
 | `minimax-m2.7` | ✓ | ✗ | 180k | 32k |
 | `mistral-Nemo-Instruct-2407` | ✗ | ✗ | 128k | 16k |
 | `default` | ✗ | ✗ | 128k | 8k |
@@ -206,13 +196,16 @@ free tiers; run `bansos models` or `bansos ping` to see what is alive right now.
 
 Notes:
 
-- The tables above are generated from a live `/v1/models` snapshot, not the
-  static seed. The seeded defaults (in `src/upstreams/*`) are used only until
-  the daemon's first successful refresh; the live catalog replaces them.
+- The tables above mirror the seeds in `src/upstreams/*`, which were verified
+  against each upstream's live catalog and specs on 2026-09-03 (reasoning /
+  vision / context flags, dead promos removed). On refresh the daemon serves
+  the live catalog, which can differ slightly as upstreams rotate free tiers.
 - Kilo's `:free` models are liveness-gated: the daemon re-checks the kilo
   catalog on a timer and drops models that are no longer offered free.
-- Zen's `/v1/models` lists *claude-\** ids that differ from the free coding
-  models above, so the zen set is pinned to the seeded list.
+- Zen seeds are re-checked against `GET /v1/models` on refresh. The listing is
+  not exhaustive (some servable promos are never listed), so an unlisted seed
+  is probe-verified keyless before being kept; a retired promo (e.g. `hy3-free`,
+  gone and answering 401) disappears automatically.
 - LLM7 models are filtered dynamically by `usage_based_only: false` (tier turbo);
   `default` and `fast` are stable selectors. `pro` tier is paid-only and excluded.
 

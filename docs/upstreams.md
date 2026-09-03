@@ -125,21 +125,23 @@ type ModelDef = {
 v1 seed (pinned seeds + live refresh; liveness drops dead ids, live `:free`
 ids from the kilo API join at runtime):
 
-**OpenCode Zen (7 seeded):** `mimo-v2.5-free`,
-`nemotron-3-ultra-free`, `big-pickle`, `laguna-s-2.1-free`, `hy3-free`, `nemotron-3.5-lightning-free`,
-`muse-spark-1.2-contributor-free`
+**OpenCode Zen (6 seeded):** `mimo-v2.5-free`, `nemotron-3-ultra-free`,
+`big-pickle`, `laguna-s-2.1-free`, `nemotron-3.5-lightning-free`,
+`ling-3.0-flash-fin-free`
 
-**KiloCode gateway (13 seeded):** `kilo-auto/free`, `stepfun/step-3.7-flash:free`,
+**KiloCode gateway (18 seeded):** `kilo-auto/free`, `stepfun/step-3.7-flash:free`,
 `nvidia/nemotron-3-ultra-550b-a55b:free`, `nvidia/nemotron-3-super-120b-a12b:free`,
 `nvidia/nemotron-3.5-lightning:free`, `nvidia/nemotron-3.5-content-safety:free`,
-`tencent/hy3:free`, `liquid/lfm-2.5-2.6b:free` (seed; dead upstream, liveness-dropped),
-`poolside/laguna-s-2.1:free`, `cohere/north-mini-code:free`,
+`liquid/lfm-2.5-2.6b:free`, `poolside/laguna-s-2.1:free`, `cohere/north-mini-code:free`,
 `poolside/laguna-xs-2.1:free`, `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free`,
-`openrouter/free`
+`minimax/minimax-m3:free`, `minimax/minimax-m2.7:free`,
+`inclusionai/ling-3.0-flash-fin:free`, `dots-studio/dots-3-note-preview:free`,
+`thinkingmachines/inkling:free`, `thinkingmachines/inkling-small:free`, `openrouter/free`
 
-**LLM7 (8 seeded + dynamic refresh):** `DeepSeek-V4-Flash-0731`, `gemini-3.1-flash-lite`,
-`minimax-m2.7`, `gpt-oss:20b`, `mistral-Nemo-Instruct-2407`, `codestral-latest`,
-`default`, `fast`. Live models are filtered by `usage_based_only: false`.
+**LLM7 (6 seeded + dynamic refresh):** `codestral-latest`, `gpt-oss`, `minimax-m2.7`,
+`mistral-Nemo-Instruct-2407`, `default`, `fast`. Live models are filtered by
+`usage_based_only: false` (tier turbo); the retired `DeepSeek-V4-Flash-0731` /
+`gpt-oss:20b` ids and the paid-only `gemini-3.1-flash-lite` were dropped.
 
 ## 4. Health checking
 
@@ -150,9 +152,12 @@ ids from the kilo API join at runtime):
 | Manual | `bansos refresh` | force a check now |
 | Failure policy | upstream unreachable | keep last-known-good catalog; mark source `degraded`; do not wipe models (a blip ≠ death) |
 
-Catalog fetches are cheap (`GET /v1/models`-style); liveness of **individual**
-models is derived from the upstream catalog containing that id: we do not
-fire one request per model (pi-bansos's approach).
+Catalog fetches are cheap (`GET /v1/models`-style). For kilo and llm7 the
+listing itself is authoritative, so liveness of **individual** models is
+derived from the upstream catalog containing that id. Zen's listing is not
+exhaustive (some servable promos are never listed), so zen re-checks each
+seed against the listing and only probe-verifies the unlisted ones keyless
+(typically zero to one model per refresh).
 
 ## 5. Rate limiting (daemon-local)
 

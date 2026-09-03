@@ -174,7 +174,7 @@ test("openAiCompletionToAnthropicMessage: non-empty content stays in a text bloc
       }],
       usage: { prompt_tokens: 5, completion_tokens: 1 },
     },
-    "hy3-free",
+    "mimo-v2.5-free",
   ) as any;
   const text = msg.content.find((c: any) => c.type === "text");
   assert.ok(text);

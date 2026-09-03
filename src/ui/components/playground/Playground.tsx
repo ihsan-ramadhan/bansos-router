@@ -81,8 +81,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
     if (!selectedModel && models.length > 0) {
       const preferred = models.find(
         (m) =>
-          m.id === "tencent/hy3:free" ||
-          m.id === "hy3-free" ||
+          m.id === "minimax/minimax-m3:free" ||
           m.id === "nemotron-3-ultra-free" ||
           m.reasoning
       );
@@ -230,7 +229,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
 
         {/* Right Side: Chat & Streaming */}
         <div className={`space-y-4 ${isFullscreen ? "fixed inset-0 z-50 p-3 sm:p-6 bg-[#111113]/95 backdrop-blur-md flex flex-col" : "lg:col-span-8"}`}>
-          <div className={`rounded-xl border border-[#23232a] bg-[#16161a] overflow-hidden shadow-xs flex flex-col ${isFullscreen ? "flex-1 min-h-0" : "h-[620px] sm:h-[680px] max-h-[85vh]"}`}>
+          <div className={`rounded-xl border border-[#23232a] bg-[#16161a] overflow-hidden shadow-xs flex flex-col ${isFullscreen ? "flex-1 min-h-0" : "h-155 sm:h-170 max-h-[85vh]"}`}>
             {/* Tabs & view toggle */}
             <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 sm:px-4 py-2 sm:py-3 border-b border-[#23232a] bg-[#121215] shrink-0">
               <div className="flex items-center gap-1 bg-[#1a1a20] p-0.5 sm:p-1 rounded-lg border border-[#262630]">
