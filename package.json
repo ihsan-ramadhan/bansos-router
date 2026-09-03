@@ -1,7 +1,7 @@
 {
   "name": "bansos-router",
   "version": "0.2.3",
-  "description": "Bansos for your AI agents — free, keyless coding models routed to every coding harness through one local endpoint. No accounts, no keys, no cost.",
+  "description": "Bansos for your AI agents. Free, keyless coding models routed to every coding harness through one local endpoint. No accounts, no keys, no cost.",
   "license": "MIT",
   "type": "module",
   "engines": {

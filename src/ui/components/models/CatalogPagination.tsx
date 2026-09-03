@@ -35,7 +35,7 @@ export function CatalogPagination({
           Showing{" "}
           <span className="text-white font-medium">
             {filteredCount === 0 ? 0 : (activePage - 1) * pageSize + 1}
-            {" – "}
+            {" - "}
             {Math.min(activePage * pageSize, filteredCount)}
           </span>{" "}
           of <span className="text-white font-medium">{filteredCount}</span> models

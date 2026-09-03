@@ -69,11 +69,11 @@ export async function runRelay(
   switch (cmd) {
     case "on": {
       if (!state.url) {
-        console.error("no active relay — add one first: bansos relay url <URL>");
+        console.error("no active relay. Add one first: bansos relay url <URL>");
         return 1;
       }
       saveRelayState({ ...state, enabled: true });
-      console.log(`relay enabled → ${state.url}`);
+      console.log(`relay enabled -> ${state.url}`);
       return 0;
     }
     case "off": {
@@ -113,7 +113,7 @@ export async function runRelay(
       const url = argv[1];
       if (!url) return usage(), 1;
       if (state.url === url) {
-        console.error("can't remove the active relay — switch first (bansos relay use <URL>)");
+        console.error("can't remove the active relay. Switch first (bansos relay use <URL>)");
         return 1;
       }
       saveRelayState(removeRelay(state, url));
@@ -123,7 +123,7 @@ export async function runRelay(
     case "deploy": {
       // TODO(M4): prompt for a Vercel token (one-shot, never stored).
       void deployVercelRelay;
-      console.log("deploy lands in M4 — bring your own relay for now:");
+      console.log("deploy lands in M4. Bring your own relay for now:");
       console.log("  bansos relay use https://<your-relay>.vercel.app");
       return 0;
     }

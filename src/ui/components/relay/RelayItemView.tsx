@@ -22,7 +22,7 @@ export function RelayProbeBadge({ probeInfo }: { probeInfo?: ProbeStatus }) {
     );
   }
   if (!probeInfo) {
-    return <span className="text-[#52525b] text-[11px] font-mono">—</span>;
+    return <span className="text-[#52525b] text-[11px] font-mono">-</span>;
   }
   if (probeInfo.ok) {
     return (
@@ -87,7 +87,7 @@ export function RelayRowItem({
             {relay.label}
           </span>
         ) : (
-          <span className="text-[#52525b] italic">—</span>
+          <span className="text-[#52525b] italic">-</span>
         )}
       </td>
 

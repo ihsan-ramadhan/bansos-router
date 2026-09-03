@@ -282,7 +282,7 @@ export async function runSetup(argv: string[]): Promise<number> {
     } else if (args.dryRun) {
       for (const write of adapter.render(ctx)) {
         const targetPath = resolveTargetFile(adapter, write.path);
-        console.log(`  → ${targetPath}`);
+        console.log(`  -> ${targetPath}`);
         console.log(write.content.replace(/^/gm, "    "));
       }
     } else {

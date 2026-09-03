@@ -10,6 +10,13 @@ daemon. Works without accounts or API keys.
 </div>
 
 ## Quick start
+- Block relay probes/mutations to loopback, private, link-local, and reserved IPs
+- Validate Host header on loopback connections to prevent DNS rebinding
+- Restrict CORS headers to loopback origins only
+- Add comprehensive IP blocklists (IPv4/IPv6) for sensitive network ranges
+- Harden relay URL validation (scheme, credentials, length, malformed input)
+- Ensure mid-stream upstream failures never crash the daemon
+- Add hardening test suite covering all new protections
 
 ```bash
 npm i -g bansos-router
@@ -31,6 +38,20 @@ pi install npm:pi-bansos-router
 Supported harnesses for `bansos setup`: `claude-code`, `aider`, `opencode`, `codex`, `hermes`, `goose`, `openclaw`, `antigravity`, `jcode`, `9router`, `continue`, `cline`, and `roo`. See [docs/harnesses.md](docs/harnesses.md) for harness-specific details.
 
 Open `http://127.0.0.1:17070` in your browser for the Web UI dashboard (model catalog, live latency ping, 1-click config generator, relay manager, playground).
+
+### Always-on local protections
+
+These hold in every mode (not just strict):
+
+- **CORS only for loopback origins**: a page served from a non-loopback
+  origin gets no CORS headers, so it can neither read nor write the daemon.
+- **Host header validated**: loopback clients must present a loopback (or
+  own-interface) Host header; anything else gets 403. This blocks DNS
+  rebinding where a hostile page resolves to `127.0.0.1`.
+- **Relay probe & mutation are SSRF-guarded**: probes may only target the
+  active/saved relay or a public `https://` host; literal loopback, private,
+  and link-local IPs (e.g. `169.254.x` metadata) are rejected unless
+  explicitly saved. Relay URLs must be `http(s)://` without credentials.
 
 ## Docker
 
@@ -61,7 +82,7 @@ docker compose up -d
 | Command | Purpose |
 |---|---|
 | `bansos start [--bg] [--port N] [--bind H] [--unsafe-allow-non-loopback]` | Run the daemon (foreground, or detached with `--bg`) |
-| `bansos logs [--activity]` | Tail the daemon log in real time (every mode — daemon always logs to `~/.bansos/logs/bansosd.log`); `--activity` prints the structured request feed shown in the web UI "Activity" tab |
+| `bansos logs [--activity]` | Tail the daemon log in real time (every mode: daemon always logs to `~/.bansos/logs/bansosd.log`); `--activity` prints the structured request feed shown in the web UI "Activity" tab |
 | `bansos stop` | Stop all running daemons |
 | `bansos status [--json]` | Daemon status (port, model count, alive models); reports every running daemon on the auto-bump range (17070-17090) |
 | `bansos models [--json]` | List live catalog from `/v1/models` |
@@ -128,7 +149,7 @@ With `mode: "strict"`:
 ## Available models
 
 By default, `bansos setup` automatically configures intelligent defaults per harness:
-- **Claude Code**: Maps tiers automatically (`haiku` → fast non-reasoning, `sonnet` → daily reasoning, `opus` → highest-capacity reasoning).
+- **Claude Code**: Maps tiers automatically (`haiku` -> fast non-reasoning, `sonnet` -> daily reasoning, `opus` -> highest-capacity reasoning).
 - **Multi-model harnesses** (`opencode`, `goose`, `openclaw`, `continue`, `9router`, `jcode`): Registers all available models (or dynamic `/v1/models` provider) with `tencent/hy3:free` as primary default.
 - **Single-model harnesses** (`aider`, `codex`, `hermes`, `antigravity`, `cline`, `roo`): Defaults to `tencent/hy3:free`. Pass `--model <id>` to pin a specific model. Context and max output
 are token counts. The live catalog is ~33 models and changes as upstreams rotate

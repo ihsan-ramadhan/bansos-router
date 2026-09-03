@@ -1,4 +1,4 @@
-# bansos-router — Harness Integration Matrix
+# bansos-router: Harness Integration Matrix
 
 > Companion to `architecture.md`. Defines how each agent harness connects to
 > the daemon, and what `bansos setup <harness>` writes.
@@ -7,11 +7,11 @@
 
 1. **Config, not plugins.** Almost every harness accepts a custom base URL.
    `bansos setup` only ever writes declarative config files (or env in the
-   user's shell rc) — no per-harness code except the optional pi extension.
+   user's shell rc): no per-harness code except the optional pi extension.
 2. **Protocol selection is automatic.** The adapter picks the right endpoint
    (`/v1/chat/completions`, `/v1/messages`, or `/v1/responses`) for the
    harness's native wire format.
-3. **Idempotent & reversible.** `setup` never overwrites user edits blindly —
+3. **Idempotent & reversible.** `setup` never overwrites user edits blindly  - 
    it writes a clearly-marked block, and `bansos setup <harness> --undo`
    removes it.
 4. **No secrets written.** The daemon accepts any placeholder key
@@ -27,7 +27,7 @@ Legend: 🟢 config-only · 🟢* config-only but needs M3 wire (not live yet) �
 | **Claude Code** | Anthropic Messages | `~/.claude/settings.json` (`env`) | 🟢 | `ANTHROPIC_BASE_URL=http://127.0.0.1:17070` + `ANTHROPIC_AUTH_TOKEN=bansos` + model mappings |
 | **Aider** | OpenAI Chat | env / `aider.conf.yml` | 🟢 | `OPENAI_API_BASE=http://127.0.0.1:17070/v1`, `OPENAI_API_KEY=bansos`, `AIDER_MODEL=<id>` |
 | **OpenCode** | OpenAI Chat | `~/.config/opencode/opencode.json` | 🟢 | Custom provider with `@ai-sdk/openai-compatible`, `baseURL` |
-| **Codex CLI** | OpenAI Responses | `~/.codex/config.toml` | 🟢 | `[model_providers.bansos] base_url`, `wire_api = "responses"` — daemon serves `/v1/responses` (M3) |
+| **Codex CLI** | OpenAI Responses | `~/.codex/config.toml` | 🟢 | `[model_providers.bansos] base_url`, `wire_api = "responses"`: daemon serves `/v1/responses` (M3) |
 | **Hermes (Nous)** | OpenAI Chat | `~/.hermes/config.yaml` | 🟢 | `model.provider: custom` + `model.base_url` |
 | **OpenClaw** | OpenAI Chat or Anthropic | `~/.openclaw/config.json` / agent `models.json` | 🟢 | `models.providers.<id>.baseUrl`; can pick either wire |
 | **Goose** | OpenAI Chat | `~/.config/goose/custom_providers/*.json` | 🟢 | `engine: "openai"`, `base_url`, model list |
@@ -37,15 +37,15 @@ Legend: 🟢 config-only · 🟢* config-only but needs M3 wire (not live yet) �
 | **Continue** | OpenAI Chat | `~/.continue/config.json` | 🟢 | Appends/merges OpenAI provider entries in `models` array |
 | **Cline** | OpenAI Chat | `~/.config/cline/config.json` | 🟢 | Sets `apiProvider: "openai-compatible"`, `openAiBaseUrl` |
 | **Roo Code** | OpenAI Chat | `~/.config/roo-cline/config.json` | 🟢 | Sets `apiProvider: "openai-compatible"`, `openAiBaseUrl` |
-| **Claude Desktop** | Anthropic Messages | — | 🔴 | No supported custom base URL; out of scope (hacky MITM only) |
-| **Copilot CLI** | — | — | 🔴 | OAuth-only, no custom endpoint |
-| **Gemini CLI** | — | — | 🔴 | Retired (June 2026) → Antigravity CLI |
+| **Claude Desktop** | Anthropic Messages |- | 🔴 | No supported custom base URL; out of scope (hacky MITM only) |
+| **Copilot CLI** |- |- | 🔴 | OAuth-only, no custom endpoint |
+| **Gemini CLI** |- |- | 🔴 | Retired (June 2026) -> Antigravity CLI |
 
 ## 3. Adapter contract (implementation spec)
 
 ```ts
 type HarnessAdapter = {
-  id: string;                 // "claude-code", "aider", …
+  id: string;                 // "claude-code", "aider", ...
   name: string;               // human-readable
   wire: "chat" | "anthropic" | "responses";
   configPaths: string[];      // candidate locations, first existing wins (or create)
@@ -73,8 +73,8 @@ type ConfigWrite = {
   the existing file is parsed, the bansos fragment is deep-merged, and the
   file is re-serialized as valid JSON. `--undo` removes exactly the keys
   bansos added (per-adapter `undoKeys`), never touching user keys.
-- **Non-JSON formats** (TOML, YAML, env — Aider, Codex, Hermes, Antigravity,
-  JCode): a marked block (`# bansos-router:start` / `# …:end`) is replaced or
+- **Non-JSON formats** (TOML, YAML, env: Aider, Codex, Hermes, Antigravity,
+  JCode): a marked block (`# bansos-router:start` / `# ...:end`) is replaced or
   appended; `--undo` deletes between the markers.
 
 ### 3.2 Env-based adapters (Aider, Claude Code)
@@ -90,13 +90,13 @@ Claude Code and Aider can take env vars. The adapter offers two modes:
 ### 3.3 Model pinning & smart tiering
 
 `bansos setup <harness> --model <id>` pins one specific model. Without `--model`, adapters apply intelligent defaults:
-- **Claude Code**: Maps tiers automatically (`haiku` → fast non-reasoning, `sonnet` → daily reasoning, `opus` → highest-capacity reasoning) and sets `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`.
+- **Claude Code**: Maps tiers automatically (`haiku` -> fast non-reasoning, `sonnet` -> daily reasoning, `opus` -> highest-capacity reasoning) and sets `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`.
 - **OpenCode, Goose, OpenClaw, Continue**: Register all catalog models so every model is selectable in the harness.
 - **Aider, Codex, Hermes, Antigravity, JCode, Cline, Roo, 9Router**: Default to the primary model (`tencent/hy3:free`) and switch freely via `/v1/models`.
 
 ## 4. Per-harness setup snippets (target output)
 
-### Claude Code — `~/.claude/settings.json`
+### Claude Code: `~/.claude/settings.json`
 
 ```jsonc
 {
@@ -120,7 +120,7 @@ export AIDER_MODEL=<id>
 # or: aider --openai-api-base http://127.0.0.1:17070/v1 --model <id>
 ```
 
-### OpenCode — `~/.config/opencode/opencode.json`
+### OpenCode: `~/.config/opencode/opencode.json`
 
 ```jsonc
 {
@@ -139,7 +139,7 @@ export AIDER_MODEL=<id>
 }
 ```
 
-### Codex — `~/.codex/config.toml`
+### Codex: `~/.codex/config.toml`
 
 ```toml
 model = "<id>"
@@ -151,7 +151,7 @@ wire_api = "responses"
 experimental_bearer_token = "bansos"   # keyless: router ignores auth; any token works
 ```
 
-### Hermes — `~/.hermes/config.yaml`
+### Hermes: `~/.hermes/config.yaml`
 
 ```yaml
 model:
@@ -160,7 +160,7 @@ model:
   base_url: "http://127.0.0.1:17070/v1"
 ```
 
-### OpenClaw — config `models.providers`
+### OpenClaw: config `models.providers`
 
 ```jsonc
 { "models": { "providers": { "bansos": {
@@ -168,7 +168,7 @@ model:
     "models": [{ "id": "<id>" }] } } } }
 ```
 
-### Goose — `~/.config/goose/custom_providers/bansos.json`
+### Goose: `~/.config/goose/custom_providers/bansos.json`
 
 ```json
 { "name": "bansos", "engine": "openai",
@@ -177,7 +177,7 @@ model:
   "models": [{ "name": "<id>", "context_limit": 256000 }] }
 ```
 
-### Antigravity — `~/.config/antigravity/config.toml`
+### Antigravity: `~/.config/antigravity/config.toml`
 
 ```toml
 base_url = "http://127.0.0.1:17070/v1"
@@ -185,7 +185,7 @@ model = "<id>"
 api_key = "bansos"
 ```
 
-### JCode — `~/.jcode/config.toml`
+### JCode: `~/.jcode/config.toml`
 
 ```toml
 default_provider = "bansos"
@@ -196,7 +196,7 @@ type = "openai-compatible"
 base_url = "http://127.0.0.1:17070/v1"
 ```
 
-### 9Router — `~/.9router/db.json`
+### 9Router: `~/.9router/db.json`
 
 ```jsonc
 {
@@ -224,7 +224,7 @@ base_url = "http://127.0.0.1:17070/v1"
 }
 ```
 
-### pi — extension (the only code adapter)
+### pi: extension (the only code adapter)
 
 Package `pi-bansos-router` (`pi install npm:pi-bansos-router`). Registers the
 `bansosr` provider (base URL `http://127.0.0.1:17070/v1`, `api:
@@ -254,7 +254,7 @@ running.
 npm i -g bansos-router
 bansos setup aider --model deepseek-v4-flash-free
 # writes OPENAI_API_BASE etc. (or shell rc)
-bansos start       # start daemon (or: bansos doctor → "start it?" → yes)
+bansos start       # start daemon (or: bansos doctor -> "start it?" -> yes)
 aider              # works
 ```
 
@@ -264,14 +264,14 @@ aider              # works
 bansos setup claude-code
 bansos doctor
 claude
-# /model → picks from /v1/models
+# /model -> picks from /v1/models
 ```
 
 ### Multi-harness
 
-`bansos setup claude-code aider opencode codex` — all configs written, all
+`bansos setup claude-code aider opencode codex`: all configs written, all
 pointing at the same daemon. Rate limits are shared across harnesses (see
-`docs/upstreams.md` §7) — relay becomes the escape hatch. (pi is not a
+`docs/upstreams.md` §7): relay becomes the escape hatch. (pi is not a
 `bansos setup` harness; install the `pi-bansos-router` extension instead.)
 
 ## 6. Verification (`bansos doctor`)

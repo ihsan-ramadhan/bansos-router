@@ -68,7 +68,7 @@ export class RuntimeCatalog {
       const live = await upstream.fetchCatalog();
       if (live === null) {
         report.degraded.push(upstream.id);
-        this.log.warn(`upstream ${upstream.id}: no live catalog — keeping last-known models`);
+        this.log.warn(`upstream ${upstream.id}: no live catalog - keeping last-known models`);
         continue;
       }
       const source: UpstreamSource =

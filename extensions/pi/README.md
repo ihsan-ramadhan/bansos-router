@@ -1,6 +1,6 @@
 # pi-bansos-router
 
-pi extension for [bansos-router](https://github.com/ihsan-ramadhan/bansos-router) — free, keyless coding models via local daemon.
+pi extension for [bansos-router](https://github.com/ihsan-ramadhan/bansos-router), free, keyless coding models via local daemon.
 
 ## Installation
 

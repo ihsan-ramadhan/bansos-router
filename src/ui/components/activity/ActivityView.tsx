@@ -192,25 +192,25 @@ export function ActivityView() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         <StatCard
           label="Requests"
-          value={usage ? formatNumber(usage.totalRequests) : "—"}
+          value={usage ? formatNumber(usage.totalRequests) : "-"}
           icon={<Server className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
           hint={usage ? `${usage.okRequests} ok · ${usage.errorRequests} err` : undefined}
         />
         <StatCard
           label="Tokens In"
-          value={usage ? formatNumber(usage.totalInputTokens) : "—"}
+          value={usage ? formatNumber(usage.totalInputTokens) : "-"}
           icon={<ArrowDownLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
           hint="prompt tokens"
         />
         <StatCard
           label="Tokens Out"
-          value={usage ? formatNumber(usage.totalOutputTokens) : "—"}
+          value={usage ? formatNumber(usage.totalOutputTokens) : "-"}
           icon={<ArrowUpRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
           hint="completion tokens"
         />
         <StatCard
           label="Avg Latency"
-          value={usage ? formatDuration(usage.avgDurationMs) : "—"}
+          value={usage ? formatDuration(usage.avgDurationMs) : "-"}
           icon={<Timer className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
           hint={usage && usage.failoverCount > 0 ? `${usage.failoverCount} failovers` : "no failovers"}
         />
@@ -226,7 +226,7 @@ export function ActivityView() {
             </span>
           </div>
           {loading ? (
-            <div className="p-6 text-center text-xs text-[#71717a]">Loading…</div>
+            <div className="p-6 text-center text-xs text-[#71717a]">Loading...</div>
           ) : topModels.length === 0 ? (
             <div className="p-6 text-center text-xs text-[#71717a]">No requests recorded yet.</div>
           ) : (
@@ -267,7 +267,7 @@ export function ActivityView() {
             </span>
           </div>
           {loading ? (
-            <div className="p-6 text-center text-xs text-[#71717a]">Loading…</div>
+            <div className="p-6 text-center text-xs text-[#71717a]">Loading...</div>
           ) : topUpstreams.length === 0 ? (
             <div className="p-6 text-center text-xs text-[#71717a]">No requests recorded yet.</div>
           ) : (
@@ -313,10 +313,10 @@ export function ActivityView() {
           )}
         </div>
         {loading ? (
-          <div className="p-6 text-center text-xs text-[#71717a]">Loading…</div>
+          <div className="p-6 text-center text-xs text-[#71717a]">Loading...</div>
         ) : events.length === 0 ? (
           <div className="p-6 text-center text-xs text-[#71717a]">
-            No requests yet — send a prompt through the router to see activity here.
+            No requests yet. Send a prompt through the router to see activity here.
           </div>
         ) : (
           <div className="overflow-x-auto">

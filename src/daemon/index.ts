@@ -68,7 +68,7 @@ function parseArgs(argv: string[]): CliArgs {
       process.exit(0);
     }
     else if (arg === "--help" || arg === "-h") {
-      console.log(`bansosd — local free-model router daemon
+      console.log(`bansosd - local free-model router daemon
 
 Usage:
   bansos start [--port N] [--bind H] [--bg]   (or: bansosd [--port N] [--bind H] [--bg])
@@ -126,7 +126,7 @@ function startServer(
     const tryListen = (attempt: number) => {
       server.once("error", (err: NodeJS.ErrnoException) => {
         if (err.code === "EADDRINUSE" && attempt < MAX_PORT) {
-          log.warn(`port ${port} busy — trying ${port + 1}`);
+          log.warn(`port ${port} busy - trying ${port + 1}`);
           resolve(startServer(port + 1, bind, config, log));
           return;
         }

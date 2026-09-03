@@ -182,24 +182,22 @@ test("404 returns HTML for browser navigation and JSON for API requests", async 
   }
 });
 
-test("POST /bansos/relay/probe tests target reachability and latency", async () => {
+test("POST /bansos/relay/probe enforces an SSRF allowlist", async () => {
   const originalState = loadRelayState();
   const { baseUrl, close } = await setupTestServer();
   try {
-    // Ensure clean state without active relay for step 2
+    // Clean state without any active/saved relay
     saveRelayState({ enabled: false, url: "", relays: [] });
 
-    // 1. Probe valid local endpoint
-    const res = await fetch(`${baseUrl}/bansos/relay/probe`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url: `${baseUrl}/healthz` }),
-    });
-    assert.equal(res.status, 200);
-    const data = (await res.json()) as { ok: boolean; status?: number; latencyMs: number };
-    assert.equal(data.ok, true);
-    assert.equal(data.status, 200);
-    assert.equal(typeof data.latencyMs, "number");
+    // 1. Unsaved loopback / link-local / private targets are blocked (SSRF guard)
+    for (const url of ["http://127.0.0.1:59999", "http://169.254.169.254/latest/meta-data", "http://192.168.1.1"]) {
+      const res = await fetch(`${baseUrl}/bansos/relay/probe`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      assert.equal(res.status, 403, `expected 403 for ${url}`);
+    }
 
     // 2. Probe missing url when no active relay -> 400
     const resEmpty = await fetch(`${baseUrl}/bansos/relay/probe`, {
@@ -209,11 +207,41 @@ test("POST /bansos/relay/probe tests target reachability and latency", async () 
     });
     assert.equal(resEmpty.status, 400);
 
-    // 3. Probe unreachable host -> returns 200 with ok: false
+    // 3. A saved relay may be probed even when it is a local http endpoint
+    saveRelayState({
+      enabled: false,
+      url: "",
+      relays: [{ url: baseUrl, label: "Local Test Relay" }],
+    });
+    const resSaved = await fetch(`${baseUrl}/bansos/relay/probe`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: baseUrl }),
+    });
+    assert.equal(resSaved.status, 200);
+    const dataSaved = (await resSaved.json()) as { ok: boolean; status?: number; latencyMs: number };
+    assert.equal(dataSaved.ok, true);
+    assert.equal(dataSaved.status, 200);
+    assert.equal(typeof dataSaved.latencyMs, "number");
+
+    // 4. A saved-but-unreachable relay returns 200 with ok: false
+    const closedPort = await new Promise<number>((resolve) => {
+      const srv = http.createServer();
+      srv.listen(0, "127.0.0.1", () => {
+        const { port } = srv.address() as { port: number };
+        srv.close(() => resolve(port));
+      });
+    });
+    const deadUrl = `http://127.0.0.1:${closedPort}`;
+    saveRelayState({
+      enabled: false,
+      url: "",
+      relays: [{ url: deadUrl, label: "Dead Relay" }],
+    });
     const resUnreachable = await fetch(`${baseUrl}/bansos/relay/probe`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url: "http://127.0.0.1:59999" }),
+      body: JSON.stringify({ url: deadUrl }),
     });
     assert.equal(resUnreachable.status, 200);
     const dataUnreachable = (await resUnreachable.json()) as { ok: boolean; error?: string };

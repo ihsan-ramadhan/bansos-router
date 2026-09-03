@@ -11,7 +11,7 @@ import { BANSOS_DIR, STATE_FILE, readJson } from "../daemon/state";
 import { VERSION, checkUpdate } from "../update";
 
 function help(): void {
-  console.log(`bansos — free, keyless coding models for every agent harness
+  console.log(`bansos - free, keyless coding models for every agent harness
 
 Usage:
   bansos <command> [flags]
@@ -59,7 +59,7 @@ Examples:
 
 // per-command help shown by "bansos <cmd> --help" and "bansos help <cmd>"
 const CMD_HELP: Record<string, string> = {
-  start: `bansos start — start the daemon
+  start: `bansos start - start the daemon
 
 Usage:
   bansos start [--bg] [--port N] [--bind H] [--unsafe-allow-non-loopback]
@@ -78,14 +78,14 @@ Examples:
   bansos start --bg
   bansos start --bg --port 18000
 `,
-  stop: `bansos stop — stop every running daemon (SIGTERM, then SIGKILL after 400ms)
+  stop: `bansos stop - stop every running daemon (SIGTERM, then SIGKILL after 400ms)
 
 Usage:
   bansos stop
 
 Exit codes: 0 always (0 even when nothing was running).
 `,
-  setup: `bansos setup — write harness config files pointing at the router
+  setup: `bansos setup - write harness config files pointing at the router
 
 Usage:
   bansos setup <harness...> [--model <id>] [--dry-run] [--undo]
@@ -104,7 +104,7 @@ Examples:
   bansos setup claude-code aider --model hy3-free
   bansos setup codex --undo
 `,
-  status: `bansos status — show daemon reachability and model count
+  status: `bansos status - show daemon reachability and model count
 
 Usage:
   bansos status [--json]
@@ -115,7 +115,7 @@ Flags:
 Probes ports 17070-17090 so a bumped-port daemon is still found.
 Exit codes: 0 daemon reachable, 1 not reachable.
 `,
-  models: `bansos models — list the live model catalog
+  models: `bansos models - list the live model catalog
 
 Usage:
   bansos models [--json]
@@ -125,7 +125,7 @@ Flags:
 
 Requires a running daemon (bansos start).
 `,
-  ping: `bansos ping — probe model health and latency with a tiny completion
+  ping: `bansos ping - probe model health and latency with a tiny completion
 
 Usage:
   bansos ping [model] [--json]
@@ -143,14 +143,14 @@ Exit codes: 0 at least one model answered, 1 all failed/unreachable.
 Example:
   bansos ping hy3-free
 `,
-  refresh: `bansos refresh — ask the daemon to re-run upstream health checks now
+  refresh: `bansos refresh - ask the daemon to re-run upstream health checks now
 
 Usage:
   bansos refresh
 
 Exit codes: 0 refreshed, 1 daemon unreachable.
 `,
-  logs: `bansos logs — tail ~/.bansos/logs/bansosd.log live
+  logs: `bansos logs - tail ~/.bansos/logs/bansosd.log live
 
 Usage:
   bansos logs [--activity]
@@ -161,17 +161,17 @@ the daemon now records every run to ~/.bansos/logs/bansosd.log.
 
   --activity   instead of the raw log file, print the structured request feed
               shown in the web UI "Activity" tab (model, tokens, latency,
-              failover, status) — the same source the UI polls.
+              failover, status) - the same source the UI polls.
 Exit codes: 1 when no log file exists yet (or the daemon is unreachable with --activity).
 `,
-  relay: `bansos relay — manage relay egress for keyless upstreams
+  relay: `bansos relay - manage relay egress for keyless upstreams
 
 Usage:
   bansos relay <on|off|status|url <URL>|use <URL>|list|remove <URL>|deploy>
 
 Run "bansos relay" without arguments for the full subcommand list.
 `,
-  doctor: `bansos doctor — diagnose the local setup
+  doctor: `bansos doctor - diagnose the local setup
 
 Usage:
   bansos doctor
@@ -180,7 +180,7 @@ Checks daemon reachability and every harness config file, prints an update
 notice when one exists.
 Exit codes: 0 healthy, 1 any check failed.
 `,
-  usage: `bansos usage — show request usage and token totals
+  usage: `bansos usage - show request usage and token totals
 
 Usage:
   bansos usage [--json]
@@ -349,7 +349,7 @@ async function runLogs(args: string[]): Promise<number> {
     try {
       res = await fetch(`${base}/bansos/events?limit=100`);
     } catch {
-      console.error(`bansos logs: daemon not reachable at ${base} — start it with "bansos start"`);
+      console.error(`bansos logs: daemon not reachable at ${base}. Start it with "bansos start"`);
       return 1;
     }
     if (!res.ok) {
@@ -377,7 +377,7 @@ async function runLogs(args: string[]): Promise<number> {
       n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k` : String(n);
     for (const e of body.events) {
       const status = e.status === "ok" ? "✓" : "✗";
-      const fo = e.failoverFrom ? ` (failover ${e.failoverFrom}→${e.model})` : "";
+      const fo = e.failoverFrom ? ` (failover ${e.failoverFrom}->${e.model})` : "";
       console.log(
         `${time(e.timestamp)} ${status} ${e.kind} ${e.model} [${e.upstream}] ` +
           `${fmt(e.inputTokens)}/${fmt(e.outputTokens)} tok ${e.durationMs}ms${fo}`,
@@ -460,7 +460,7 @@ function findDaemonPids(statePid: number | null): number[] {
 }
 
 // a process is one of our daemons if it runs the bansos binary in daemon mode.
-// the binary may be the npm bin (…/bansos, …/bansosd) or the repo build
+// the binary may be the npm bin (.../bansos, .../bansosd) or the repo build
 // (dist/cli/index.js); the hidden "daemon" subcommand marks spawned children.
 function isDaemonCmdline(args: string[]): boolean {
   const script = path.basename(args[1] ?? "");
@@ -621,7 +621,7 @@ async function runUsage(json: boolean): Promise<number> {
       perUpstream: Record<string, { requests: number; ok: number }>;
     };
   } catch {
-    console.error(`bansos usage: daemon not reachable at ${base} — start it with "bansos start"`);
+    console.error(`bansos usage: daemon not reachable at ${base}. Start it with "bansos start"`);
     return 1;
   }
 
@@ -686,7 +686,7 @@ async function runStatusOrModels(cmd: "status" | "models" | "refresh", json: boo
     return 0;
   } catch {
     if (json) console.log(JSON.stringify({ ok: false, error: `daemon not reachable at ${base}` }));
-    else console.error(`bansos: daemon not reachable at ${base} — start it with "bansos start"`);
+    else console.error(`bansos: daemon not reachable at ${base}. Start it with "bansos start"`);
     return 1;
   }
 }

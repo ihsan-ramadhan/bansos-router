@@ -12,7 +12,7 @@ import {
 } from "../src/protocols/anthropic";
 
 // SSE frames an openai-compatible upstream would send. `done` controls whether
-// the terminating `data: [DONE]` frame is present — several upstreams omit it.
+// the terminating `data: [DONE]` frame is present - several upstreams omit it.
 function sseBody(done: boolean): string {
   const frames = [
     'data: {"id":"chatcmpl-1","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"}}]}\n\n',

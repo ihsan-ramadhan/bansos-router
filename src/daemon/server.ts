@@ -1,5 +1,6 @@
 import http from "node:http";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Readable, Transform } from "node:stream";
@@ -9,6 +10,7 @@ import {
   isCrossProviderFailoverAllowed,
   isRelayAllowed,
   isLoopbackBind,
+  isSensitiveNetworkHost,
   isStrictSecurity,
   isUpstreamAllowed,
   type SecurityConfig,
@@ -67,27 +69,52 @@ const ALLOWED_METHODS = new Set(["GET", "POST", "OPTIONS"]);
 
 export { pickSmartDefaultModel };
 
+// applies a relay mutation, rejecting malformed URLs so garbage can never be
+// stored (a stored url is fetched on every egress request). Returns either the
+// new state or an error description for a 400 response.
 function applyRelayMutation(
   initialState: RelayState,
   body: Record<string, unknown>,
-): RelayState {
-  let current = { ...initialState };
+): RelayState | { error: string } {
+  let current: RelayState = {
+    ...initialState,
+    relays: initialState.relays.map((r) => ({ ...r })),
+  };
+
+  if (Array.isArray(body.relays)) {
+    const relays: RelayState["relays"] = [];
+    for (const entry of body.relays) {
+      if (!entry || typeof entry !== "object") return { error: "relays must be an array of objects" };
+      const rec = entry as Record<string, unknown>;
+      if (!isValidRelayUrl(rec.url)) return { error: "invalid relay url in relays list" };
+      relays.push({
+        url: (rec.url as string).trim(),
+        ...(typeof rec.label === "string" && rec.label.trim() ? { label: rec.label.trim().slice(0, 100) } : {}),
+        ...(typeof rec.addedAt === "string" ? { addedAt: rec.addedAt } : {}),
+      });
+    }
+    current.relays = relays;
+  }
+
   if (typeof body.enabled === "boolean") {
     current.enabled = body.enabled;
   }
-  const label = typeof body.label === "string" ? body.label : undefined;
-  if (!body.action && typeof body.url === "string") {
-    current.url = body.url;
-    if (body.url && !current.relays.some((r: import("../relay/egress").KnownRelay) => r.url === body.url)) {
-      current = addRelay(current, body.url, label);
+  const label = typeof body.label === "string" ? body.label.trim().slice(0, 100) || undefined : undefined;
+  const hasUrl = typeof body.url === "string" && body.url.trim() !== "";
+  if (hasUrl && !isValidRelayUrl(body.url)) return { error: "invalid relay url" };
+
+  if (hasUrl) {
+    const cleanUrl = (body.url as string).trim();
+    if (!body.action) {
+      current.url = cleanUrl;
+      if (!current.relays.some((r: import("../relay/egress").KnownRelay) => r.url === cleanUrl)) {
+        current = addRelay(current, cleanUrl, label);
+      }
+    } else if (body.action === "add") {
+      current = addRelay(current, cleanUrl, label);
+    } else if (body.action === "remove") {
+      current = removeRelay(current, cleanUrl);
     }
-  } else if (body.action === "add" && typeof body.url === "string") {
-    current = addRelay(current, body.url, label);
-  } else if (body.action === "remove" && typeof body.url === "string") {
-    current = removeRelay(current, body.url);
-  }
-  if (Array.isArray(body.relays)) {
-    current.relays = body.relays as import("../relay/egress").KnownRelay[];
   }
   return current;
 }
@@ -150,13 +177,89 @@ function isAllowedInboundPath(pathname: string): boolean {
 // total attempts = 1 + MAX_FAILOVER_RETRIES.
 const MAX_FAILOVER_RETRIES = 2;
 
-// CORS headers applied to every response (not just preflight) so browser
-// clients (web UIs, extensions) can call the daemon after a passed preflight.
-const CORS_HEADERS = {
-  "access-control-allow-origin": "*",
-  "access-control-allow-headers": "*",
-  "access-control-allow-methods": "GET, POST, OPTIONS",
-} as const;
+// CORS is only meaningful for cross-origin browser clients, and the only
+// legitimate ones are pages served from loopback addresses (the bundled UI
+// at 127.0.0.1/localhost, the vite dev server). A wildcard allow-origin on a
+// localhost daemon lets any hostile website read from and write to it, so CORS
+// headers are emitted only when the request Origin is itself loopback.
+// Requests without an Origin header (CLI, harnesses, same-origin UI) need no
+// CORS headers and are unaffected.
+function corsHeadersForOrigin(originHeader: string | undefined): Record<string, string> {
+  if (!originHeader) return {};
+  let hostname = "";
+  try {
+    hostname = new URL(originHeader).hostname;
+  } catch {
+    return {};
+  }
+  if (!isLoopbackBind(hostname)) return {};
+  return {
+    "access-control-allow-origin": originHeader,
+    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-headers": "*",
+    "access-control-max-age": "86400",
+    vary: "Origin",
+  };
+}
+
+interface CorsAwareResponse extends http.ServerResponse {
+  // per-request CORS headers, attached at the top of the connection handler
+  bansosCors?: Record<string, string>;
+}
+
+function corsFor(res: http.ServerResponse): Record<string, string> {
+  return (res as CorsAwareResponse).bansosCors ?? {};
+}
+
+// DNS-rebinding / drive-by guard. A client connected from loopback (i.e. a
+// browser on this machine) must present a loopback Host header; a hostile page
+// that rebinds attacker.example to 127.0.0.1 still sends Host: attacker.example
+// and is rejected. Non-loopback peers (LAN / Docker publishes) may use any
+// Host, and a machine's own interface addresses (e.g. 192.168.1.5 while bound
+// to 0.0.0.0) stay reachable from the same host.
+let ownAddresses: Set<string> | null = null;
+
+function isOwnAddress(hostname: string): boolean {
+  if (ownAddresses === null) {
+    const set = new Set<string>();
+    for (const ifaces of Object.values(os.networkInterfaces())) {
+      for (const iface of ifaces ?? []) set.add(iface.address.toLowerCase());
+    }
+    ownAddresses = set;
+  }
+  return ownAddresses.has(hostname.toLowerCase());
+}
+
+function isHostTrusted(req: http.IncomingMessage): boolean {
+  const host = req.headers.host;
+  if (!host) return false;
+  let hostname = "";
+  try {
+    hostname = new URL(`http://${host}`).hostname;
+  } catch {
+    return false;
+  }
+  if (isLoopbackBind(hostname)) return true;
+  const peer = req.socket.remoteAddress ?? "";
+  if (isLoopbackBind(peer)) return isOwnAddress(hostname);
+  return true;
+}
+
+// validates a user-supplied relay URL before it is stored or probed
+function isValidRelayUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > 2048) return false;
+  let u: URL;
+  try {
+    u = new URL(trimmed);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+  if (u.username || u.password) return false;
+  return u.hostname.length > 0;
+}
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -212,7 +315,7 @@ function serveStaticUi(res: http.ServerResponse, reqPath: string): void {
     res.writeHead(200, {
       "content-type": contentType,
       "content-length": content.length,
-      ...CORS_HEADERS,
+      ...corsFor(res),
     });
     res.end(content);
     return;
@@ -231,7 +334,7 @@ function serveStaticUi(res: http.ServerResponse, reqPath: string): void {
     res.writeHead(200, {
       "content-type": "text/html; charset=utf-8",
       "content-length": content.length,
-      ...CORS_HEADERS,
+      ...corsFor(res),
     });
     res.end(content);
     return;
@@ -261,7 +364,7 @@ function serveStaticUi(res: http.ServerResponse, reqPath: string): void {
   res.writeHead(200, {
     "content-type": "text/html; charset=utf-8",
     "content-length": Buffer.byteLength(fallbackHtml),
-    ...CORS_HEADERS,
+    ...corsFor(res),
   });
   res.end(fallbackHtml);
 }
@@ -280,6 +383,65 @@ function validatePath(rawUrl: string): boolean {
   return true;
 }
 
+// a relay probe may only reach the active relay, a saved relay, or a public
+// http(s) target outside sensitive literal-IP ranges (loopback / private /
+// link-local / ...). Arbitrary internal targets would turn the daemon into an
+// internal-network scanner.
+function probeTargetAllowed(
+  targetUrl: string,
+  state: RelayState,
+): { allowed: boolean; reason?: string } {
+  const trimmed = targetUrl.trim();
+  let u: URL;
+  try {
+    u = new URL(trimmed);
+  } catch {
+    return { allowed: false, reason: "invalid url" };
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") {
+    return { allowed: false, reason: "only http(s) targets can be probed" };
+  }
+  if (u.username || u.password) {
+    return { allowed: false, reason: "url must not contain credentials" };
+  }
+  if (state.url === trimmed || state.relays.some((r) => r.url === trimmed)) {
+    return { allowed: true };
+  }
+  if (isSensitiveNetworkHost(u.hostname)) {
+    return { allowed: false, reason: "target resolves to a loopback/private network address" };
+  }
+  return { allowed: true };
+}
+
+// run a request handler with a safety net. A failure mid-request (upstream
+// reset mid-stream, client gone, unexpected bug) must never take the daemon
+// down: Node ≥15 terminates the process on unhandled rejections, and an
+// unhandled 'error' on a stream crashes too. Best-effort: send a clean 502
+// when nothing has been written yet, otherwise just close the response.
+function runRequest(
+  promise: Promise<void>,
+  res: http.ServerResponse,
+  log: Logger,
+  label: string,
+): void {
+  res.on("error", () => {
+    // client vanished mid-response; nothing left to send
+  });
+  promise.catch(() => {
+    log.warn(`${label}: request failed`, { status: 502 });
+    try {
+      if (res.headersSent) res.end();
+      else {
+        sendJson(res, 502, {
+          error: { message: "upstream request failed", type: "upstream_error", status: 502 },
+        });
+      }
+    } catch {
+      // connection already gone
+    }
+  });
+}
+
 function sendJson(
   res: http.ServerResponse,
   status: number,
@@ -289,7 +451,7 @@ function sendJson(
   res.writeHead(status, {
     "content-type": "application/json",
     "content-length": Buffer.byteLength(payload),
-    ...CORS_HEADERS,
+    ...corsFor(res),
   });
   res.end(payload);
 }
@@ -502,7 +664,7 @@ async function runChatForward(
 
   for (let attempt = 0; attempt <= MAX_FAILOVER_RETRIES; attempt++) {
     if (current.id !== model.id || attempt > 0) {
-      log.warn("upstream rejected — fallback used", {
+      log.warn("upstream rejected - fallback used", {
         from: model.id,
         to: current.id,
         fromUpstream: currentUpstream.id,
@@ -683,7 +845,7 @@ async function handleChat(
 
   const { response: upstreamRes, model: current, upstream: currentUpstream } = result;
   const model = catalog.resolve(parsed.value.model) ?? current;
-  log.info("chat → upstream", {
+  log.info("chat -> upstream", {
     model: current.id,
     upstream: currentUpstream.id,
     stream: parsed.value.stream,
@@ -691,7 +853,7 @@ async function handleChat(
 
   // 2xx: forward the response, capturing token usage on the way
   const contentType = upstreamRes.headers.get("content-type") ?? "application/json";
-  res.writeHead(upstreamRes.status, { "content-type": contentType, ...CORS_HEADERS });
+  res.writeHead(upstreamRes.status, { "content-type": contentType, ...corsFor(res) });
 
   if (!parsed.value.stream) {
     // non-stream: buffer once to read usage, then forward the exact bytes
@@ -739,11 +901,29 @@ async function handleChat(
   }
 
   if (upstreamRes.body) {
-    Readable.fromWeb(
+    const src = Readable.fromWeb(
       upstreamRes.body as import("node:stream/web").ReadableStream,
-    )
-      .pipe(logUsageTransform(current.id, currentUpstream.id, log, requestStartedAt, model.id, activity, "chat"))
-      .pipe(res);
+    );
+    const usageTx = logUsageTransform(current.id, currentUpstream.id, log, requestStartedAt, model.id, activity, "chat");
+    // a mid-stream upstream failure must not crash the daemon: log it and end
+    // the client response instead. If the client goes away, stop reading the
+    // upstream so its connection is released.
+    const failStream = () => {
+      log.warn("upstream stream interrupted", {
+        model: current.id,
+        upstream: currentUpstream.id,
+        status: 502,
+      });
+      try {
+        res.destroy();
+      } catch {
+        // response already gone
+      }
+    };
+    src.on("error", failStream);
+    usageTx.on("error", failStream);
+    res.on("error", () => src.destroy());
+    src.pipe(usageTx).pipe(res);
   } else {
     res.end();
   }
@@ -854,7 +1034,7 @@ async function handleResponses(
 
   const { response: upstreamRes, model: current, upstream: currentUpstream } = result;
   const resolved = catalog.resolve(parsed.value.model) ?? current;
-  log.info("responses → upstream", {
+  log.info("responses -> upstream", {
     model: current.id,
     upstream: currentUpstream.id,
     stream: parsed.value.stream,
@@ -892,7 +1072,7 @@ async function handleResponses(
       });
     }
     const out = renderResponse(json, current.id);
-    res.writeHead(upstreamRes.status, { "content-type": "application/json", ...CORS_HEADERS });
+    res.writeHead(upstreamRes.status, { "content-type": "application/json", ...corsFor(res) });
     res.end(JSON.stringify(out));
     return;
   }
@@ -902,27 +1082,36 @@ async function handleResponses(
     "content-type": "text/event-stream",
     "cache-control": "no-cache",
     "connection": "keep-alive",
-    ...CORS_HEADERS,
+    ...corsFor(res),
   });
   const encoder = new ResponsesStreamEncoder();
   let first = true;
   let streamUsage: TokenUsage | null = null;
-  if (upstreamRes.body) {
-    for await (const frame of readSseStream(
-      upstreamRes.body as unknown as import("node:stream/web").ReadableStream,
-    )) {
-      if (frame.data === "[DONE]") continue;
-      let json: any;
-      try { json = JSON.parse(frame.data); } catch { continue; }
-      if (first) {
-        first = false;
-        for (const ev of encoder.open(current.id)) res.write(ev);
+  try {
+    if (upstreamRes.body) {
+      for await (const frame of readSseStream(
+        upstreamRes.body as unknown as import("node:stream/web").ReadableStream,
+      )) {
+        if (frame.data === "[DONE]") continue;
+        let json: any;
+        try { json = JSON.parse(frame.data); } catch { continue; }
+        if (first) {
+          first = false;
+          for (const ev of encoder.open(current.id)) res.write(ev);
+        }
+        const usage = extractUsage(json);
+        if (usage) streamUsage = usage;
+        for (const ev of encoder.push(json)) res.write(ev);
       }
-      const usage = extractUsage(json);
-      if (usage) streamUsage = usage;
-      for (const ev of encoder.push(json)) res.write(ev);
     }
+  } catch {
+    log.warn("upstream stream interrupted", {
+      model: current.id,
+      upstream: currentUpstream.id,
+      status: 502,
+    });
   }
+  // always emit the terminating events so clients never hang waiting
   for (const ev of encoder.close()) res.write(ev);
   if (streamUsage) {
     const fields: Record<string, unknown> = {
@@ -1023,7 +1212,7 @@ async function handleAnthropic(
   }
 
   const { response: upstreamRes, model: current, upstream: currentUpstream } = result;
-  log.info("anthropic → upstream", {
+  log.info("anthropic -> upstream", {
     model: current.id,
     upstream: currentUpstream.id,
     stream: parsed.value.stream,
@@ -1069,29 +1258,38 @@ async function handleAnthropic(
     "content-type": "text/event-stream",
     "cache-control": "no-cache",
     "connection": "keep-alive",
-    ...CORS_HEADERS,
+    ...corsFor(res),
   });
   const encoder = new AnthropicStreamEncoder();
   let streamUsage: TokenUsage | null = null;
   let streamClosed = false;
-  if (upstreamRes.body) {
-    for await (const frame of readSseStream(
-      upstreamRes.body as unknown as import("node:stream/web").ReadableStream,
-    )) {
-      if (frame.data === "[DONE]") {
-        streamClosed = true;
-        for (const ev of encoder.close()) res.write(ev);
-        break;
+  try {
+    if (upstreamRes.body) {
+      for await (const frame of readSseStream(
+        upstreamRes.body as unknown as import("node:stream/web").ReadableStream,
+      )) {
+        if (frame.data === "[DONE]") {
+          streamClosed = true;
+          for (const ev of encoder.close()) res.write(ev);
+          break;
+        }
+        let json: any;
+        try { json = JSON.parse(frame.data); } catch { continue; }
+        const usage = extractUsage(json);
+        if (usage) streamUsage = usage;
+        for (const ev of encoder.push(json, current.id)) res.write(ev);
       }
-      let json: any;
-      try { json = JSON.parse(frame.data); } catch { continue; }
-      const usage = extractUsage(json);
-      if (usage) streamUsage = usage;
-      for (const ev of encoder.push(json, current.id)) res.write(ev);
     }
+  } catch {
+    log.warn("upstream stream interrupted", {
+      model: current.id,
+      upstream: currentUpstream.id,
+      status: 502,
+    });
   }
-  // Some upstreams end the SSE body without a [DONE] frame. Clients still
-  // need the closing Anthropic events or they wait forever.
+  // Some upstreams end the SSE body without a [DONE] frame, and a mid-stream
+  // failure also lands here. Clients still need the closing Anthropic events
+  // or they wait forever.
   if (!streamClosed) {
     for (const ev of encoder.close()) res.write(ev);
   }
@@ -1148,6 +1346,7 @@ export function createServer(opts: ServerOptions): http.Server {
   };
 
   return http.createServer((req, res) => {
+    (res as CorsAwareResponse).bansosCors = corsHeadersForOrigin(req.headers.origin);
     const ip = req.socket.remoteAddress ?? "unknown";
     const method = req.method ?? "";
 
@@ -1163,12 +1362,16 @@ export function createServer(opts: ServerOptions): http.Server {
     }
 
     if (method === "OPTIONS") {
-      res.writeHead(204, {
-        "access-control-allow-origin": "*",
-        "access-control-allow-methods": "GET, POST, OPTIONS",
-        "access-control-max-age": "86400",
-      });
+      const cors = corsFor(res);
+      res.writeHead(204, cors);
       res.end();
+      return;
+    }
+
+    // DNS-rebinding / drive-by guard: loopback clients must use a loopback
+    // (or own-interface) Host header. Blocked requests never touch the API.
+    if (!isHostTrusted(req)) {
+      sendJson(res, 403, { error: { message: "forbidden host" } });
       return;
     }
 
@@ -1329,50 +1532,63 @@ export function createServer(opts: ServerOptions): http.Server {
         });
         return;
       }
-      void readBody(req).then(async (bodyText) => {
-        let targetUrl = "";
-        if (bodyText) {
-          try {
-            const parsed = JSON.parse(bodyText) as { url?: string };
-            targetUrl = parsed.url || "";
-          } catch {
-            sendJson(res, 400, { error: { message: "invalid json body" } });
+      void runRequest(
+        readBody(req).then(async (bodyText) => {
+          let targetUrl = "";
+          if (bodyText) {
+            try {
+              const parsed = JSON.parse(bodyText) as { url?: string };
+              targetUrl = parsed.url || "";
+            } catch {
+              sendJson(res, 400, { error: { message: "invalid json body" } });
+              return;
+            }
+          }
+          if (!targetUrl) {
+            const current = loadRelayState();
+            targetUrl = current.url;
+          }
+          if (!targetUrl) {
+            sendJson(res, 400, { error: { message: "no url specified or active" } });
             return;
           }
-        }
-        if (!targetUrl) {
-          const current = loadRelayState();
-          targetUrl = current.url;
-        }
-        if (!targetUrl) {
-          sendJson(res, 400, { error: { message: "no url specified or active" } });
-          return;
-        }
 
-        const start = performance.now();
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 7000);
-          const upstreamRes = await fetch(targetUrl, {
-            method: "GET",
-            signal: controller.signal,
-          });
-          clearTimeout(timeoutId);
-          const ms = Math.round(performance.now() - start);
-          sendJson(res, 200, {
-            ok: upstreamRes.status < 500,
-            status: upstreamRes.status,
-            latencyMs: ms,
-          });
-        } catch (err) {
-          const ms = Math.round(performance.now() - start);
-          sendJson(res, 200, {
-            ok: false,
-            latencyMs: ms,
-            error: err instanceof Error ? err.message : "Unreachable",
-          });
-        }
-      });
+          const policy = probeTargetAllowed(targetUrl, loadRelayState());
+          if (!policy.allowed) {
+            sendJson(res, 403, {
+              error: { message: `relay probe blocked: ${policy.reason}`, type: "security_policy_error" },
+            });
+            return;
+          }
+
+          const start = performance.now();
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 7000);
+            const upstreamRes = await fetch(targetUrl, {
+              method: "GET",
+              signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+            const ms = Math.round(performance.now() - start);
+            sendJson(res, 200, {
+              ok: upstreamRes.status < 500,
+              status: upstreamRes.status,
+              latencyMs: ms,
+            });
+          } catch (err) {
+            const ms = Math.round(performance.now() - start);
+            sendJson(res, 200, {
+              ok: false,
+              latencyMs: ms,
+              error: err instanceof Error ? err.message : "Unreachable",
+            });
+          }
+        }),
+        res,
+        log,
+        "relay probe",
+      );
       return;
     }
 
@@ -1383,20 +1599,29 @@ export function createServer(opts: ServerOptions): http.Server {
         });
         return;
       }
-      void readBody(req).then((bodyText) => {
-        let body: Record<string, unknown> = {};
-        if (bodyText) {
-          try {
-            body = JSON.parse(bodyText) as Record<string, unknown>;
-          } catch {
-            sendJson(res, 400, { error: { message: "invalid json body" } });
+      void runRequest(
+        readBody(req).then((bodyText) => {
+          let body: Record<string, unknown> = {};
+          if (bodyText) {
+            try {
+              body = JSON.parse(bodyText) as Record<string, unknown>;
+            } catch {
+              sendJson(res, 400, { error: { message: "invalid json body" } });
+              return;
+            }
+          }
+          const updated = applyRelayMutation(loadRelayState(), body);
+          if ("error" in updated) {
+            sendJson(res, 400, { error: { message: updated.error } });
             return;
           }
-        }
-        const updated = applyRelayMutation(loadRelayState(), body);
-        saveRelayState(updated);
-        sendJson(res, 200, updated);
-      });
+          saveRelayState(updated);
+          sendJson(res, 200, updated);
+        }),
+        res,
+        log,
+        "relay mutation",
+      );
       return;
     }
 
@@ -1418,17 +1643,17 @@ export function createServer(opts: ServerOptions): http.Server {
     }
 
     if (method === "POST" && (url === "/v1/responses" || url === "/responses")) {
-      void handleResponses(req, res, catalog, log, security);
+      runRequest(handleResponses(req, res, catalog, log, security), res, log, "responses");
       return;
     }
 
     if (method === "POST" && (url === "/v1/chat/completions" || url === "/chat/completions")) {
-      void handleChat(req, res, catalog, log, security);
+      runRequest(handleChat(req, res, catalog, log, security), res, log, "chat");
       return;
     }
 
     if (method === "POST" && (url === "/v1/messages" || url === "/messages")) {
-      void handleAnthropic(req, res, catalog, log, security);
+      runRequest(handleAnthropic(req, res, catalog, log, security), res, log, "anthropic");
       return;
     }
 
@@ -1458,7 +1683,7 @@ export function createServer(opts: ServerOptions): http.Server {
         res.writeHead(404, {
           "content-type": "text/html; charset=utf-8",
           "content-length": Buffer.byteLength(notFoundHtml),
-          ...CORS_HEADERS,
+          ...corsFor(res),
         });
         res.end(notFoundHtml);
         return;
