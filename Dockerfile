@@ -22,9 +22,13 @@ COPY package.json ./
 COPY --from=build /app/dist/cli/index.js ./dist/cli/index.js
 COPY --from=build /app/dist/ui/ ./dist/ui/
 
-# tini for correct SIGTERM forwarding to the foreground daemon
+# tini for correct SIGTERM forwarding to the foreground daemon. C3: run as
+# the non-root `node` user; its home is /home/node, so ~/.bansos lives there.
 RUN apk add --no-cache tini \
-    && mkdir -p /root/.bansos/logs
+    && mkdir -p /home/node/.bansos/logs \
+    && chown -R node:node /home/node/.bansos
+
+USER node
 
 ENV NODE_ENV=production
 

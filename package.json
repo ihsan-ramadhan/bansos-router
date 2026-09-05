@@ -40,10 +40,6 @@
     "pi",
     "codex"
   ],
-  "dependencies": {
-    "smol-toml": "^1.8.0",
-    "yaml": "^2.9.0"
-  },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.6",
     "@tailwindcss/vite": "^4.3.3",

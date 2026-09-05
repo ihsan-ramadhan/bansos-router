@@ -26,9 +26,30 @@ export const MAX_PORT = 17090;
 const LOG_DIR = path.join(BANSOS_DIR, "logs");
 const LOG_FILE = path.join(LOG_DIR, "bansosd.log");
 
+// C1: rotate the log when it outgrows MAX_LOG_BYTES, keeping MAX_LOG_BACKUPS
+// old files. Best-effort: a failed rename never blocks the daemon.
+const MAX_LOG_BYTES = 5 * 1024 * 1024;
+const MAX_LOG_BACKUPS = 2;
+
+function rotateLogFile(): void {
+  try {
+    for (let i = MAX_LOG_BACKUPS - 1; i >= 1; i--) {
+      const from = `${LOG_FILE}.${i}`;
+      const to = `${LOG_FILE}.${i + 1}`;
+      if (fs.existsSync(to)) fs.unlinkSync(to);
+      if (fs.existsSync(from)) fs.renameSync(from, to);
+    }
+    if (fs.existsSync(LOG_FILE)) fs.renameSync(LOG_FILE, `${LOG_FILE}.1`);
+  } catch {
+    // rotation is best-effort; keep appending if it fails
+  }
+}
+
+// the file destination is held in a mutable ref so rotation can swap the
+// underlying write stream without the tee or the logger noticing.
 function createTeeStream(
   a: NodeJS.WritableStream,
-  b: NodeJS.WritableStream,
+  bRef: { current: NodeJS.WritableStream },
 ): NodeJS.WritableStream {
   const tee = new stream.PassThrough();
   tee.on("data", (chunk) => {
@@ -38,7 +59,7 @@ function createTeeStream(
       // ignore write errors on one destination
     }
     try {
-      b.write(chunk);
+      bRef.current.write(chunk);
     } catch {
       // ignore write errors on the other destination
     }
@@ -146,7 +167,9 @@ async function main(argv: string[]): Promise<void> {
   if (args.bg) {
     const log = createLogger({ prefix: "bansosd" });
     fs.mkdirSync(LOG_DIR, { recursive: true });
-    const out = fs.openSync(LOG_FILE, "a");
+    // stdout/stderr go to /dev/null: the child writes the log file itself
+    // through its own rotating stream, so rotation keeps working in --bg mode
+    // (C1). The child is the only writer to the file.
     const child = spawn(
       process.execPath,
       [
@@ -161,29 +184,43 @@ async function main(argv: string[]): Promise<void> {
         "--bg-child",
       ],
       {
-        stdio: ["ignore", out, out] as unknown as import("node:child_process").StdioOptions,
+        stdio: ["ignore", "ignore", "ignore"] as unknown as import("node:child_process").StdioOptions,
         detached: true,
       },
     );
     child.unref();
-    fs.closeSync(out);
     log.info(`started in background (pid ${child.pid}), log: ${LOG_FILE}`);
     return;
   }
 
   // foreground (and the --bg child): always log to a file so `bansos logs`
   // works in every mode, while still echoing to stdout for an interactive run.
+  // In --bg mode the child's stdout is /dev/null, so the rotating stream is
+  // the only file writer; the tee keeps the two destinations in sync.
   fs.mkdirSync(LOG_DIR, { recursive: true });
-  const isBgChild = args.bgChild === true;
-  // In --bg mode the parent already redirected this child's stdout/stderr to
-  // LOG_FILE, so log straight to stdout: a single writer to the file. Opening a
-  // second handle to the same file would duplicate every line.
-  const out = isBgChild
-    ? process.stdout
-    : (() => {
-        const fileStream = fs.createWriteStream(LOG_FILE, { flags: "a" });
-        return createTeeStream(process.stdout, fileStream);
-      })();
+  const fileRef: { current: NodeJS.WritableStream } = {
+    current: fs.createWriteStream(LOG_FILE, { flags: "a" }),
+  };
+  // rotate an oversized log before writing more, and periodically so a
+  // long-lived daemon never grows one file forever (C1).
+  try {
+    if (fs.statSync(LOG_FILE).size > MAX_LOG_BYTES) rotateLogFile();
+  } catch {
+    // no log file yet
+  }
+  const rotateTimer = setInterval(() => {
+    try {
+      if (fs.statSync(LOG_FILE).size > MAX_LOG_BYTES) {
+        fileRef.current.end();
+        rotateLogFile();
+        fileRef.current = fs.createWriteStream(LOG_FILE, { flags: "a" });
+      }
+    } catch {
+      // stat or swap failed; try again on the next tick
+    }
+  }, 60_000);
+  rotateTimer.unref();
+  const out = createTeeStream(process.stdout, fileRef);
   const log = createLogger({ prefix: "bansosd", out });
 
   // run an initial health-check pass, then refresh periodically

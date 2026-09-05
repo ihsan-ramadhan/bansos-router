@@ -52,8 +52,12 @@ Run the daemon in a container instead of installing globally:
 
 ```bash
 docker build -t bansos-router .
-docker run -d --name bansos -p 17070:17070 -v bansos-data:/root/.bansos bansos-router
+docker run -d --name bansos -p 17070:17070 -v bansos-data:/home/node/.bansos bansos-router
 ```
+
+The container runs as the non-root `node` user (uid 1000); state lives in
+`/home/node/.bansos` inside the container, which is what the volume above
+mounts.
 
 Or with compose:
 

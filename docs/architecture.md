@@ -206,18 +206,18 @@ State files are plain JSON, never secret-bearing (keyless design).
 | HTTP server | `node:http`: **no framework** | Raw streaming control; frameworks add nothing (pi-bansos proof) |
 | Upstream client | global `fetch` + `duplex: "half"` | SSE pass-through; connection pooling built into undici |
 | Streaming | async-iterator translation, **never buffer** a streaming response | Protocols.md T1-T8 require real-time SSE in all three wires |
-| Config serializers | JSON (built-in) + `smol-toml` (Codex/Antigravity/JCode) + `yaml` (Hermes) | Setup CLI writes three config formats |
+| Config serializers | JSON (built-in); TOML/YAML written by a hand-rolled block serializer in `cli/write.ts` (zero deps) | Setup CLI writes three config formats |
 | CLI parsing | hand-rolled subcommand parser | Surface is small (`setup/status/relay/doctor`); no dep needed |
 | State | JSON under `~/.bansos/`, **atomic writes** (temp file + rename) | Crash-safe, no DB, survives npm updates |
 | Logging | hand-rolled JSON-lines logger, quiet by default | Proxy doesn't need pino-grade observability |
 | Testing | `node:test` (+ `tsx` loader in dev) | Zero-dep; enough for unit + streaming integration tests |
 | Build | **esbuild** -> one bundle (`dist/cli/index.js`); bins `bansos` + `bansosd` point at it | Single-file entry, no runtime build dep; `tsx` only for dev |
-| Process mgmt | `bansos start` foreground; `--bg` = detached spawn + log file; `bansos stop` = SIGTERM all daemon pids; `bansos status` = TCP health-check | `state.json` pid + `/proc` scan, no PID-file complexity |
+| Process mgmt | `bansos start` foreground; `--bg` = detached spawn + log file; `bansos stop` = SIGTERM all daemon pids; `bansos status` = TCP health-check | `state.json` pid + `/proc` (Linux) / `ps` / `wmic` scan, no PID-file complexity |
 
 ### 7.3 Dependency budget
 
 ```
-runtime (2): smol-toml, yaml
+runtime (0)
 dev (4):    typescript, esbuild, tsx, @types/node
 ```
 

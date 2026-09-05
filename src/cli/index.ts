@@ -394,10 +394,25 @@ async function runLogs(args: string[]): Promise<number> {
     return 1;
   }
 
-  // show the last 50 lines as context before following
-  const content = fs.readFileSync(logFile, "utf8");
-  const lines = content.split("\n");
-  const context = lines.length > 50 ? lines.slice(lines.length - 50) : lines;
+  // show the last 50 lines as context before following. Read a tail window
+  // from EOF instead of loading the whole file, so a multi-MB log stays cheap
+  // (C1).
+  const TAIL_WINDOW = 64 * 1024;
+  const fd = fs.openSync(logFile, "r");
+  let tail = "";
+  let tailStart = 0;
+  try {
+    const size = fs.statSync(logFile).size;
+    tailStart = Math.max(0, size - TAIL_WINDOW);
+    const buf = Buffer.alloc(size - tailStart);
+    fs.readSync(fd, buf, 0, buf.length, tailStart);
+    tail = buf.toString("utf8");
+  } finally {
+    fs.closeSync(fd);
+  }
+  const lines = tail.split("\n");
+  let context = lines.slice(Math.max(0, lines.length - 50));
+  if (tailStart > 0 && context.length > 0) context = context.slice(1); // drop the partial first line
   if (context.some((l) => l !== "")) {
     process.stdout.write(`${context.join("\n").trimStart()}\n`);
   }

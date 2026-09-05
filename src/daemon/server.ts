@@ -293,6 +293,18 @@ function getUiDistDir(): string {
   return path.resolve(process.cwd(), "dist/ui");
 }
 
+// C4: harden UI responses. The SPA is fully self-contained (no inline scripts,
+// no external origins), so a strict CSP is safe here.
+function securityHeaders(): Record<string, string> {
+  return {
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer",
+    "content-security-policy":
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+  };
+}
+
 function serveStaticUi(res: http.ServerResponse, reqPath: string): void {
   const uiDir = getUiDistDir();
   let relativePath = reqPath.replace(/^\/+/, "");
@@ -311,13 +323,14 @@ function serveStaticUi(res: http.ServerResponse, reqPath: string): void {
   if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
     const ext = path.extname(filePath).toLowerCase();
     const contentType = MIME_TYPES[ext] ?? "application/octet-stream";
-    const content = fs.readFileSync(filePath);
     res.writeHead(200, {
       "content-type": contentType,
-      "content-length": content.length,
+      ...securityHeaders(),
       ...corsFor(res),
     });
-    res.end(content);
+    const rs = fs.createReadStream(filePath);
+    rs.on("error", () => res.destroy());
+    rs.pipe(res);
     return;
   }
 
@@ -330,13 +343,14 @@ function serveStaticUi(res: http.ServerResponse, reqPath: string): void {
   // If index.html requested or SPA route but file missing, check if index.html exists
   const indexPath = path.join(uiDir, "index.html");
   if (fs.existsSync(indexPath) && fs.statSync(indexPath).isFile()) {
-    const content = fs.readFileSync(indexPath);
     res.writeHead(200, {
       "content-type": "text/html; charset=utf-8",
-      "content-length": content.length,
+      ...securityHeaders(),
       ...corsFor(res),
     });
-    res.end(content);
+    const rs = fs.createReadStream(indexPath);
+    rs.on("error", () => res.destroy());
+    rs.pipe(res);
     return;
   }
 
@@ -364,6 +378,7 @@ function serveStaticUi(res: http.ServerResponse, reqPath: string): void {
   res.writeHead(200, {
     "content-type": "text/html; charset=utf-8",
     "content-length": Buffer.byteLength(fallbackHtml),
+    ...securityHeaders(),
     ...corsFor(res),
   });
   res.end(fallbackHtml);
@@ -516,6 +531,66 @@ function findUsageObject(tail: string): Record<string, unknown> | null {
     }
   }
   return null;
+}
+
+// C5: some reasoning-only upstreams (stepfun, mimo at a small budget, ...)
+// stream `reasoning_content` deltas but never a `content` delta, which plain
+// OpenAI clients render as an empty reply. Fold reasoning deltas into
+// `content` (mirroring the non-stream patch and the Anthropic/Responses
+// encoders) so a streamed answer always has visible text. Deltas that carry
+// real content are left byte-identical.
+function maybeFoldReasoning(frame: string): string {
+  const lines = frame.split("\n");
+  let changed = false;
+  const out = lines.map((line) => {
+    if (!line.startsWith("data: ")) return line;
+    const payload = line.slice(6);
+    if (payload === "[DONE]") return line;
+    let json: any;
+    try {
+      json = JSON.parse(payload);
+    } catch {
+      return line;
+    }
+    const delta = json?.choices?.[0]?.delta;
+    if (!delta || typeof delta !== "object") return line;
+    if (typeof delta.content === "string" && delta.content.length > 0) return line;
+    const reasoning =
+      typeof delta.reasoning_content === "string" && delta.reasoning_content.length > 0
+        ? delta.reasoning_content
+        : typeof delta.reasoning === "string" && delta.reasoning.length > 0
+          ? delta.reasoning
+          : "";
+    if (!reasoning) return line;
+    const { reasoning_content: _rc, reasoning: _r, ...rest } = delta;
+    json.choices[0].delta = { ...rest, content: reasoning };
+    changed = true;
+    return `data: ${JSON.stringify(json)}`;
+  });
+  return changed ? out.join("\n") : frame;
+}
+
+// stream transform: reassemble SSE frames split across chunks, fold
+// reasoning-only deltas, and pass everything else through untouched.
+export function reasoningToContentTransform(): Transform {
+  let buffer = "";
+  return new Transform({
+    transform(chunk, _enc, cb) {
+      buffer += chunk.toString("utf8");
+      let end = buffer.indexOf("\n\n");
+      while (end !== -1) {
+        const frame = buffer.slice(0, end + 2);
+        buffer = buffer.slice(end + 2);
+        this.push(Buffer.from(maybeFoldReasoning(frame), "utf8"));
+        end = buffer.indexOf("\n\n");
+      }
+      cb();
+    },
+    flush(cb) {
+      if (buffer) this.push(Buffer.from(maybeFoldReasoning(buffer), "utf8"));
+      cb();
+    },
+  });
 }
 
 // pass-through that watches the tail of the SSE bytes for a usage object and
@@ -945,7 +1020,7 @@ async function handleChat(
     usageTx.on("error", failStream);
     res.on("error", () => src.destroy());
     signal.addEventListener("abort", () => src.destroy());
-    src.pipe(usageTx).pipe(res);
+    src.pipe(reasoningToContentTransform()).pipe(usageTx).pipe(res);
   } else {
     res.end();
   }
