@@ -367,6 +367,7 @@ async function runLogs(args: string[]): Promise<number> {
       outputTokens: number;
       durationMs: number;
       status: string;
+      statusCode?: number;
       failoverFrom?: string;
     }> };
     if (body.events.length === 0) {
@@ -377,7 +378,7 @@ async function runLogs(args: string[]): Promise<number> {
     const fmt = (n: number) =>
       n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k` : String(n);
     for (const e of body.events) {
-      const status = e.status === "ok" ? "✓" : "✗";
+      const status = e.status === "ok" ? "✓" : e.statusCode ? `✗ ${e.statusCode}` : "✗";
       const fo = e.failoverFrom ? ` (failover ${e.failoverFrom}->${e.model})` : "";
       console.log(
         `${time(e.timestamp)} ${status} ${e.kind} ${e.model} [${e.upstream}] ` +

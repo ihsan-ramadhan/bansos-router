@@ -341,9 +341,13 @@ export function ActivityView() {
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-800/40 font-mono">
                           200 OK
                         </span>
+                      ) : e.statusCode === 429 ? (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-950/40 text-amber-400 border border-amber-800/40 font-mono">
+                          429
+                        </span>
                       ) : (
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-950/40 text-rose-400 border border-rose-800/40 font-mono">
-                          ERR
+                          {e.statusCode ? `ERR ${e.statusCode}` : "ERR"}
                         </span>
                       )}
                     </td>

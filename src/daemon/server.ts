@@ -835,6 +835,7 @@ async function handleChat(
       outputTokens: 0,
       durationMs: Date.now() - requestStartedAt,
       status: "error",
+      statusCode: result.status,
     });
     sendJson(res, result.status, {
       error: { message: result.message, type: result.type ?? "upstream_error", status: result.status },
@@ -1024,6 +1025,7 @@ async function handleResponses(
       outputTokens: 0,
       durationMs: Date.now() - requestStartedAt,
       status: "error",
+      statusCode: result.status,
     });
     sendJson(res, result.status, {
       error: { message: result.message, type: result.type ?? "upstream_error", status: result.status },
@@ -1206,6 +1208,7 @@ async function handleAnthropic(
       outputTokens: 0,
       durationMs: Date.now() - requestStartedAt,
       status: "error",
+      statusCode: result.status,
     });
     sendAnthropicError(res, result.status, result.message, result.secretTypes);
     return;

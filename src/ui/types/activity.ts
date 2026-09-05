@@ -12,6 +12,7 @@ export interface ActivityEvent {
   outputTokens: number;
   durationMs: number;
   status: ActivityStatus;
+  statusCode?: number;
   failoverFrom?: string;
 }
 
