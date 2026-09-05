@@ -162,41 +162,12 @@ async function main(argv: string[]): Promise<void> {
   const config = loadConfig();
   const port = args.port ?? config.port ?? DEFAULT_PORT;
   const bind = args.bind ?? config.bind;
-  assertBindAllowed(bind, config.security, args.unsafeAllowNonLoopback);
 
-  if (args.bg) {
-    const log = createLogger({ prefix: "bansosd" });
-    fs.mkdirSync(LOG_DIR, { recursive: true });
-    // stdout/stderr go to /dev/null: the child writes the log file itself
-    // through its own rotating stream, so rotation keeps working in --bg mode
-    // (C1). The child is the only writer to the file.
-    const child = spawn(
-      process.execPath,
-      [
-        ...process.execArgv,
-        process.argv[1]!,
-        "--port",
-        String(port),
-        "--bind",
-        bind,
-        ...(args.unsafeAllowNonLoopback ? ["--unsafe-allow-non-loopback"] : []),
-        // marker so the child knows it is the file-backed instance
-        "--bg-child",
-      ],
-      {
-        stdio: ["ignore", "ignore", "ignore"] as unknown as import("node:child_process").StdioOptions,
-        detached: true,
-      },
-    );
-    child.unref();
-    log.info(`started in background (pid ${child.pid}), log: ${LOG_FILE}`);
-    return;
-  }
-
-  // foreground (and the --bg child): always log to a file so `bansos logs`
-  // works in every mode, while still echoing to stdout for an interactive run.
-  // In --bg mode the child's stdout is /dev/null, so the rotating stream is
-  // the only file writer; the tee keeps the two destinations in sync.
+  // always log to a file so `bansos logs` works in every mode, while still
+  // echoing to stdout for an interactive run. In --bg mode the child's stdout
+  // is /dev/null, so the rotating stream is the only file writer; the tee keeps
+  // the two destinations in sync. Built before the bind check so a refusal in a
+  // bg child still reaches the log file the parent points the user at.
   fs.mkdirSync(LOG_DIR, { recursive: true });
   const fileRef: { current: NodeJS.WritableStream } = {
     current: fs.createWriteStream(LOG_FILE, { flags: "a" }),
@@ -223,12 +194,63 @@ async function main(argv: string[]): Promise<void> {
   const out = createTeeStream(process.stdout, fileRef);
   const log = createLogger({ prefix: "bansosd", out });
 
+  try {
+    assertBindAllowed(bind, config.security, args.unsafeAllowNonLoopback);
+  } catch (err) {
+    // a bg child has stdout/stderr on /dev/null, so the tee's file half is the
+    // only place this surfaces; exit non-zero so `bansos start` does not report
+    // a phantom listener.
+    log.error(String((err as Error)?.message ?? err));
+    process.exitCode = 1;
+    return;
+  }
+
+  if (args.bg) {
+    // stdout/stderr go to /dev/null: the child writes the log file itself
+    // through its own rotating stream, so rotation keeps working in --bg mode
+    // (C1). The child is the only writer to the file.
+    const child = spawn(
+      process.execPath,
+      [
+        ...process.execArgv,
+        process.argv[1]!,
+        "--port",
+        String(port),
+        "--bind",
+        bind,
+        ...(args.unsafeAllowNonLoopback ? ["--unsafe-allow-non-loopback"] : []),
+        // marker so the child knows it is the file-backed instance
+        "--bg-child",
+      ],
+      {
+        stdio: ["ignore", "ignore", "ignore"] as unknown as import("node:child_process").StdioOptions,
+        detached: true,
+      },
+    );
+    child.unref();
+    log.info(`started in background (pid ${child.pid}), log: ${LOG_FILE}`);
+    return;
+  }
+
   // run an initial health-check pass, then refresh periodically
   const { server, port: actualPort, catalog } = await startServer(port, bind, config, log);
   log.info(`bansosd listening on http://${bind}:${actualPort}`);
 
+  // publish the real bound port before the first catalog refresh: the parent of
+  // a --bg start polls state.json for 5s, and a cold refresh can take longer
+  // (upstream probes run serially with timeouts up to 15s each), which would
+  // make it print the configured port instead of the auto-bumped one.
+  writeJsonAtomic(STATE_FILE, {
+    pid: process.pid,
+    port: actualPort,
+    bind,
+    startedAt: Date.now(),
+  });
+
+  // the banner goes through the tee, not process.stdout: a bg child's stdout is
+  // /dev/null, and writing it straight there would keep it out of `bansos logs`.
   if (process.env.BANSOS_LOG !== "json") {
-    process.stdout.write(
+    out.write(
       `\n● bansosd online (port ${actualPort})\n` +
       `  ├── Web UI   : http://${bind}:${actualPort}\n` +
       `  └── API Base : http://${bind}:${actualPort}/v1\n\n`
@@ -238,17 +260,10 @@ async function main(argv: string[]): Promise<void> {
   await catalog.refresh();
 
   if (process.env.BANSOS_LOG !== "json") {
-    process.stdout.write(
+    out.write(
       `  └── Models   : ${catalog.models.length} alive (${[...new Set(catalog.models.map((m) => m.source))].join(", ")})\n\n`
     );
   }
-
-  writeJsonAtomic(STATE_FILE, {
-    pid: process.pid,
-    port: actualPort,
-    bind,
-    startedAt: Date.now(),
-  });
 
   const shutdown = () => {
     log.info("shutting down");

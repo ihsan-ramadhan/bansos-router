@@ -207,7 +207,7 @@ async function main(): Promise<number> {
   // daemon mode: invoked as bansosd, or via the hidden "daemon" subcommand, or daemon flags
   if (invokedAs === "bansosd" || argv[0] === "daemon" || isDaemonFlag(argv[0])) {
     await runDaemon(argv);
-    return 0;
+    return daemonExitCode();
   }
 
   const json = argv.includes("--json");
@@ -268,6 +268,12 @@ async function main(): Promise<number> {
   }
 }
 
+// the daemon reports a startup refusal by setting process.exitCode after
+// logging it; returning a literal 0 from the calling command would erase it.
+function daemonExitCode(): number {
+  return typeof process.exitCode === "number" ? process.exitCode : 0;
+}
+
 async function runStart(args: string[]): Promise<number> {
   let bg = false;
   let port: number | undefined;
@@ -288,12 +294,11 @@ async function runStart(args: string[]): Promise<number> {
   if (!bg) {
     // foreground: run the daemon in-process (never returns; Ctrl+C / SIGTERM shuts down)
     await runDaemon(args);
-    return 0;
+    return daemonExitCode();
   }
 
   const logFile = path.join(BANSOS_DIR, "logs", "bansosd.log");
   fs.mkdirSync(path.dirname(logFile), { recursive: true });
-  const out = fs.openSync(logFile, "a");
   const child = spawn(
     process.execPath,
     [
@@ -306,12 +311,17 @@ async function runStart(args: string[]): Promise<number> {
       "--bg-child",
     ],
     {
-      stdio: ["ignore", out, out] as unknown as import("node:child_process").StdioOptions,
+      stdio: ["ignore", "ignore", "ignore"] as unknown as import("node:child_process").StdioOptions,
       detached: true,
     },
   );
   child.unref();
-  fs.closeSync(out);
+  // a spawn failure emits "error", which would crash the parent with no
+  // listener attached; fold it into the same "child is gone" check below.
+  let spawnFailed = false;
+  child.on("error", () => {
+    spawnFailed = true;
+  });
   // the child may auto-bump the port (e.g. 17070 -> 17071) if it is taken;
   // read the actual bound port back from state.json once the child has written
   // it (it writes pid: child.pid after listening), so the printed URLs match reality.
@@ -324,6 +334,14 @@ async function runStart(args: string[]): Promise<number> {
       effectivePort = st.port;
       if (typeof st.bind === "string") effectiveBind = st.bind;
       break;
+    }
+    // the child exited without writing state (e.g. bind refused on strict
+    // security): do not report a phantom listener. exitCode is the reliable
+    // signal - kill(pid, 0) still succeeds for a not-yet-reaped zombie.
+    if (spawnFailed || child.exitCode !== null || child.signalCode !== null) {
+      console.error(`bansos start --bg: daemon exited before binding (port ${effectivePort} busy or bind refused)`);
+      console.error(`  check the log: ${logFile}`);
+      return 1;
     }
     await new Promise((r) => setTimeout(r, 50));
   }
