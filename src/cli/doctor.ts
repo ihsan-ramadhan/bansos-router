@@ -1,13 +1,12 @@
 import fs from "node:fs";
 import { ADAPTERS } from "../adapters";
-import { loadConfig } from "../daemon/state";
+import { effectiveBind, effectivePort } from "../daemon/state";
 import { START_MARKER } from "../adapters/types";
 import { expandHome, parseJsonc } from "./write";
 import { checkUpdate } from "../update";
 
 export async function runDoctor(_argv: string[]): Promise<number> {
-  const config = loadConfig();
-  const base = `http://${config.bind}:${config.port}`;
+  const base = `http://${effectiveBind()}:${effectivePort()}`;
   let failures = 0;
 
   // 1. daemon reachable?

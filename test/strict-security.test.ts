@@ -273,6 +273,30 @@ test("strict DLP blocks OpenAI, GitHub, and SSH secrets on all wire protocols wi
   }
 });
 
+test("normal mode forwards pasted secrets to external upstreams as-is", async () => {
+  const provider = await createMockProvider();
+  const model = testModel("normal-origin", "zen");
+  const entries: Array<Record<string, unknown>> = [];
+  const daemon = await createTestDaemon(
+    normalizeSecurityConfig({ mode: "normal" }),
+    [testUpstream("zen", provider.url)],
+    [model],
+    recordingLogger(entries),
+  );
+  try {
+    const secret = ["sk", "proj", "E".repeat(24)].join("-");
+    for (const wire of wireRequests(model.id, secret)) {
+      const response = await postJson(daemon.baseUrl, wire.path, wire.body);
+      assert.equal(response.status, 200, wire.name);
+    }
+    assert.equal(provider.hits, 3);
+    assert.equal(JSON.stringify(entries).includes("dlpBlocked"), false);
+  } finally {
+    await daemon.close();
+    await provider.close();
+  }
+});
+
 test("strict mode blocks cross-provider failover consistently on all wire protocols", async () => {
   const originProvider = await createMockProvider(429, JSON.stringify({ error: { message: "rate limited" } }));
   const fallbackProvider = await createMockProvider();

@@ -208,7 +208,9 @@ export const kiloUpstream: Upstream = {
 
   async fetchCatalog(): Promise<ModelDef[] | null> {
     try {
-      const res = await fetch(KILO_CATALOG_URL);
+      const res = await fetch(KILO_CATALOG_URL, {
+        signal: AbortSignal.timeout(15_000),
+      });
       if (!res.ok) return null;
       const json = (await res.json()) as { data?: KiloApiModel[] };
       const live = json.data ?? [];

@@ -112,8 +112,12 @@ With `mode: "strict"`:
 - Relay egress, probing, and mutation disabled across CLI, API, Web UI.
 - Only exact upstreams in `allowedUpstreams` receive requests (empty list blocks all).
 - Cross-provider failover disabled.
-- API keys, PATs, private keys, and credentials blocked with HTTP 422 before egress.
 - Sensitive values and raw upstream errors suppressed from logs.
+- **DLP blocks pasted credentials**: API keys, PATs, private keys, and
+  credential assignments pasted into a request are blocked with HTTP 422
+  before they leave for an external upstream (zen/kilo/llm7). Loopback
+  (self-hosted) gateways are exempt, since their own keys are legitimately
+  part of the request body.
 
 ## What it does
 

@@ -318,3 +318,65 @@ test("relay mutation rejects malformed URLs without touching state", async () =>
     await close();
   }
 });
+
+// ---------------------------------------------------------------------------
+// B1: a client disconnect must abort the in-flight upstream request
+// ---------------------------------------------------------------------------
+
+test("client disconnect aborts the upstream request instead of leaving it running", async () => {
+  // upstream that receives the request and then never responds: the only way
+  // its connection closes is the daemon aborting the fetch
+  let received: () => void;
+  const receivedPromise = new Promise<void>((r) => {
+    received = r;
+  });
+  let abortedBeforeResponse = false;
+  const upstream = http.createServer((req, res) => {
+    void (async () => {
+      for await (const _ of req) {
+        // drain the body
+      }
+      res.on("close", () => {
+        if (!res.writableEnded) abortedBeforeResponse = true;
+      });
+      received();
+    })();
+  });
+  await new Promise<void>((r) => upstream.listen(0, "127.0.0.1", r));
+  const addr = upstream.address() as { port: number };
+  const { baseUrl, close } = await createTestDaemon(`http://127.0.0.1:${addr.port}`);
+  try {
+    const port = new URL(baseUrl).port;
+    const client = http.request({
+      host: "127.0.0.1",
+      port,
+      path: "/v1/chat/completions",
+      method: "POST",
+      headers: { "content-type": "application/json" },
+    });
+    client.on("error", () => {
+      // expected: the connection dies when we destroy() it
+    });
+    client.end(JSON.stringify({
+      model: "mock/zen:free",
+      stream: true,
+      messages: [{ role: "user", content: "hello" }],
+    }));
+
+    // wait until the daemon's upstream request actually arrived, then walk away
+    await receivedPromise;
+    client.destroy();
+
+    // the daemon must abort the upstream fetch promptly, releasing the socket
+    for (let i = 0; i < 40 && !abortedBeforeResponse; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.equal(abortedBeforeResponse, true, "upstream fetch was not aborted on client disconnect");
+
+    // and the daemon itself stays up
+    await assertDaemonAlive(baseUrl);
+  } finally {
+    await close();
+    await new Promise<void>((r) => upstream.close(() => r()));
+  }
+});

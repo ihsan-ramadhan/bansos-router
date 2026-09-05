@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ADAPTERS, findAdapter } from "../adapters";
 import type { HarnessAdapter, SetupContext } from "../adapters/types";
-import { loadConfig } from "../daemon/state";
+import { effectiveBind, effectivePort } from "../daemon/state";
 import { SEEDED_MODELS } from "../upstreams";
 import { modelDef, pickSmartDefaultModel, type ModelDef } from "../upstreams/types";
 import {
@@ -255,8 +255,7 @@ export async function runSetup(argv: string[]): Promise<number> {
     return 1;
   }
 
-  const config = loadConfig();
-  const baseUrl = `http://${config.bind}:${config.port}/v1`;
+  const baseUrl = `http://${effectiveBind()}:${effectivePort()}/v1`;
   const models = await getSetupModels(baseUrl);
   const defaultModel = args.model ?? pickSmartDefaultModel(models);
   const ctx: SetupContext = {

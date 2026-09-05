@@ -1,4 +1,4 @@
-import { loadConfig } from "../daemon/state";
+import { effectiveBind, effectivePort } from "../daemon/state";
 
 interface PingResult {
   id: string;
@@ -58,8 +58,7 @@ async function pingModel(base: string, modelId: string): Promise<PingResult> {
 export async function runPing(argv: string[]): Promise<number> {
   const json = argv.includes("--json");
   const targetModel = argv.filter((a) => a !== "--json")[0];
-  const config = loadConfig();
-  const base = `http://${config.bind}:${config.port}`;
+  const base = `http://${effectiveBind()}:${effectivePort()}`;
 
   // fetch available models from daemon
   let models: Array<{ id: string }> = [];

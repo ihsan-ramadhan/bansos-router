@@ -17,6 +17,7 @@ export class RuntimeCatalog {
   private byId = new Map<string, ModelDef>();
   private readonly bySource = new Map<string, Upstream>();
   private readonly upstreams: Upstream[];
+  private refreshInFlight: Promise<RefreshReport> | null = null;
 
   constructor(
     upstreams: Upstream[],
@@ -57,7 +58,20 @@ export class RuntimeCatalog {
 
   // health-check: unreachable upstream keeps last-known models;
   // a reachable upstream's live list replaces its seeded entries
+  // never run two catalog passes at once: a slow gateway must not let a
+  // second refresh (interval tick + manual POST /bansos/refresh) stack up and
+  // keep fetching forever. Concurrent callers share the in-flight pass.
   async refresh(): Promise<RefreshReport> {
+    if (this.refreshInFlight) return this.refreshInFlight;
+    this.refreshInFlight = this.runRefresh();
+    try {
+      return await this.refreshInFlight;
+    } finally {
+      this.refreshInFlight = null;
+    }
+  }
+
+  private async runRefresh(): Promise<RefreshReport> {
     const report: RefreshReport = { checked: 0, alive: 0, dead: 0, degraded: [] };
 
     for (const upstream of this.upstreams) {

@@ -123,18 +123,15 @@ function startServer(
   }
 
   return new Promise((resolve, reject) => {
-    const tryListen = (attempt: number) => {
-      server.once("error", (err: NodeJS.ErrnoException) => {
-        if (err.code === "EADDRINUSE" && attempt < MAX_PORT) {
-          log.warn(`port ${port} busy - trying ${port + 1}`);
-          resolve(startServer(port + 1, bind, config, log));
-          return;
-        }
-        reject(err);
-      });
-      server.listen(port, bind, () => resolve({ server, port, catalog }));
-    };
-    tryListen(0);
+    server.once("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE" && port < MAX_PORT) {
+        log.warn(`port ${port} busy - trying ${port + 1}`);
+        resolve(startServer(port + 1, bind, config, log));
+        return;
+      }
+      reject(err);
+    });
+    server.listen(port, bind, () => resolve({ server, port, catalog }));
   });
 }
 

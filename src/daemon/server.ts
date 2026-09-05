@@ -442,6 +442,14 @@ function runRequest(
   });
 }
 
+function clientDisconnectSignal(res: http.ServerResponse): AbortSignal {
+  const controller = new AbortController();
+  res.on("close", () => {
+    if (!res.writableFinished) controller.abort();
+  });
+  return controller.signal;
+}
+
 function sendJson(
   res: http.ServerResponse,
   status: number,
@@ -642,6 +650,7 @@ async function runChatForward(
   security: SecurityConfig,
   parsedModel: string,
   sanitizedBody: Record<string, unknown>,
+  signal: AbortSignal,
 ): Promise<ForwardResult | ForwardError> {
   const model = catalog.resolve(parsedModel);
   if (!model) {
@@ -697,10 +706,10 @@ async function runChatForward(
     });
     const outboundBody = JSON.stringify({ ...sanitizedBody, model: current.id });
 
-    if (isStrictSecurity(security) && isExternalUpstream(currentUpstream)) {
+    if (isExternalUpstream(currentUpstream)) {
       const secretScan = scanRequestBody(outboundBody);
       if (secretScan.blocked) {
-        log.warn("request blocked by strict secret guard", {
+        log.warn("request blocked by secret guard", {
           model: current.id,
           upstream: currentUpstream.id,
           status: 422,
@@ -711,7 +720,7 @@ async function runChatForward(
         return {
           status: 422,
           type: "security_policy_error",
-          message: "request blocked by strict secret guard",
+          message: "request blocked by secret guard",
           secretTypes: secretScan.secretTypes,
         };
       }
@@ -724,6 +733,7 @@ async function runChatForward(
         headers,
         body: outboundBody,
         duplex: "half",
+        signal,
       }, isRelayAllowed(security));
     } catch {
       transientError = { status: 502, message: "upstream request failed" };
@@ -785,6 +795,7 @@ async function handleChat(
   catalog: RuntimeCatalog,
   log: Logger,
   security: SecurityConfig,
+  signal: AbortSignal,
 ): Promise<void> {
   let bodyText: string;
   try {
@@ -824,6 +835,7 @@ async function handleChat(
     security,
     parsed.value.model,
     sanitizedBody,
+    signal,
   );
   if ("status" in result) {
     activity.record({
@@ -910,6 +922,14 @@ async function handleChat(
     // the client response instead. If the client goes away, stop reading the
     // upstream so its connection is released.
     const failStream = () => {
+      if (signal.aborted) {
+        try {
+          res.destroy();
+        } catch {
+          // response already gone
+        }
+        return;
+      }
       log.warn("upstream stream interrupted", {
         model: current.id,
         upstream: currentUpstream.id,
@@ -924,6 +944,7 @@ async function handleChat(
     src.on("error", failStream);
     usageTx.on("error", failStream);
     res.on("error", () => src.destroy());
+    signal.addEventListener("abort", () => src.destroy());
     src.pipe(usageTx).pipe(res);
   } else {
     res.end();
@@ -938,6 +959,7 @@ async function handleResponses(
   catalog: RuntimeCatalog,
   log: Logger,
   security: SecurityConfig,
+  signal: AbortSignal,
 ): Promise<void> {
   let bodyText: string;
   try {
@@ -1014,6 +1036,7 @@ async function handleResponses(
     security,
     parsed.value.model,
     sanitizedBody,
+    signal,
   );
   if ("status" in result) {
     activity.record({
@@ -1094,6 +1117,7 @@ async function handleResponses(
       for await (const frame of readSseStream(
         upstreamRes.body as unknown as import("node:stream/web").ReadableStream,
       )) {
+        if (signal.aborted) break;
         if (frame.data === "[DONE]") continue;
         let json: any;
         try { json = JSON.parse(frame.data); } catch { continue; }
@@ -1107,11 +1131,13 @@ async function handleResponses(
       }
     }
   } catch {
-    log.warn("upstream stream interrupted", {
-      model: current.id,
-      upstream: currentUpstream.id,
-      status: 502,
-    });
+    if (!signal.aborted) {
+      log.warn("upstream stream interrupted", {
+        model: current.id,
+        upstream: currentUpstream.id,
+        status: 502,
+      });
+    }
   }
   // always emit the terminating events so clients never hang waiting
   for (const ev of encoder.close()) res.write(ev);
@@ -1146,6 +1172,7 @@ async function handleAnthropic(
   catalog: RuntimeCatalog,
   log: Logger,
   security: SecurityConfig,
+  signal: AbortSignal,
 ): Promise<void> {
   let bodyText: string;
   try {
@@ -1197,6 +1224,7 @@ async function handleAnthropic(
     security,
     parsed.value.model,
     chatBody,
+    signal,
   );
   if ("status" in result) {
     activity.record({
@@ -1271,6 +1299,7 @@ async function handleAnthropic(
       for await (const frame of readSseStream(
         upstreamRes.body as unknown as import("node:stream/web").ReadableStream,
       )) {
+        if (signal.aborted) break;
         if (frame.data === "[DONE]") {
           streamClosed = true;
           for (const ev of encoder.close()) res.write(ev);
@@ -1284,11 +1313,13 @@ async function handleAnthropic(
       }
     }
   } catch {
-    log.warn("upstream stream interrupted", {
-      model: current.id,
-      upstream: currentUpstream.id,
-      status: 502,
-    });
+    if (!signal.aborted) {
+      log.warn("upstream stream interrupted", {
+        model: current.id,
+        upstream: currentUpstream.id,
+        status: 502,
+      });
+    }
   }
   // Some upstreams end the SSE body without a [DONE] frame, and a mid-stream
   // failure also lands here. Clients still need the closing Anthropic events
@@ -1350,6 +1381,7 @@ export function createServer(opts: ServerOptions): http.Server {
 
   return http.createServer((req, res) => {
     (res as CorsAwareResponse).bansosCors = corsHeadersForOrigin(req.headers.origin);
+    const clientSignal = clientDisconnectSignal(res);
     const ip = req.socket.remoteAddress ?? "unknown";
     const method = req.method ?? "";
 
@@ -1646,17 +1678,17 @@ export function createServer(opts: ServerOptions): http.Server {
     }
 
     if (method === "POST" && (url === "/v1/responses" || url === "/responses")) {
-      runRequest(handleResponses(req, res, catalog, log, security), res, log, "responses");
+      runRequest(handleResponses(req, res, catalog, log, security, clientSignal), res, log, "responses");
       return;
     }
 
     if (method === "POST" && (url === "/v1/chat/completions" || url === "/chat/completions")) {
-      runRequest(handleChat(req, res, catalog, log, security), res, log, "chat");
+      runRequest(handleChat(req, res, catalog, log, security, clientSignal), res, log, "chat");
       return;
     }
 
     if (method === "POST" && (url === "/v1/messages" || url === "/messages")) {
-      runRequest(handleAnthropic(req, res, catalog, log, security), res, log, "anthropic");
+      runRequest(handleAnthropic(req, res, catalog, log, security, clientSignal), res, log, "anthropic");
       return;
     }
 

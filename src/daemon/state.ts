@@ -34,6 +34,19 @@ export function ensureBansosDir(): void {
   fs.mkdirSync(BANSOS_DIR, { recursive: true });
 }
 
+// the port/bind a running daemon actually uses. state.json records the port
+// it bound after an auto-bump or an explicit --port, so CLI commands should
+// prefer it over the configured values (which they would otherwise miss).
+export function effectivePort(): number {
+  const state = readJson<{ port?: number }>(STATE_FILE);
+  return typeof state?.port === "number" ? state.port : loadConfig().port;
+}
+
+export function effectiveBind(): string {
+  const state = readJson<{ bind?: string }>(STATE_FILE);
+  return typeof state?.bind === "string" ? state.bind : loadConfig().bind;
+}
+
 export function loadConfig(): BansosConfig {
   try {
     const raw = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")) as Partial<BansosConfig>;

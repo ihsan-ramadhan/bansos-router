@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { runDoctor } from "./doctor";
 import { runPing } from "./ping";
 import { runRelay } from "./relay";
 import { runSetup } from "./setup";
 import { runDaemon, DEFAULT_PORT, MAX_PORT } from "../daemon";
-import { BANSOS_DIR, STATE_FILE, readJson } from "../daemon/state";
+import { BANSOS_DIR, STATE_FILE, effectiveBind, effectivePort, readJson } from "../daemon/state";
 import { VERSION, checkUpdate } from "../update";
 
 function help(): void {
@@ -342,8 +342,7 @@ async function runStart(args: string[]): Promise<number> {
 // and prints appends; Ctrl+C (or SIGTERM) stops the watch.
 async function runLogs(args: string[]): Promise<number> {
   const activity = args.includes("--activity");
-  const config = await import("../daemon/state").then((m) => m.loadConfig());
-  const base = `http://127.0.0.1:${config.port}`;
+  const base = `http://${effectiveBind()}:${effectivePort()}`;
 
   if (activity) {
     let res: Response;
@@ -447,18 +446,66 @@ function isAlive(pid: number): boolean {
 function findDaemonPids(statePid: number | null): number[] {
   const pids = new Set<number>();
   if (statePid && isAlive(statePid)) pids.add(statePid);
-  for (const entry of fs.readdirSync("/proc")) {
-    if (!/^\d+$/.test(entry)) continue;
-    const pid = Number(entry);
-    if (pids.has(pid)) continue;
-    try {
-      const args = fs.readFileSync(`/proc/${entry}/cmdline`, "utf8").split("\0").filter(Boolean);
-      if (isDaemonCmdline(args)) pids.add(pid);
-    } catch {
-      // process vanished mid-scan
+
+  // /proc only exists on Linux. macOS and Windows get a process-list scan so
+  // `bansos stop` (and the pi extension's auto-stop) still finds daemons
+  // instead of crashing on the missing directory.
+  if (process.platform === "linux" && fs.existsSync("/proc")) {
+    for (const entry of fs.readdirSync("/proc")) {
+      if (!/^\d+$/.test(entry)) continue;
+      const pid = Number(entry);
+      if (pids.has(pid)) continue;
+      try {
+        const args = fs.readFileSync(`/proc/${entry}/cmdline`, "utf8").split("\0").filter(Boolean);
+        if (isDaemonCmdline(args)) pids.add(pid);
+      } catch {
+        // process vanished mid-scan
+      }
+    }
+  } else {
+    for (const { pid, cmdline } of scanProcessList()) {
+      if (!pids.has(pid) && isDaemonCmdline(cmdline.split(/\s+/))) pids.add(pid);
     }
   }
   return [...pids];
+}
+
+// cross-platform process list (ps on POSIX, wmic on Windows). Never throws:
+// an unavailable process table just means no extra matches beyond state.json.
+function scanProcessList(): Array<{ pid: number; cmdline: string }> {
+  try {
+    if (process.platform === "win32") {
+      const out = execFileSync(
+        "wmic",
+        ["process", "get", "ProcessId,CommandLine"],
+        { encoding: "utf8", windowsHide: true, stdio: ["ignore", "pipe", "ignore"] },
+      );
+      const rows: Array<{ pid: number; cmdline: string }> = [];
+      for (const line of out.split(/\r?\n/).slice(1)) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        // wmic prints "CommandLine  ProcessId": the cmdline may contain
+        // spaces, so take the trailing number as the pid
+        const m = trimmed.match(/\s(\d+)\s*$/);
+        if (!m) continue;
+        rows.push({ pid: Number(m[1]), cmdline: trimmed.slice(0, m.index).trim() });
+      }
+      return rows;
+    }
+    const out = execFileSync(
+      "ps",
+      ["-axo", "pid=,command="],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    );
+    const rows: Array<{ pid: number; cmdline: string }> = [];
+    for (const line of out.split("\n")) {
+      const m = line.match(/^\s*(\d+)\s+(.*)$/);
+      if (m) rows.push({ pid: Number(m[1]), cmdline: m[2] ?? "" });
+    }
+    return rows;
+  } catch {
+    return [];
+  }
 }
 
 // a process is one of our daemons if it runs the bansos binary in daemon mode.
@@ -601,8 +648,7 @@ interface UsageCliShape {
 }
 
 async function runUsage(json: boolean): Promise<number> {
-  const config = await import("../daemon/state").then((m) => m.loadConfig());
-  const base = `http://127.0.0.1:${config.port}`;
+  const base = `http://${effectiveBind()}:${effectivePort()}`;
 
   let body: UsageCliShape;
   try {
@@ -663,8 +709,7 @@ async function runUsage(json: boolean): Promise<number> {
 }
 
 async function runStatusOrModels(cmd: "status" | "models" | "refresh", json: boolean): Promise<number> {
-  const config = await import("../daemon/state").then((m) => m.loadConfig());
-  const base = `http://127.0.0.1:${config.port}`;
+  const base = `http://${effectiveBind()}:${effectivePort()}`;
 
   try {
     if (cmd === "models") {
