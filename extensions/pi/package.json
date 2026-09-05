@@ -27,7 +27,7 @@
   "devDependencies": {
     "esbuild": "^0.28.2",
     "typescript": "^7.0.2",
-    "@types/node": "^22.0.0",
+    "@types/node": "^26.4.1",
     "@earendil-works/pi-coding-agent": "^0.84.3"
   },
   "pi": {
