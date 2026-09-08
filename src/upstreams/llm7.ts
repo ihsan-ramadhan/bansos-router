@@ -17,16 +17,6 @@ export const LLM7_MODELS: ModelDef[] = [
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
   }),
   modelDef({
-    id: "gpt-oss",
-    name: "GPT OSS 20B",
-    source: "llm7",
-    reasoning: true,
-    contextWindow: 131_072,
-    maxTokens: 16_384,
-    input: ["text"],
-    compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
-  }),
-  modelDef({
     id: "minimax-m2.7",
     name: "MiniMax M2.7",
     source: "llm7",

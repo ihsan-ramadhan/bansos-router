@@ -30,7 +30,7 @@ function claudeCodeAdapter(): HarnessAdapter {
 
       const defaultModelDef = ctx.models.find((m) => m.id === ctx.defaultModel);
 
-      // Haiku (fast non-reasoning), Opus (top reasoning), Sonnet (daily reasoning)
+      // haiku maps to fast non-reasoning, opus to top reasoning, sonnet to daily
       const haikuModel = ctx.specificModel
         ? ctx.defaultModel
         : (sortedNonReasoning[0]?.id ?? ctx.defaultModel);

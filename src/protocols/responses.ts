@@ -152,7 +152,6 @@ function responsesContentToText(content: unknown): string | Error {
   return new Error("unsupported responses content shape");
 }
 
-// response rendering (outbound, responses-shaped)
 
 let respSeq = 0;
 function nextResponseId(): string {
@@ -237,7 +236,6 @@ export function renderResponse(chatJson: any, model: string): unknown {
   };
 }
 
-// build one responses sse event frame.
 export function renderResponsesEvent(type: string, data: unknown): string {
   const payload = { type, ...(data as Record<string, unknown>) };
   return `event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`;

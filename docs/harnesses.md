@@ -19,7 +19,7 @@
 
 ## 2. Matrix
 
-Legend: 🟢 config-only · 🟢* config-only but needs M3 wire (not live yet) · 🟡 config + small adapter · 🔵 works manually, no `bansos setup` adapter yet · 🔴 not supported (v1)
+Legend: 🟢 config-only · 🟡 config + small adapter · 🔵 works manually, no `bansos setup` adapter yet · 🔴 not supported (v1)
 
 | Harness | Wire | Config location | Effort | Notes |
 |---|---|---|---|---|
@@ -27,7 +27,7 @@ Legend: 🟢 config-only · 🟢* config-only but needs M3 wire (not live yet) �
 | **Claude Code** | Anthropic Messages | `~/.claude/settings.json` (`env`) | 🟢 | `ANTHROPIC_BASE_URL=http://127.0.0.1:17070` + `ANTHROPIC_AUTH_TOKEN=bansos` + model mappings |
 | **Aider** | OpenAI Chat | env / `aider.conf.yml` | 🟢 | `OPENAI_API_BASE=http://127.0.0.1:17070/v1`, `OPENAI_API_KEY=bansos`, `AIDER_MODEL=<id>` |
 | **OpenCode** | OpenAI Chat | `~/.config/opencode/opencode.json` | 🟢 | Custom provider with `@ai-sdk/openai-compatible`, `baseURL` |
-| **Codex CLI** | OpenAI Responses | `~/.codex/config.toml` | 🟢 | `[model_providers.bansos] base_url`, `wire_api = "responses"`: daemon serves `/v1/responses` (M3) |
+| **Codex CLI** | OpenAI Responses | `~/.codex/config.toml` | 🟢 | `[model_providers.bansos] base_url`, `wire_api = "responses"`: daemon serves `/v1/responses` |
 | **Hermes (Nous)** | OpenAI Chat | `~/.hermes/config.yaml` | 🟢 | `model.provider: custom` + `model.base_url` |
 | **OpenClaw** | OpenAI Chat or Anthropic | `~/.openclaw/config.json` / agent `models.json` | 🟢 | `models.providers.<id>.baseUrl`; can pick either wire |
 | **Goose** | OpenAI Chat | `~/.config/goose/custom_providers/*.json` | 🟢 | `engine: "openai"`, `base_url`, model list |
@@ -92,7 +92,7 @@ Claude Code and Aider can take env vars. The adapter offers two modes:
 `bansos setup <harness> --model <id>` pins one specific model. Without `--model`, adapters apply intelligent defaults:
 - **Claude Code**: Maps tiers automatically (`haiku` -> fast non-reasoning, `sonnet` -> daily reasoning, `opus` -> highest-capacity reasoning) and sets `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`.
 - **OpenCode, Goose, OpenClaw, Continue**: Register all catalog models so every model is selectable in the harness.
-- **Aider, Codex, Hermes, Antigravity, JCode, Cline, Roo, 9Router**: Default to the smart primary model (highest-context reasoning model in the catalog, currently `minimax/minimax-m3:free` at 1M) and switch freely via `/v1/models`.
+- **Aider, Codex, Hermes, Antigravity, JCode, Cline, Roo, 9Router**: Default to the smart primary model (currently `muse-spark-1.3-contributor-free`) and switch freely via `/v1/models`.
 
 ## 4. Per-harness setup snippets (target output)
 

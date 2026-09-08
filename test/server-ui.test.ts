@@ -94,17 +94,17 @@ test("GET /bansos/adapters/render renders harness config", async () => {
     assert.ok(data.config.length > 0);
     assert.ok(data.config[0]!.content.includes("ANTHROPIC_BASE_URL"));
 
-    // Render with specific model
+    // render with a pinned model
     const resModel = await fetch(`${baseUrl}/bansos/adapters/render?id=aider&model=mimo-v2.5-free`);
     assert.equal(resModel.status, 200);
     const dataModel = (await resModel.json()) as { id: string; config: Array<{ content: string }> };
     assert.ok(dataModel.config[0]!.content.includes("mimo-v2.5-free"));
 
-    // Unknown adapter -> 404
+    // unknown adapter -> 404
     const resUnknown = await fetch(`${baseUrl}/bansos/adapters/render?id=non-existent-adapter`);
     assert.equal(resUnknown.status, 404);
 
-    // Missing id -> 400
+    // missing id -> 400
     const resMissing = await fetch(`${baseUrl}/bansos/adapters/render`);
     assert.equal(resMissing.status, 400);
   } finally {
@@ -121,7 +121,6 @@ test("GET and POST /bansos/relay read and update relay state", async () => {
     const initial = (await resGet.json()) as { enabled: boolean; url: string; relays: Array<{ url: string }> };
     assert.equal(typeof initial.enabled, "boolean");
 
-    // Toggle enabled
     const resPost = await fetch(`${baseUrl}/bansos/relay`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -169,7 +168,7 @@ test("404 returns HTML for browser navigation and JSON for API requests", async 
     assert.equal(resJson.status, 404);
     assert.match(resJson.headers.get("content-type") ?? "", /application\/json/);
 
-    // Browser request with text/html accept header -> HTML 404
+    // browser request with a text/html accept header -> HTML 404
     const resHtml = await fetch(`${baseUrl}/v1/non-existent-route`, {
       headers: { accept: "text/html,application/xhtml+xml" },
     });
@@ -186,10 +185,10 @@ test("POST /bansos/relay/probe enforces an SSRF allowlist", async () => {
   const originalState = loadRelayState();
   const { baseUrl, close } = await setupTestServer();
   try {
-    // Clean state without any active/saved relay
+    // no active or saved relay
     saveRelayState({ enabled: false, url: "", relays: [] });
 
-    // 1. Unsaved loopback / link-local / private targets are blocked (SSRF guard)
+    // unsaved loopback, link-local and private targets are blocked
     for (const url of ["http://127.0.0.1:59999", "http://169.254.169.254/latest/meta-data", "http://192.168.1.1"]) {
       const res = await fetch(`${baseUrl}/bansos/relay/probe`, {
         method: "POST",
@@ -199,7 +198,7 @@ test("POST /bansos/relay/probe enforces an SSRF allowlist", async () => {
       assert.equal(res.status, 403, `expected 403 for ${url}`);
     }
 
-    // 2. Probe missing url when no active relay -> 400
+    // no url and no active relay is a 400
     const resEmpty = await fetch(`${baseUrl}/bansos/relay/probe`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -207,7 +206,7 @@ test("POST /bansos/relay/probe enforces an SSRF allowlist", async () => {
     });
     assert.equal(resEmpty.status, 400);
 
-    // 3. A saved relay may be probed even when it is a local http endpoint
+    // a saved relay may be probed even on a local http endpoint
     saveRelayState({
       enabled: false,
       url: "",
@@ -224,7 +223,7 @@ test("POST /bansos/relay/probe enforces an SSRF allowlist", async () => {
     assert.equal(dataSaved.status, 200);
     assert.equal(typeof dataSaved.latencyMs, "number");
 
-    // 4. A saved-but-unreachable relay returns 200 with ok: false
+    // saved but unreachable still returns 200, with ok: false
     const closedPort = await new Promise<number>((resolve) => {
       const srv = http.createServer();
       srv.listen(0, "127.0.0.1", () => {

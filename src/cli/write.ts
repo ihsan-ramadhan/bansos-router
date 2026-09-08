@@ -95,10 +95,9 @@ export function applyBlockWrite(
   return base ? `${base}\n\n${block}` : block;
 }
 
-// toml-aware block write. unlike applyBlockWrite, it (a) inserts the block
-// BEFORE the first [table] header so bare root keys keep root scope, and
-// (b) when the target table already exists in the file, patches its keys
-// in place instead of appending a duplicate table (invalid TOML).
+// unlike applyBlockWrite this inserts before the first [table] header so bare
+// root keys keep root scope, and patches an existing table in place rather than
+// appending a duplicate one, which would be invalid TOML.
 export function applyTomlBlockWrite(
   existing: string,
   content: string,

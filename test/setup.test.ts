@@ -161,7 +161,6 @@ test("9router merge and undo preserve other providers in db.json", () => {
   assert.equal(parsedMerged.providerConnections[0].id, "kiro-1");
   assert.equal(parsedMerged.providerConnections[1].id, "bansos-default");
 
-  // test undo
   removeKeys(parsedMerged, adapter.undoKeys!);
   assert.equal(parsedMerged.providerNodes.length, 1);
   assert.equal(parsedMerged.providerNodes[0].id, "kiro");
@@ -299,7 +298,7 @@ test("claude-code adapter maps smart tiers in auto mode and pinned model in spec
   const adapter = findAdapter("claude-code")!;
   assert.ok(adapter);
 
-  // Auto mode with seeded models (includes reasoning and non-reasoning)
+  // auto mode, seeded with both reasoning and non-reasoning models
   const autoWrites = adapter.render({
     baseUrl: "http://127.0.0.1:17070/v1",
     defaultModel: "mimo-v2.5-free",
@@ -309,16 +308,16 @@ test("claude-code adapter maps smart tiers in auto mode and pinned model in spec
   const autoParsed = JSON.parse(autoWrites[0]!.content);
   assert.equal(autoParsed.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:17070");
   assert.equal(autoParsed.env.ANTHROPIC_AUTH_TOKEN, "bansos");
-  // Haiku should pick non-reasoning model
+  // haiku takes the non-reasoning tier
   const haikuDef = SEEDED_MODELS.find((m) => m.id === autoParsed.env.ANTHROPIC_DEFAULT_HAIKU_MODEL);
   assert.ok(haikuDef && !haikuDef.reasoning);
-  // Sonnet & Opus should pick reasoning models
+  // sonnet and opus take reasoning tiers
   const sonnetDef = SEEDED_MODELS.find((m) => m.id === autoParsed.env.ANTHROPIC_DEFAULT_SONNET_MODEL);
   const opusDef = SEEDED_MODELS.find((m) => m.id === autoParsed.env.ANTHROPIC_DEFAULT_OPUS_MODEL);
   assert.ok(sonnetDef && sonnetDef.reasoning);
   assert.ok(opusDef && opusDef.reasoning);
 
-  // Specific model pinned mode
+  // pinned mode overrides every tier
   const pinnedWrites = adapter.render({
     baseUrl: "http://127.0.0.1:17070/v1",
     defaultModel: "custom-pinned-model",

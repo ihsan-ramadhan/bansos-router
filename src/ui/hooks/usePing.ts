@@ -64,7 +64,7 @@ export function usePing() {
   const cancelPing = useCallback(() => {
     cancelPingRef.current = true;
     setIsPingingAll(false);
-    // Clear any pending/pinging state from models that were in flight
+    // clear pending state left behind by models that were still in flight
     setPingResults((prev) => {
       const updated = { ...prev };
       for (const [id, r] of Object.entries(updated)) {
@@ -83,7 +83,7 @@ export function usePing() {
     setPingProgress({ current: 0, total: models.length });
 
     let completed = 0;
-    // Chunk in batches of 4 to prevent socket exhaustion
+    // batches of 4 so a full catalog ping does not exhaust sockets
     const chunkSize = 4;
     for (let i = 0; i < models.length; i += chunkSize) {
       if (cancelPingRef.current) break;

@@ -168,7 +168,7 @@ export function usePlaygroundChat({
             }
           }
         } catch {
-          // Ignore non-JSON comments/keepalives
+          // ignore non-json comments and keepalives
         }
       }
     }

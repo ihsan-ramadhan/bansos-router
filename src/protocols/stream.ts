@@ -18,7 +18,6 @@ export function sseDone(): string {
   return "data: [DONE]\n\n";
 }
 
-// write a raw frame to the response
 export function writeSse(res: http.ServerResponse, frame: string): void {
   res.write(frame);
 }

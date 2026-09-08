@@ -8,10 +8,6 @@ import { createLogger } from "../src/logger";
 import { loadRelayState, saveRelayState } from "../src/relay/egress";
 import { modelDef, type Upstream } from "../src/upstreams/types";
 
-// ---------------------------------------------------------------------------
-// helpers
-// ---------------------------------------------------------------------------
-
 async function assertDaemonAlive(baseUrl: string, attempts = 20): Promise<void> {
   for (let i = 0; i < attempts; i++) {
     try {
@@ -135,9 +131,7 @@ function rawRequest(
   });
 }
 
-// ---------------------------------------------------------------------------
 // A1: mid-stream upstream failures must not crash the daemon
-// ---------------------------------------------------------------------------
 
 test("chat stream: abrupt upstream reset does not crash the daemon", async () => {
   const upstream = await createAbruptUpstream();
@@ -212,9 +206,7 @@ test("responses stream: abrupt upstream reset does not crash the daemon", async 
   }
 });
 
-// ---------------------------------------------------------------------------
 // A2: loopback CORS + Host-header lockdown
-// ---------------------------------------------------------------------------
 
 test("loopback clients must present a loopback (or own-interface) Host header", async () => {
   const { baseUrl, close } = await createTestDaemon("http://127.0.0.1:1");
@@ -254,9 +246,7 @@ test("CORS headers are only emitted for loopback origins", async () => {
   }
 });
 
-// ---------------------------------------------------------------------------
 // A3: relay mutation payload validation
-// ---------------------------------------------------------------------------
 
 test("relay mutation rejects malformed URLs without touching state", async () => {
   const originalState = loadRelayState();
@@ -319,9 +309,7 @@ test("relay mutation rejects malformed URLs without touching state", async () =>
   }
 });
 
-// ---------------------------------------------------------------------------
 // B1: a client disconnect must abort the in-flight upstream request
-// ---------------------------------------------------------------------------
 
 test("client disconnect aborts the upstream request instead of leaving it running", async () => {
   // upstream that receives the request and then never responds: the only way

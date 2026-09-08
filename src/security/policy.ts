@@ -33,7 +33,7 @@ export function normalizeSecurityConfig(
   return {
     mode,
     allowedUpstreams,
-    // Strict mode is fail-closed even if a stale or conflicting config says true.
+    // strict mode stays fail-closed even if a stale config says otherwise
     allowCrossProviderFailover:
       mode === "strict" ? false : raw?.allowCrossProviderFailover !== false,
     unsafeAllowNonLoopbackBind: raw?.unsafeAllowNonLoopbackBind === true,
@@ -89,13 +89,10 @@ export function isRelayAllowed(security: SecurityConfig): boolean {
   return !isStrictSecurity(security);
 }
 
-// literal IP ranges that a local daemon should never be asked to reach on
-// behalf of an unauthenticated caller: loopback, private LAN, link-local,
-// CGNAT, multicast, and other reserved/documentation ranges. Probing these
-// turns the daemon into an internal-network scanner (metadata endpoints like
-// 169.254.169.254, LAN services, ...). Hostnames are intentionally not
-// resolved here: a saved relay or an explicit public https target is the
-// caller's own intent.
+// reaching these on behalf of an unauthenticated caller turns the daemon into
+// an internal-network scanner (169.254.169.254, LAN services, and so on).
+// hostnames are deliberately not resolved: a saved relay or an explicit public
+// target is the caller's own intent.
 const SENSITIVE_IPV4 = new BlockList();
 SENSITIVE_IPV4.addSubnet("0.0.0.0", 8, "ipv4");
 SENSITIVE_IPV4.addSubnet("10.0.0.0", 8, "ipv4");

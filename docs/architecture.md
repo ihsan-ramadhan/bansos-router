@@ -141,7 +141,7 @@ demand, stops it again when pi exits if the extension spawned it).
         ├── pi (extension registers provider `bansosr`)
         ├── Claude Code  (ANTHROPIC_BASE_URL -> /v1/messages)
         ├── Aider        (OPENAI_API_BASE -> /v1/chat/completions)
-        ├── Codex        (config.toml -> /v1/responses, M3)
+        ├── Codex        (config.toml -> /v1/responses)
         └── ...            (per-harness config)
 ```
 
@@ -282,6 +282,7 @@ bansos-router/
 │   │   ├── openai-chat.ts  # inbound/outbound Chat Completions
 │   │   ├── anthropic.ts    # inbound Messages
 │   │   ├── responses.ts    # inbound Responses
+│   │   ├── responses-upstream.ts # outbound Responses (wireApi models)
 │   │   ├── index.ts        # protocol router (endpoint -> parser)
 │   │   └── stream.ts       # SSE translation helpers
 │   ├── upstreams/          # sources + health checks

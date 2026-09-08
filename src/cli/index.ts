@@ -204,7 +204,6 @@ async function main(): Promise<number> {
   const argv = process.argv.slice(2);
   const invokedAs = path.basename(process.argv[1] ?? "");
 
-  // daemon mode: invoked as bansosd, or via the hidden "daemon" subcommand, or daemon flags
   if (invokedAs === "bansosd" || argv[0] === "daemon" || isDaemonFlag(argv[0])) {
     await runDaemon(argv);
     return daemonExitCode();
@@ -213,7 +212,6 @@ async function main(): Promise<number> {
   const json = argv.includes("--json");
   const args = argv.filter((a) => a !== "--json");
 
-  // per-command help: "bansos <cmd> --help/-h" and "bansos help <cmd>"
   const wantsHelp = args.includes("--help") || args.includes("-h");
   const helpTarget = wantsHelp ? args[0] : args[0] === "help" ? args[1] : undefined;
   if (helpTarget && CMD_HELP[helpTarget]) {
@@ -292,7 +290,7 @@ async function runStart(args: string[]): Promise<number> {
   }
 
   if (!bg) {
-    // foreground: run the daemon in-process (never returns; Ctrl+C / SIGTERM shuts down)
+    // runs in-process and never returns; Ctrl+C or SIGTERM shuts it down
     await runDaemon(args);
     return daemonExitCode();
   }
@@ -336,8 +334,8 @@ async function runStart(args: string[]): Promise<number> {
       break;
     }
     // the child exited without writing state (e.g. bind refused on strict
-    // security): do not report a phantom listener. exitCode is the reliable
-    // signal - kill(pid, 0) still succeeds for a not-yet-reaped zombie.
+    // security), so do not report a phantom listener. exitCode is the reliable
+    // signal: kill(pid, 0) still succeeds for a not-yet-reaped zombie.
     if (spawnFailed || child.exitCode !== null || child.signalCode !== null) {
       console.error(`bansos start --bg: daemon exited before binding (port ${effectivePort} busy or bind refused)`);
       console.error(`  check the log: ${logFile}`);
@@ -755,7 +753,6 @@ async function runStatusOrModels(cmd: "status" | "models" | "refresh", json: boo
       for (const m of body.data) console.log(m.id);
       return 0;
     }
-    // refresh: ask the daemon to re-run health checks now
     const res = await fetch(`${base}/bansos/refresh`, { method: "POST" });
     const body = (await res.json()) as { modelCount: number; alive: number };
     if (json) {

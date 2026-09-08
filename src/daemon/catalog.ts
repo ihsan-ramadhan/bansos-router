@@ -56,11 +56,10 @@ export class RuntimeCatalog {
     return undefined;
   }
 
-  // health-check: unreachable upstream keeps last-known models;
-  // a reachable upstream's live list replaces its seeded entries
-  // never run two catalog passes at once: a slow gateway must not let a
-  // second refresh (interval tick + manual POST /bansos/refresh) stack up and
-  // keep fetching forever. Concurrent callers share the in-flight pass.
+  // an unreachable upstream keeps its last-known models; a reachable one has
+  // its seeded entries replaced by the live list. concurrent callers share the
+  // in-flight pass so an interval tick landing on a manual refresh cannot stack
+  // two passes against a slow gateway.
   async refresh(): Promise<RefreshReport> {
     if (this.refreshInFlight) return this.refreshInFlight;
     this.refreshInFlight = this.runRefresh();

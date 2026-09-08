@@ -81,7 +81,7 @@ test/             node:test suites
 
 ## Conventions
 
-- Keep it dependency free where possible. The only runtime deps are `yaml` and `smol-toml` for harness config reads; everything else uses Node stdlib.
+- Keep it dependency free. There are no runtime deps at all: harness config reads use an inline JSONC stripper and a TOML-aware block writer in `src/cli/write.ts`, everything else is Node stdlib.
 - Prefer stdlib over new packages. A regex JSONC stripper or a tiny semver compare is fine inline instead of a dependency.
 - Cross platform paths must use `os.homedir()` (never `process.env.HOME`, which is undefined on Windows). Use `expandHome()` from `src/cli/write.ts`.
 - Tests use the built in `node:test` runner. Add a focused test for any new adapter, upstream, or protocol behavior.

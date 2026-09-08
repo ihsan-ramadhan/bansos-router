@@ -10,7 +10,7 @@
 |---|---|---|
 | `POST /v1/chat/completions` | OpenAI Chat Completions | pi, Aider, OpenCode, Hermes, Goose, OpenClaw, Antigravity, JCode, Cline, Continue |
 | `POST /v1/messages` | Anthropic Messages | Claude Code, OpenClaw (anthropic mode) |
-| `POST /v1/responses` | OpenAI Responses | Codex CLI (≥0.122, `wire_api = "responses"`): **not live yet, lands in M3** |
+| `POST /v1/responses` | OpenAI Responses | Codex CLI (≥0.122, `wire_api = "responses"`) |
 | `GET /v1/models` | OpenAI (list) | model pickers; returns **only alive curated models** |
 | `GET /` | Web UI Console | browser dashboard console |
 | `GET /healthz` |: | daemon health |
@@ -90,10 +90,11 @@ lossless.
   unsupported keys (e.g. `$schema`).
 - **Interleaving**: Anthropic requires exactly one `tool_result` per `tool_use`
   id; Chat allows `role=tool` anywhere. The normalizer groups/orders tool
-  results to satisfy whichever upstream is hit. Since all upstreams are Chat
-  Completions, we must **collapse consecutive Anthropic `tool_result` blocks
+  results to satisfy whichever upstream is hit. Almost every upstream speaks
+  Chat Completions, so we **collapse consecutive Anthropic `tool_result` blocks
   into ordered `role=tool` messages** and rebuild `tool_use` blocks when
-  rendering back out.
+  rendering back out. Models flagged `wireApi: "responses"` are translated once
+  more on the upstream leg (`docs/upstreams.md` §3), after this normalization.
 
 ### 3.3 Thinking / reasoning
 

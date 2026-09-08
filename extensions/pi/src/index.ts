@@ -27,8 +27,8 @@ function readDaemonState(): DaemonState | null {
   }
 }
 
-// the daemon auto-bumps its port when the configured one is taken (17070 ->
-// 17071 -> ...), so the live port comes from state.json, not a constant.
+// the daemon auto-bumps its port when the configured one is taken, so the live
+// port comes from state.json rather than a constant
 function readEndpoint(): DaemonEndpoint {
   const state = readDaemonState();
   if (typeof state?.port !== "number") return { host: "127.0.0.1", port: DEFAULT_PORT };
@@ -145,10 +145,11 @@ export default async function (pi: ExtensionAPI) {
 
   if (models.length === 0) {
     models = [
+      { id: "muse-spark-1.3-contributor-free", name: "Muse Spark 1.3 Free (Zen)", context_window: 1000000, max_tokens: 131072, reasoning: true },
+      { id: "muse-spark-1.2-contributor-free", name: "Muse Spark 1.2 Free (Zen)", context_window: 1000000, max_tokens: 131072, reasoning: true },
       { id: "mimo-v2.5-free", name: "Mimo V2.5 Free (Zen)", context_window: 200000, max_tokens: 32000, reasoning: true },
       { id: "nemotron-3-ultra-free", name: "Nemotron 3 Ultra (Zen)", context_window: 1000000, max_tokens: 128000, reasoning: true },
       { id: "big-pickle", name: "Big Pickle (Zen)", context_window: 200000, max_tokens: 32000, reasoning: true },
-      { id: "laguna-s-2.1-free", name: "Laguna S 2.1 (Zen)", context_window: 256000, max_tokens: 32000, reasoning: true },
       { id: "nemotron-3.5-lightning-free", name: "Nemotron 3.5 Lightning Free (Zen)", context_window: 262144, max_tokens: 262144, reasoning: true },
       { id: "ling-3.0-flash-fin-free", name: "Ling 3.0 Flash Fin Free (Zen)", context_window: 262144, max_tokens: 32768, reasoning: true },
       { id: "kilo-auto/free", name: "Kilo Auto Free (Kilo)", context_window: 256000, max_tokens: 10000, reasoning: true },
@@ -162,15 +163,13 @@ export default async function (pi: ExtensionAPI) {
       { id: "cohere/north-mini-code:free", name: "North Mini Code (Kilo)", context_window: 256000, max_tokens: 64000, reasoning: true },
       { id: "poolside/laguna-xs-2.1:free", name: "Laguna XS 2.1 (Kilo)", context_window: 262144, max_tokens: 32768, reasoning: true },
       { id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", name: "Nemotron 3 Nano Omni (Kilo)", context_window: 256000, max_tokens: 65536, reasoning: true },
-      { id: "minimax/minimax-m3:free", name: "MiniMax M3 (Kilo)", context_window: 1048576, max_tokens: 65536, reasoning: true },
-      { id: "minimax/minimax-m2.7:free", name: "MiniMax M2.7 (Kilo)", context_window: 196608, max_tokens: 65536, reasoning: true },
+      { id: "inclusionai/ling-3.0-flash-sante:free", name: "Ling 3.0 Flash Sante (Kilo)", context_window: 262144, max_tokens: 32768, reasoning: true },
       { id: "inclusionai/ling-3.0-flash-fin:free", name: "Ling 3.0 Flash Fin (Kilo)", context_window: 262144, max_tokens: 32768, reasoning: true },
       { id: "dots-studio/dots-3-note-preview:free", name: "Dots 3 Note Preview (Kilo)", context_window: 512000, max_tokens: 65536, reasoning: true },
       { id: "thinkingmachines/inkling:free", name: "Inkling (Kilo)", context_window: 1048576, max_tokens: 65536, reasoning: true },
       { id: "thinkingmachines/inkling-small:free", name: "Inkling Small (Kilo)", context_window: 1048576, max_tokens: 65536, reasoning: true },
       { id: "openrouter/free", name: "OpenRouter Free (Kilo)", context_window: 200000, max_tokens: 65536, reasoning: true },
       { id: "codestral-latest", name: "Codestral Latest (LLM7)", context_window: 32000, max_tokens: 8192, reasoning: false },
-      { id: "gpt-oss", name: "GPT OSS 20B (LLM7)", context_window: 131072, max_tokens: 16384, reasoning: true },
       { id: "minimax-m2.7", name: "MiniMax M2.7 (LLM7)", context_window: 180000, max_tokens: 32768, reasoning: true },
       { id: "mistral-Nemo-Instruct-2407", name: "Mistral Nemo Instruct (LLM7)", context_window: 128000, max_tokens: 16384, reasoning: false },
       { id: "default", name: "LLM7 Default", context_window: 128000, max_tokens: 8000, reasoning: false },
@@ -182,7 +181,6 @@ export default async function (pi: ExtensionAPI) {
   // daemon that later moves ports leaves the provider pointing at nothing
   const registeredEndpoint = endpoint;
 
-  // register the bansosr provider in pi
   pi.registerProvider("bansosr", {
     baseUrl: baseUrl(registeredEndpoint),
     apiKey: "bansos",
@@ -198,7 +196,6 @@ export default async function (pi: ExtensionAPI) {
     })),
   });
 
-  // register /bansosr command
   pi.registerCommand("bansosr", {
     description: "Check bansos router daemon status and models",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
@@ -242,10 +239,10 @@ export default async function (pi: ExtensionAPI) {
   // auto kill daemon only when pi completely quits, not on session switch (/resume /new)
   pi.on("session_shutdown", async (event) => {
     if (spawnedDaemonPid === null || event.reason !== "quit") return;
-    // signal that one pid directly: `bansos stop` scans every process on the
-    // machine and would take daemons this extension never started with it.
-    // Re-check state.json first so a pid recycled by an unrelated process, or a
-    // daemon someone else restarted in the meantime, is left alone.
+    // `bansos stop` scans every process on the machine and would take daemons
+    // this extension never started, so signal the one pid instead. re-check
+    // state.json first in case the pid was recycled or someone restarted the
+    // daemon in the meantime.
     if (readDaemonState()?.pid !== spawnedDaemonPid) return;
     try {
       process.kill(spawnedDaemonPid, "SIGTERM");

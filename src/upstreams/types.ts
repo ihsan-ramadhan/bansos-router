@@ -29,6 +29,9 @@ export interface ModelDef {
   input: Array<"text" | "image">;
   compat: ModelCompatibility;
   cost: ModelCost;
+  // defaults to chat completions. "responses" models (zen's muse spark) return
+  // 500 on /chat/completions and get translated on the upstream leg instead.
+  wireApi?: "chat" | "responses";
 }
 
 export const ZERO_COST: ModelCost = {
@@ -47,8 +50,16 @@ export function compareModelsByCapacity(a: ModelDef, b: ModelDef): number {
   return b.maxTokens - a.maxTokens;
 }
 
+// muse spark 1.3 has a smaller nominal context than inkling but is the better
+// coding default, which capacity ranking alone cannot express. this shortlist
+// wins whenever the model is alive.
+export const PREFERRED_DEFAULT_MODELS = ["muse-spark-1.3-contributor-free"];
+
 export function pickSmartDefaultModel(models: ModelDef[], fallback = "mimo-v2.5-free"): string {
   const valid = models.filter((m) => !m.id.toLowerCase().includes("safety"));
+  for (const id of PREFERRED_DEFAULT_MODELS) {
+    if (valid.some((m) => m.id === id)) return id;
+  }
   const reasoning = valid.filter((m) => m.reasoning).sort(compareModelsByCapacity);
   if (reasoning.length > 0) return reasoning[0]!.id;
 
@@ -66,6 +77,9 @@ export interface Upstream {
   relayAllowed: boolean;
   // full chat endpoint, e.g. "https://opencode.ai/zen/v1/chat/completions"
   chatUrl: string;
+  // full responses endpoint, required only when the upstream seeds models with
+  // wireApi: "responses"
+  responsesUrl?: string;
   // live model catalog, or null when unreachable
   fetchCatalog(): Promise<ModelDef[] | null>;
   // extra headers for upstream requests (spoofed cli identity)

@@ -89,7 +89,7 @@ export class ActivityStore {
         const data = JSON.parse(raw);
         if (Array.isArray(data.events)) {
           const now = Date.now();
-          // Filter out older than 60 days
+          // drop anything older than 60 days
           this.events = data.events.filter(
             (e: ActivityEvent) => now - e.timestamp <= MAX_RETENTION_MS
           );
@@ -132,7 +132,7 @@ export class ActivityStore {
     };
     this.events.push(event);
 
-    // Enforce 60-day window and max cap
+    // enforce the 60-day window and the max cap
     this.events = this.events.filter((e) => now - e.timestamp <= MAX_RETENTION_MS);
     if (this.events.length > this.cap) {
       this.events = this.events.slice(-this.cap);

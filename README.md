@@ -151,7 +151,7 @@ With `mode: "strict"`:
 
 By default, `bansos setup` automatically configures intelligent defaults per harness:
 - **Claude Code**: Maps tiers automatically (`haiku` -> fast non-reasoning, `sonnet` -> daily reasoning, `opus` -> highest-capacity reasoning).
-- **Multi-model harnesses** (`opencode`, `goose`, `openclaw`, `continue`, `9router`, `jcode`): Registers all available models (or dynamic `/v1/models` provider) with the smart default (highest-context reasoning model, currently `minimax/minimax-m3:free` at 1M) as primary.
+- **Multi-model harnesses** (`opencode`, `goose`, `openclaw`, `continue`, `9router`, `jcode`): Registers all available models (or dynamic `/v1/models` provider) with the smart default (currently `muse-spark-1.3-contributor-free`) as primary.
 - **Single-model harnesses** (`aider`, `codex`, `hermes`, `antigravity`, `cline`, `roo`): Same smart default. Pass `--model <id>` to pin a specific model. Context and max output
 are token counts. The seeded catalog is ~30 models and the live one changes as
 upstreams rotate free tiers; run `bansos models` or `bansos ping` to see what is
@@ -164,9 +164,15 @@ alive right now.
 | `mimo-v2.5-free` | ✓ | ✓ | 200k | 32k |
 | `nemotron-3-ultra-free` | ✓ | ✗ | 1M | 128k |
 | `big-pickle` | ✓ | ✗ | 200k | 32k |
-| `laguna-s-2.1-free` | ✓ | ✗ | 256k | 32k |
 | `nemotron-3.5-lightning-free` | ✓ | ✗ | 262k | 262k |
 | `ling-3.0-flash-fin-free` | ✓ | ✗ | 262k | 32k |
+| `muse-spark-1.3-contributor-free` | ✓ | ✓ | 1M | 131k |
+| `muse-spark-1.2-contributor-free` | ✓ | ✓ | 1M | 131k |
+
+Muse Spark answers only on the Responses API (`/v1/responses`) and returns HTTP
+500 on chat completions. bansos-router translates the upstream leg both ways, so
+Muse works from any harness — chat completions, Responses, and Anthropic clients
+all see their usual wire format, tool calls included.
 
 ### KiloCode gateway
 
@@ -183,8 +189,7 @@ alive right now.
 | `cohere/north-mini-code:free` | ✓ | ✗ | 256k | 64k |
 | `poolside/laguna-xs-2.1:free` | ✓ | ✗ | 262k | 32k |
 | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | ✓ | ✓ | 256k | 65k |
-| `minimax/minimax-m3:free` | ✓ | ✓ | 1M | 65k |
-| `minimax/minimax-m2.7:free` | ✓ | ✗ | 196k | 65k |
+| `inclusionai/ling-3.0-flash-sante:free` | ✓ | ✗ | 262k | 32k |
 | `inclusionai/ling-3.0-flash-fin:free` | ✓ | ✗ | 262k | 32k |
 | `dots-studio/dots-3-note-preview:free` | ✓ | ✓ | 512k | 65k |
 | `thinkingmachines/inkling:free` | ✓ | ✓ | 1M | 65k |
@@ -196,7 +201,6 @@ alive right now.
 | model id | reasoning | vision | context | max output |
 |---|---|---|---|---|
 | `codestral-latest` | ✗ | ✗ | 32k | 8k |
-| `gpt-oss` | ✓ | ✗ | 131k | 16k |
 | `minimax-m2.7` | ✓ | ✗ | 180k | 32k |
 | `mistral-Nemo-Instruct-2407` | ✗ | ✗ | 128k | 16k |
 | `default` | ✗ | ✗ | 128k | 8k |

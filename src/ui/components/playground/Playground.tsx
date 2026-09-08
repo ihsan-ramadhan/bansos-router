@@ -81,7 +81,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
     if (!selectedModel && models.length > 0) {
       const preferred = models.find(
         (m) =>
-          m.id === "minimax/minimax-m3:free" ||
+          m.id === "muse-spark-1.3-contributor-free" ||
           m.id === "nemotron-3-ultra-free" ||
           m.reasoning
       );

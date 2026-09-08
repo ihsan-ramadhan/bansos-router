@@ -39,7 +39,7 @@ async function createMockProvider(
     server: http.createServer(async (req, res) => {
       mock.hits += 1;
       for await (const _chunk of req) {
-        // Drain the request without retaining prompt or secret values.
+        // drain the request without retaining prompt or secret values
       }
       res.writeHead(status, { "content-type": "application/json" });
       res.end(responseBody);
@@ -233,8 +233,8 @@ test("strict mode rejects unauthorized upstreams on Chat, Responses, and Anthrop
 
 test("strict DLP blocks OpenAI, GitHub, and SSH secrets on all wire protocols without logging values", async () => {
   const provider = await createMockProvider();
-  // Classification is based on the configured destination. The invalid host must
-  // never be resolved because DLP blocks before fetch; the local server counts leaks.
+  // classification follows the configured destination, so the invalid host is
+  // never resolved: DLP blocks before the fetch, and the local server counts leaks.
   const externalUrl = "https://provider.invalid/v1/chat/completions";
   const model = testModel("strict-origin", "zen");
   const entries: Array<Record<string, unknown>> = [];

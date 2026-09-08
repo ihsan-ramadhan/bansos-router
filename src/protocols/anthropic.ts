@@ -159,7 +159,7 @@ function convertMessage(m: any): any[] | null {
     return result;
   }
 
-  // Fallback for any other message structure
+  // fallback for any other message structure
   const fallbackText = typeof content === "string" ? content : (Array.isArray(content) ? blocksToText(content) : "");
   return [{ role: "user", content: fallbackText }];
 }

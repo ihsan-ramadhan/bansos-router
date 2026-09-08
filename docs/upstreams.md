@@ -33,8 +33,11 @@ Catalog bansos-router bersifat **live-first dengan pinned fallback**:
 - Saat endpoint upstream gagal / timeout / mengembalikan array kosong,
   daemon otomatis mempertahankan model hasil `seed()` (pinned hardcoded)
   sehingga katalog tidak kosong.
-- **Zen tetap hardcoded** karena endpoint `/models` mereka hanya
-  mengembalikan id `claude-*` yang tidak relevan untuk catalog free.
+- **Zen memakai seed sebagai daftar induk**: endpoint `/models` mereka
+  memang mencantumkan id free kita, tapi juga puluhan model berbayar, jadi
+  `fetchCatalog()` hanya menyimpan id yang ada di seed dan mem-probe yang
+  tidak tercantum. Model free baru di Zen tidak ikut otomatis; harus
+  ditambahkan ke seed.
 
 ## 2. Upstreams (v1)
 
@@ -45,7 +48,7 @@ Catalog bansos-router bersifat **live-first dengan pinned fallback**:
 | Base URL | `https://opencode.ai/zen/v1` (OpenAI-compatible) |
 | Auth | Keyless passthrough (no login) |
 | Spoofed headers | `User-Agent: opencode/latest/1.14.50/cli`, `x-opencode-client: cli`, `x-opencode-project: default`, `x-opencode-session: <uuid>`, `x-opencode-request: <uuid>` |
-| Model source | **Pinned seed** (`src/upstreams/zen.ts`); live `GET /v1/models` only lists `claude-*` ids, so `fetchCatalog()` returns `null` and the seeded free list is kept |
+| Model source | **Pinned seed** (`src/upstreams/zen.ts`) intersected with live `GET /v1/models`; seeded ids missing from the live list are probed once and dropped if they fail. Live ids outside the seed are never added, so the catalog cannot leak paid models |
 | Rate limit | Unpublished; treated as best-effort |
 
 > ⚠️ ToS note: OpenCode Zen's free tier is intended for OpenCode users. The
@@ -97,8 +100,8 @@ v1 ships **keyless upstreams only**. These land later:
 
 ## 3. Catalog format
 
-Static registry shipped in code (`src/upstreams/catalog.ts`), one entry per
-known free model. Exception: sources with **dynamic catalogs** (LLM7) are
+Static registry shipped in code, one seed array per upstream
+(`src/upstreams/zen.ts`, `kilo.ts`, `llm7.ts`), one entry per known free model. Exception: sources with **dynamic catalogs** (LLM7) are
 snapshotted into the runtime catalog at health-check time instead of being
 pinned statically. The **runtime catalog** is the union of the static
 registry and dynamic snapshots, filtered by liveness; only the runtime
@@ -119,26 +122,36 @@ type ModelDef = {
     thinkingFormat?: "content" | "reasoning-field";
   };
   cost: { input: 0; output: 0; cacheRead: 0; cacheWrite: 0 };
+  wireApi?: "chat" | "responses";  // upstream wire format; defaults to chat
 };
 ```
+
+`wireApi: "responses"` marks a model the upstream only serves on
+`/v1/responses`. The forward path swaps in `Upstream.responsesUrl`, translates
+the outbound chat body with `chatToResponsesBody()`, and converts the reply back
+with `responsesToChatJson()` (or `responsesToChatStream()` for SSE), all in
+`src/protocols/responses-upstream.ts`. Everything downstream — the chat,
+Responses, and Anthropic handlers, usage logging, the reasoning fold — keeps
+seeing OpenAI chat and needs no per-model branching.
 
 v1 seed (pinned seeds + live refresh; liveness drops dead ids, live `:free`
 ids from the kilo API join at runtime):
 
-**OpenCode Zen (6 seeded):** `mimo-v2.5-free`, `nemotron-3-ultra-free`,
-`big-pickle`, `laguna-s-2.1-free`, `nemotron-3.5-lightning-free`,
-`ling-3.0-flash-fin-free`
+**OpenCode Zen (7 seeded):** `mimo-v2.5-free`, `nemotron-3-ultra-free`,
+`big-pickle`, `nemotron-3.5-lightning-free`, `ling-3.0-flash-fin-free`,
+`muse-spark-1.3-contributor-free`, `muse-spark-1.2-contributor-free` (the two
+Muse ids are `wireApi: "responses"`)
 
-**KiloCode gateway (18 seeded):** `kilo-auto/free`, `stepfun/step-3.7-flash:free`,
+**KiloCode gateway (17 seeded):** `kilo-auto/free`, `stepfun/step-3.7-flash:free`,
 `nvidia/nemotron-3-ultra-550b-a55b:free`, `nvidia/nemotron-3-super-120b-a12b:free`,
 `nvidia/nemotron-3.5-lightning:free`, `nvidia/nemotron-3.5-content-safety:free`,
 `liquid/lfm-2.5-2.6b:free`, `poolside/laguna-s-2.1:free`, `cohere/north-mini-code:free`,
 `poolside/laguna-xs-2.1:free`, `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free`,
-`minimax/minimax-m3:free`, `minimax/minimax-m2.7:free`,
-`inclusionai/ling-3.0-flash-fin:free`, `dots-studio/dots-3-note-preview:free`,
+`inclusionai/ling-3.0-flash-sante:free`, `inclusionai/ling-3.0-flash-fin:free`,
+`dots-studio/dots-3-note-preview:free`,
 `thinkingmachines/inkling:free`, `thinkingmachines/inkling-small:free`, `openrouter/free`
 
-**LLM7 (6 seeded + dynamic refresh):** `codestral-latest`, `gpt-oss`, `minimax-m2.7`,
+**LLM7 (5 seeded + dynamic refresh):** `codestral-latest`, `minimax-m2.7`,
 `mistral-Nemo-Instruct-2407`, `default`, `fast`. Live models are filtered by
 `usage_based_only: false` (tier turbo); the retired `DeepSeek-V4-Flash-0731` /
 `gpt-oss:20b` ids and the paid-only `gemini-3.1-flash-lite` were dropped.

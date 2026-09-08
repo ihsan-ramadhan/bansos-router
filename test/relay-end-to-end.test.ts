@@ -11,7 +11,7 @@ import { runRelay } from "../src/cli/relay";
 import { loadRelayState, saveRelayState } from "../src/relay/egress";
 import { modelDef, type ModelDef } from "../src/upstreams/types";
 
-// Helper to spawn a mock relay server
+// records what the daemon forwards so the test can assert on headers and body
 function createMockRelayServer(shouldFail = false): Promise<{
   server: http.Server;
   relayUrl: string;
@@ -38,7 +38,7 @@ function createMockRelayServer(shouldFail = false): Promise<{
       return;
     }
 
-    // Emulate upstream response
+    // stand in for the upstream
     res.writeHead(200, { "content-type": "application/json" });
     res.end(
       JSON.stringify({
@@ -71,7 +71,7 @@ function createMockRelayServer(shouldFail = false): Promise<{
   });
 }
 
-// Helper to setup bansos daemon test server
+// a daemon on an ephemeral port, torn down by the caller
 function setupTestDaemon(): Promise<{
   server: http.Server;
   baseUrl: string;
@@ -109,13 +109,12 @@ test("Relay API: Full state management (add, use, toggle, remove)", async () => 
   const { baseUrl, close } = await setupTestDaemon();
 
   try {
-    // 1. Initial GET
     const resGet = await fetch(`${baseUrl}/bansos/relay`);
     assert.equal(resGet.status, 200);
     const state1 = (await resGet.json()) as { enabled: boolean; url: string; relays: Array<{ url: string }> };
     assert.ok(Array.isArray(state1.relays));
 
-    // 2. Add new relay via action: "add"
+    // add a relay
     const mockRelayUrl1 = "https://relay-sg.example.com";
     const resAdd = await fetch(`${baseUrl}/bansos/relay`, {
       method: "POST",
@@ -128,7 +127,7 @@ test("Relay API: Full state management (add, use, toggle, remove)", async () => 
     assert.ok(found1);
     assert.equal(found1?.label, "Singapore Edge");
 
-    // 3. Set active relay and enable
+    // make it active
     const resUse = await fetch(`${baseUrl}/bansos/relay`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -139,7 +138,7 @@ test("Relay API: Full state management (add, use, toggle, remove)", async () => 
     assert.equal(state3.url, mockRelayUrl1);
     assert.equal(state3.enabled, true);
 
-    // 4. Toggle disabled
+    // toggle it off
     const resToggle = await fetch(`${baseUrl}/bansos/relay`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -150,7 +149,7 @@ test("Relay API: Full state management (add, use, toggle, remove)", async () => 
     assert.equal(state4.enabled, false);
     assert.equal(state4.url, mockRelayUrl1);
 
-    // 5. Add second relay and remove first relay after switching
+    // the active relay can only be removed after switching away from it
     const mockRelayUrl2 = "https://relay-us.example.com";
     await fetch(`${baseUrl}/bansos/relay`, {
       method: "POST",
@@ -158,14 +157,12 @@ test("Relay API: Full state management (add, use, toggle, remove)", async () => 
       body: JSON.stringify({ action: "add", url: mockRelayUrl2, label: "US West" }),
     });
 
-    // Switch active to 2
     await fetch(`${baseUrl}/bansos/relay`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ url: mockRelayUrl2, enabled: true }),
     });
 
-    // Remove relay 1
     const resRemove = await fetch(`${baseUrl}/bansos/relay`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -189,36 +186,30 @@ test("Relay CLI: runRelay commands execute cleanly", async () => {
 
     const runRelayNormal = (args: string[]) => runRelay(args, DEFAULT_SECURITY_CONFIG);
 
-    // 1. bansos relay url <url>
     const codeAdd = await runRelayNormal(["url", "https://cli-relay.example.com"]);
     assert.equal(codeAdd, 0);
 
-    // 2. bansos relay use <url>
     const codeUse = await runRelayNormal(["use", "https://cli-relay.example.com"]);
     assert.equal(codeUse, 0);
     const stateAfterUse = loadRelayState();
     assert.equal(stateAfterUse.enabled, true);
     assert.equal(stateAfterUse.url, "https://cli-relay.example.com");
 
-    // 3. bansos relay off
     const codeOff = await runRelayNormal(["off"]);
     assert.equal(codeOff, 0);
     assert.equal(loadRelayState().enabled, false);
 
-    // 4. bansos relay on
     const codeOn = await runRelayNormal(["on"]);
     assert.equal(codeOn, 0);
     assert.equal(loadRelayState().enabled, true);
 
-    // 5. bansos relay list & status
     assert.equal(await runRelayNormal(["list"]), 0);
     assert.equal(await runRelayNormal(["status"]), 0);
 
-    // 6. bansos relay remove (active cannot be removed without switching)
+    // the active relay cannot be removed without switching first
     const codeRemoveActive = await runRelayNormal(["remove", "https://cli-relay.example.com"]);
     assert.equal(codeRemoveActive, 1);
 
-    // Add and switch to another relay
     await runRelayNormal(["use", "https://another-relay.example.com"]);
     const codeRemoveOld = await runRelayNormal(["remove", "https://cli-relay.example.com"]);
     assert.equal(codeRemoveOld, 0);
@@ -233,14 +224,14 @@ test("Relay Egress: OpenAI Chat completions route through active relay with x-re
   const { baseUrl, catalog, close: closeDaemon } = await setupTestDaemon();
 
   try {
-    // Enable relay pointing to our mock relay server
+    // point egress at the mock relay
     saveRelayState({
       enabled: true,
       url: mockRelay.relayUrl,
       relays: [{ url: mockRelay.relayUrl, label: "Local Test Relay" }],
     });
 
-    // Create a mock model matching an allowed target origin (e.g. https://opencode.ai)
+    // the model's origin must be on the allowed target list
     const testModel: ModelDef = modelDef({
       id: "mock/relay-test:free",
       name: "Mock Relay Test",
@@ -256,7 +247,6 @@ test("Relay Egress: OpenAI Chat completions route through active relay with x-re
     });
     catalog.seed([testModel]);
 
-    // Send chat completion request
     const res = await fetch(`${baseUrl}/v1/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -270,7 +260,7 @@ test("Relay Egress: OpenAI Chat completions route through active relay with x-re
     const json = (await res.json()) as { choices: Array<{ message: { content: string } }> };
     assert.equal(json.choices[0]?.message.content, "Hello from mock relay");
 
-    // Verify mock relay received the forwarded request with expected headers
+    // the relay should have seen the forwarded request, headers intact
     assert.equal(mockRelay.receivedRequests.length, 1);
     const forwarded = mockRelay.receivedRequests[0];
     assert.ok(forwarded);
@@ -312,7 +302,6 @@ test("Relay Egress: Anthropic Messages API routes through active relay and conve
     });
     catalog.seed([testModel]);
 
-    // Send Anthropic Messages API request
     const res = await fetch(`${baseUrl}/v1/messages`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -329,7 +318,7 @@ test("Relay Egress: Anthropic Messages API routes through active relay and conve
     assert.equal(json.role, "assistant");
     assert.equal(json.content[0]?.text, "Hello from mock relay");
 
-    // Verify mock relay received request with Anthropic -> OpenAI converted body
+    // the relay should see an openai body, translated from anthropic
     assert.equal(mockRelay.receivedRequests.length, 1);
     const forwarded = mockRelay.receivedRequests[0];
     assert.ok(forwarded);

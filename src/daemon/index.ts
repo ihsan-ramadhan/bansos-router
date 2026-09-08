@@ -163,11 +163,9 @@ async function main(argv: string[]): Promise<void> {
   const port = args.port ?? config.port ?? DEFAULT_PORT;
   const bind = args.bind ?? config.bind;
 
-  // always log to a file so `bansos logs` works in every mode, while still
-  // echoing to stdout for an interactive run. In --bg mode the child's stdout
-  // is /dev/null, so the rotating stream is the only file writer; the tee keeps
-  // the two destinations in sync. Built before the bind check so a refusal in a
-  // bg child still reaches the log file the parent points the user at.
+  // always log to a file so `bansos logs` works in every mode, and tee to
+  // stdout for an interactive run. built before the bind check so a refusal in
+  // a bg child still reaches the log file the parent points the user at.
   fs.mkdirSync(LOG_DIR, { recursive: true });
   const fileRef: { current: NodeJS.WritableStream } = {
     current: fs.createWriteStream(LOG_FILE, { flags: "a" }),
@@ -232,7 +230,6 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
 
-  // run an initial health-check pass, then refresh periodically
   const { server, port: actualPort, catalog } = await startServer(port, bind, config, log);
   log.info(`bansosd listening on http://${bind}:${actualPort}`);
 

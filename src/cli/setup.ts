@@ -116,7 +116,7 @@ function update9RouterSqlite(dbPath: string, ctx: SetupContext): boolean {
       return true;
     }
   } catch {
-    // Fall through to sqlite3 CLI
+    // fall through to the sqlite3 CLI
   }
 
   try {
@@ -145,7 +145,7 @@ function undo9RouterSqlite(dbPath: string): boolean {
       return true;
     }
   } catch {
-    // Fall through to sqlite3 CLI
+    // fall through to the sqlite3 CLI
   }
 
   try {

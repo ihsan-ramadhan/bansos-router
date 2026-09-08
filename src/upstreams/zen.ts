@@ -43,16 +43,6 @@ export const ZEN_MODELS: ModelDef[] = [
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
   }),
   modelDef({
-    id: "laguna-s-2.1-free",
-    name: "Laguna S 2.1",
-    source: "zen",
-    reasoning: true,
-    contextWindow: 256_000,
-    maxTokens: 32_000,
-    input: ["text"],
-    compat: { supportsReasoningEffort: true, supportsDeveloperRole: false },
-  }),
-  modelDef({
     id: "nemotron-3.5-lightning-free",
     name: "Nemotron 3.5 Lightning Free",
     source: "zen",
@@ -72,6 +62,30 @@ export const ZEN_MODELS: ModelDef[] = [
     input: ["text"],
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
   }),
+  // Muse only answers on /v1/responses; /chat/completions returns HTTP 500 even
+  // with valid client headers, so these carry wireApi: "responses".
+  modelDef({
+    id: "muse-spark-1.3-contributor-free",
+    name: "Muse Spark 1.3 Free",
+    source: "zen",
+    reasoning: true,
+    contextWindow: 1_000_000,
+    maxTokens: 131_072,
+    input: ["text", "image"],
+    compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
+    wireApi: "responses",
+  }),
+  modelDef({
+    id: "muse-spark-1.2-contributor-free",
+    name: "Muse Spark 1.2 Free",
+    source: "zen",
+    reasoning: true,
+    contextWindow: 1_000_000,
+    maxTokens: 131_072,
+    input: ["text", "image"],
+    compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
+    wireApi: "responses",
+  }),
 ];
 
 export const zenUpstream: Upstream = {
@@ -79,6 +93,7 @@ export const zenUpstream: Upstream = {
   kind: "remote-keyless",
   relayAllowed: true,
   chatUrl: `${ZEN_BASE_URL}/chat/completions`,
+  responsesUrl: `${ZEN_BASE_URL}/responses`,
 
   async fetchCatalog(): Promise<ModelDef[] | null> {
     try {
@@ -97,17 +112,27 @@ export const zenUpstream: Upstream = {
           kept.push(m);
           continue;
         }
-        const probe = await fetch(`${ZEN_BASE_URL}/chat/completions`, {
-          method: "POST",
-          headers: { "content-type": "application/json", ...ZEN_STATIC_HEADERS },
-          body: JSON.stringify({
-            model: m.id,
-            messages: [{ role: "user", content: "ping" }],
-            max_tokens: 4,
-            stream: false,
-          }),
-          signal: AbortSignal.timeout(15000),
-        });
+        // probe on the wire the model actually speaks: a responses-only model
+        // 500s on chat/completions and would be dropped as dead
+        const responsesWire = m.wireApi === "responses";
+        const probe = await fetch(
+          responsesWire ? `${ZEN_BASE_URL}/responses` : `${ZEN_BASE_URL}/chat/completions`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json", ...ZEN_STATIC_HEADERS },
+            body: JSON.stringify(
+              responsesWire
+                ? { model: m.id, input: "ping", max_output_tokens: 16, stream: false }
+                : {
+                    model: m.id,
+                    messages: [{ role: "user", content: "ping" }],
+                    max_tokens: 4,
+                    stream: false,
+                  },
+            ),
+            signal: AbortSignal.timeout(15000),
+          },
+        );
         if (probe.ok) kept.push(m);
       }
       if (kept.length === 0) return null; // transient gap: keep last-known
