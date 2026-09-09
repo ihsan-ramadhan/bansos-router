@@ -9,6 +9,15 @@ daemon. Works without accounts or API keys.
 
 </div>
 
+<div align="center">
+
+![npm version](https://img.shields.io/npm/v/bansos-router?color=blue&label=npm)
+![npm downloads total](https://img.shields.io/npm/dt/bansos-router?color=informational&label=downloads)
+![CI build](https://img.shields.io/github/actions/workflow/status/ihsan-ramadhan/bansos-router/ci.yml?branch=main&label=ci)
+![License](https://img.shields.io/npm/l/bansos-router?color=lightgrey&label=license)
+
+</div>
+
 ## Quick start
 
 ```bash
