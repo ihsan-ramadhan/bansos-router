@@ -18,7 +18,7 @@ Usage:
 
 Commands:
   start       start the daemon (--bg = detached)
-  stop        stop all running daemons
+  stop        stop the daemon started here (--all for every daemon)
   setup       write harness config files
   status      daemon status (aliases: none)
   models      list live catalog
@@ -78,10 +78,18 @@ Examples:
   bansos start --bg
   bansos start --bg --port 18000
 `,
-  stop: `bansos stop - stop every running daemon (SIGTERM, then SIGKILL after 400ms)
+  stop: `bansos stop - stop the daemon recorded in state.json (SIGTERM, then SIGKILL after 400ms)
 
 Usage:
-  bansos stop
+  bansos stop [--all]
+
+Flags:
+  --all     stop every bansos daemon on this machine, not just the recorded one
+
+Notes:
+  Without --all only the daemon in ~/.bansos/state.json is stopped, so a daemon
+  started by someone else (or in another project) is left alone. If state.json
+  names no live daemon, the command reports what else is running and exits 0.
 
 Exit codes: 0 always (0 even when nothing was running).
 `,
@@ -233,7 +241,7 @@ async function main(): Promise<number> {
     case "start":
       return runStart(args.slice(1));
     case "stop":
-      return runStop();
+      return runStop(args.slice(1));
     case "logs":
       return runLogs(args.slice(1));
     case "status":
@@ -556,9 +564,27 @@ function isDaemonCmdline(args: string[]): boolean {
   return args.includes("daemon") || args.join(" ").includes("dist/daemon/index.js");
 }
 
-async function runStop(): Promise<number> {
+async function runStop(args: string[] = []): Promise<number> {
+  const all = args.includes("--all");
   const state = readJson<{ pid?: number }>(STATE_FILE);
-  const pids = findDaemonPids(state?.pid ?? null);
+
+  // scoped by default: the scan matches every bansos daemon on the machine, so
+  // an unscoped stop used to take down daemons this shell never started
+  let pids: number[];
+  if (all) {
+    pids = findDaemonPids(state?.pid ?? null);
+  } else if (state?.pid && isAlive(state.pid)) {
+    pids = [state.pid];
+  } else {
+    pids = [];
+    const others = findDaemonPids(null);
+    if (others.length > 0) {
+      console.log(`no daemon recorded in state.json, but ${others.length} other daemon(s) are running`);
+      console.log("  stop them with: bansos stop --all");
+      return 0;
+    }
+  }
+
   if (pids.length === 0) {
     console.log("no daemon running");
     return 0;

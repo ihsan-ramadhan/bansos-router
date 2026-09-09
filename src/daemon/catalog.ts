@@ -6,6 +6,9 @@ import {
 } from "../security/policy";
 import type { ModelDef, Upstream, UpstreamSource } from "../upstreams/types";
 
+const DEFAULT_COOLDOWN_MS = 60_000;
+const MAX_COOLDOWN_MS = 15 * 60_000;
+
 export interface RefreshReport {
   checked: number;
   alive: number;
@@ -18,6 +21,7 @@ export class RuntimeCatalog {
   private readonly bySource = new Map<string, Upstream>();
   private readonly upstreams: Upstream[];
   private refreshInFlight: Promise<RefreshReport> | null = null;
+  private readonly coolUntil = new Map<string, number>();
 
   constructor(
     upstreams: Upstream[],
@@ -43,6 +47,24 @@ export class RuntimeCatalog {
 
   get models(): ModelDef[] {
     return [...this.byId.values()];
+  }
+
+  // a model that just answered 429 is parked so the next request does not burn
+  // another round trip on it. Retry-After decides how long when the upstream
+  // sends one, otherwise a flat minute.
+  markRateLimited(id: string, retryAfterMs?: number): void {
+    const ms = Math.min(Math.max(retryAfterMs ?? DEFAULT_COOLDOWN_MS, 1_000), MAX_COOLDOWN_MS);
+    this.coolUntil.set(id, Date.now() + ms);
+  }
+
+  isCoolingDown(id: string, now = Date.now()): boolean {
+    const until = this.coolUntil.get(id);
+    if (until === undefined) return false;
+    if (until <= now) {
+      this.coolUntil.delete(id);
+      return false;
+    }
+    return true;
   }
 
   resolve(id: string): ModelDef | undefined {
@@ -73,13 +95,24 @@ export class RuntimeCatalog {
   private async runRefresh(): Promise<RefreshReport> {
     const report: RefreshReport = { checked: 0, alive: 0, dead: 0, degraded: [] };
 
-    for (const upstream of this.upstreams) {
-      if (!isUpstreamAllowed(this.security, upstream.id)) {
-        report.degraded.push(upstream.id);
-        this.log.warn(`upstream ${upstream.id}: blocked by strict allowlist`);
-        continue;
-      }
-      const live = await upstream.fetchCatalog();
+    const allowed = this.upstreams.filter((upstream) => {
+      if (isUpstreamAllowed(this.security, upstream.id)) return true;
+      report.degraded.push(upstream.id);
+      this.log.warn(`upstream ${upstream.id}: blocked by strict allowlist`);
+      return false;
+    });
+
+    // the upstreams are independent and each carries its own timeout, so one
+    // slow gateway should cost the pass its own latency, not the sum of all
+    const fetched = await Promise.all(
+      allowed.map(async (upstream) => ({
+        upstream,
+        live: await upstream.fetchCatalog().catch(() => null),
+      })),
+    );
+
+    // applied in registry order so the catalog does not reshuffle per pass
+    for (const { upstream, live } of fetched) {
       if (live === null) {
         report.degraded.push(upstream.id);
         this.log.warn(`upstream ${upstream.id}: no live catalog - keeping last-known models`);

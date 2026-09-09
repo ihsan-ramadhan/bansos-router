@@ -33,6 +33,8 @@ Catalog bansos-router bersifat **live-first dengan pinned fallback**:
 - Saat endpoint upstream gagal / timeout / mengembalikan array kosong,
   daemon otomatis mempertahankan model hasil `seed()` (pinned hardcoded)
   sehingga katalog tidak kosong.
+- Ketiga upstream diquery **paralel** dalam satu pass, jadi satu gateway lambat
+  hanya memakan latensinya sendiri, bukan dijumlahkan.
 - **Zen memakai seed sebagai daftar induk**: endpoint `/models` mereka
   memang mencantumkan id free kita, tapi juga puluhan model berbayar, jadi
   `fetchCatalog()` hanya menyimpan id yang ada di seed dan mem-probe yang

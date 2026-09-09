@@ -630,6 +630,16 @@ export function logUsageTransform(
   });
 }
 
+export function parseRetryAfterMs(header: string | null, now = Date.now()): number | undefined {
+  if (!header) return undefined;
+  const seconds = Number(header.trim());
+  if (Number.isFinite(seconds)) return seconds > 0 ? seconds * 1000 : undefined;
+  const at = Date.parse(header);
+  if (Number.isNaN(at)) return undefined;
+  const delta = at - now;
+  return delta > 0 ? delta : undefined;
+}
+
 export function pickFailover(
   catalog: RuntimeCatalog,
   origin: ModelDef,
@@ -699,6 +709,7 @@ function selectFailover(
   }
 
   return pickFailover(catalog, current, tried, (candidate) => {
+    if (catalog.isCoolingDown(candidate.id)) return false;
     const candidateUpstream = catalog.upstreamBySource(candidate.source);
     return Boolean(candidateUpstream && isUpstreamAllowed(security, candidateUpstream.id));
   });
@@ -731,6 +742,21 @@ async function runChatForward(
   let current: ModelDef = model;
   let currentUpstream = upstream;
   let transientError: ForwardError | null = null;
+
+  // the model answered 429 recently, so start on a fallback instead of spending
+  // a round trip to learn the same thing again
+  if (failoverAllowed && catalog.isCoolingDown(current.id)) {
+    transientError = { status: 429, message: "model is cooling down after a recent rate limit" };
+    const warm = selectFailover(
+      catalog, current, currentUpstream, tried, security, true,
+      429, requestStartedAt, log,
+    );
+    if (warm) {
+      tried.add(warm.id);
+      current = warm;
+      currentUpstream = catalog.upstreamBySource(current.source)!;
+    }
+  }
 
   for (let attempt = 0; attempt <= MAX_FAILOVER_RETRIES; attempt++) {
     if (current.id !== model.id || attempt > 0) {
@@ -841,6 +867,13 @@ async function runChatForward(
           durationMs: Date.now() - requestStartedAt,
         });
         return { status: upstreamRes.status, message: errorMsg };
+      }
+
+      if (upstreamRes.status === 429) {
+        catalog.markRateLimited(
+          current.id,
+          parseRetryAfterMs(upstreamRes.headers.get("retry-after")),
+        );
       }
 
       transientError = { status: upstreamRes.status, message: errorMsg };

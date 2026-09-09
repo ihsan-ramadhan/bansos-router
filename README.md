@@ -80,7 +80,7 @@ docker compose up -d
 |---|---|
 | `bansos start [--bg] [--port N] [--bind H] [--unsafe-allow-non-loopback]` | Run the daemon (foreground, or detached with `--bg`) |
 | `bansos logs [--activity]` | Tail the daemon log in real time (every mode: daemon always logs to `~/.bansos/logs/bansosd.log`); `--activity` prints the structured request feed shown in the web UI "Activity" tab |
-| `bansos stop` | Stop all running daemons |
+| `bansos stop [--all]` | Stop the daemon recorded in `state.json`; `--all` stops every bansos daemon on the machine |
 | `bansos status [--json]` | Daemon status (port, model count, alive models); reports every running daemon on the auto-bump range (17070-17090) |
 | `bansos models [--json]` | List live catalog from `/v1/models` |
 | `bansos ping [model] [--json]` | Probe live latency and rate-limit status of all models (or a specific model) |
@@ -146,6 +146,11 @@ With `mode: "strict"`:
   context window, and effort capability), retrying up to two extra candidates
   before surfacing an error. Request duration (`durationMs`) is logged on every
   completion and rejection.
+- A model that answers `429` is parked for a cooldown, so the next request
+  starts on a fallback instead of spending another round trip to learn the same
+  thing. `Retry-After` sets the duration when the upstream sends one, otherwise
+  it is a minute, capped at fifteen. Parked models stay listed in `/v1/models`
+  and are still used when nothing else qualifies.
 
 ## Available models
 

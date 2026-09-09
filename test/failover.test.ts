@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { RuntimeCatalog } from "../src/daemon/catalog";
-import { createServer, pickFailover } from "../src/daemon/server";
+import { createServer, parseRetryAfterMs, pickFailover } from "../src/daemon/server";
 import { RateLimiter } from "../src/daemon/rate-limit";
 import { normalizeSecurityConfig } from "../src/security/policy";
 import type { Logger } from "../src/logger";
@@ -53,18 +53,28 @@ const httpUpstream = (id: string, chatUrl: string): Upstream => ({
   chatUrl,
 });
 
-async function mockProvider(status: number, body: unknown): Promise<{
+async function mockProvider(
+  status: number,
+  body: unknown,
+  extraHeaders: Record<string, string> = {},
+): Promise<{
   url: string;
+  hits: number;
   close(): Promise<void>;
 }> {
+  const state = { hits: 0 };
   const server = http.createServer((_req, res) => {
-    res.writeHead(status, { "content-type": "application/json" });
+    state.hits++;
+    res.writeHead(status, { "content-type": "application/json", ...extraHeaders });
     res.end(JSON.stringify(body));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as { port: number };
   return {
     url: `http://127.0.0.1:${port}/v1/chat/completions`,
+    get hits() {
+      return state.hits;
+    },
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }
@@ -273,4 +283,68 @@ test("the failover warning names the origin upstream, not the fallback", async (
     await rejecting.close();
     await accepting.close();
   }
+});
+
+test("parseRetryAfterMs reads delta-seconds, http dates, and rejects junk", () => {
+  const now = Date.UTC(2026, 0, 1, 0, 0, 0);
+  assert.equal(parseRetryAfterMs("30", now), 30_000);
+  assert.equal(parseRetryAfterMs("  5 ", now), 5_000);
+  assert.equal(parseRetryAfterMs(new Date(now + 90_000).toUTCString(), now), 90_000);
+  assert.equal(parseRetryAfterMs(null, now), undefined);
+  assert.equal(parseRetryAfterMs("soon", now), undefined);
+  // an elapsed date or a negative delay carries no useful cooldown
+  assert.equal(parseRetryAfterMs("-5", now), undefined);
+  assert.equal(parseRetryAfterMs(new Date(now - 60_000).toUTCString(), now), undefined);
+});
+
+test("a 429 parks the model so the next request does not retry it", async () => {
+  // Retry-After is long enough that the second request cannot expire it
+  const limited = await mockProvider(429, { error: { message: "rate limited" } }, { "retry-after": "120" });
+  const spare = await mockProvider(200, {
+    id: "x",
+    choices: [{ index: 0, message: { role: "assistant", content: "hi" }, finish_reason: "stop" }],
+  });
+  const origin = md({ id: "zen-origin", source: "zen", reasoning: true, contextWindow: 128_000 });
+  const fallback = md({ id: "kilo-fallback", source: "kilo", reasoning: true, contextWindow: 128_000 });
+
+  const entries: Array<Record<string, unknown>> = [];
+  const daemon = await testDaemon(
+    [httpUpstream("zen", limited.url), httpUpstream("kilo", spare.url)],
+    [origin, fallback],
+    entries,
+  );
+
+  const ask = () =>
+    fetch(`${daemon.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: origin.id, messages: [{ role: "user", content: "hi" }] }),
+    });
+
+  try {
+    assert.equal((await ask()).status, 200);
+    assert.equal(limited.hits, 1, "first request learns the model is limited");
+
+    assert.equal((await ask()).status, 200);
+    assert.equal(limited.hits, 1, "second request must skip the parked model entirely");
+    assert.equal(spare.hits, 2);
+  } finally {
+    await daemon.close();
+    await limited.close();
+    await spare.close();
+  }
+});
+
+test("failover never hands the request to a model that is also cooling down", () => {
+  const origin = md({ id: "zen-origin", source: "zen", reasoning: true, contextWindow: 100_000 });
+  const cooling = md({ id: "kilo-cooling", source: "kilo", reasoning: true, contextWindow: 100_000 });
+  const cat = new RuntimeCatalog([fakeUpstream("zen"), fakeUpstream("kilo")], logger());
+  cat.seed([origin, cooling]);
+
+  assert.equal(pickFailover(cat, origin)?.id, "kilo-cooling");
+  cat.markRateLimited(cooling.id);
+  assert.equal(
+    pickFailover(cat, origin, new Set(), (c) => !cat.isCoolingDown(c.id)),
+    undefined,
+  );
 });

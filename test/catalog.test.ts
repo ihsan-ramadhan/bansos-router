@@ -4,6 +4,10 @@ import { RuntimeCatalog } from "../src/daemon/catalog";
 import { createLogger } from "../src/logger";
 import { modelDef, type Upstream } from "../src/upstreams/types";
 
+function devNull(): NodeJS.WritableStream {
+  return { write: () => true } as unknown as NodeJS.WritableStream;
+}
+
 function model(id: string) {
   return modelDef({
     id,
@@ -56,4 +60,51 @@ test("concurrent refresh() calls share a single in-flight pass", async () => {
   const after = await catalog.refresh();
   assert.equal(calls, 2);
   assert.equal(after.alive, 1);
+});
+test("rate-limit cooldown expires on its own and is capped", () => {
+  const cat = new RuntimeCatalog([], createLogger({ out: devNull() }));
+  const t0 = Date.now();
+
+  cat.markRateLimited("a", 5_000);
+  assert.equal(cat.isCoolingDown("a", t0 + 4_000), true);
+  assert.equal(cat.isCoolingDown("a", t0 + 6_000), false, "expires without anyone clearing it");
+
+  // no Retry-After: a flat minute
+  cat.markRateLimited("b");
+  assert.equal(cat.isCoolingDown("b", t0 + 59_000), true);
+  assert.equal(cat.isCoolingDown("b", t0 + 61_000), false);
+
+  // a wild Retry-After must not take a model out for hours
+  cat.markRateLimited("c", 6 * 60 * 60_000);
+  assert.equal(cat.isCoolingDown("c", t0 + 16 * 60_000), false, "capped at 15 minutes");
+
+  assert.equal(cat.isCoolingDown("never-limited"), false);
+});
+
+test("refresh queries upstreams in parallel, not one after another", async () => {
+  const slow = (id: string, ms: number): Upstream => ({
+    id,
+    kind: "remote-keyless",
+    relayAllowed: true,
+    chatUrl: `http://${id}`,
+    async fetchCatalog() {
+      await new Promise((r) => setTimeout(r, ms));
+      return [model(`${id}-a`)];
+    },
+    requestHeaders() {
+      return {};
+    },
+  });
+
+  const cat = new RuntimeCatalog(
+    [slow("zen", 120), slow("kilo", 120), slow("llm7", 120)],
+    createLogger({ out: devNull() }),
+  );
+  const started = Date.now();
+  await cat.refresh();
+  const elapsed = Date.now() - started;
+
+  // serial would be ~360ms; allow generous slack for slow CI
+  assert.ok(elapsed < 300, `expected a parallel pass, took ${elapsed}ms`);
+  assert.equal(cat.models.length, 3);
 });
