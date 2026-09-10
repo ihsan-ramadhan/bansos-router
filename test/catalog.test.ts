@@ -108,3 +108,16 @@ test("refresh queries upstreams in parallel, not one after another", async () =>
   assert.ok(elapsed < 300, `expected a parallel pass, took ${elapsed}ms`);
   assert.equal(cat.models.length, 3);
 });
+
+test("a refused model is parked far longer than a rate-limited one", () => {
+  const cat = new RuntimeCatalog([], createLogger({ out: devNull() }));
+  const t0 = Date.now();
+
+  cat.markRateLimited("limited");
+  cat.markRefused("refused");
+
+  assert.equal(cat.isCoolingDown("limited", t0 + 2 * 60_000), false, "rate limit clears in a minute");
+  assert.equal(cat.isCoolingDown("refused", t0 + 2 * 60_000), true);
+  assert.equal(cat.isCoolingDown("refused", t0 + 29 * 60_000), true);
+  assert.equal(cat.isCoolingDown("refused", t0 + 31 * 60_000), false, "but never permanent");
+});

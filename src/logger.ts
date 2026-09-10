@@ -42,6 +42,7 @@ const SAFE_FIELD_NAMES = new Set([
   "fromUpstream",
   "failoverFrom",
   "stream",
+  "upstreamError",
 ]);
 
 const SECRET_TYPES = new Set<SecretType>([

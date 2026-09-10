@@ -150,7 +150,7 @@ With `mode: "strict"`:
   starts, the extension starts it and stops it again on exit.
 - The catalog is health-checked: live `:free` models replace stale seeds on a
   timer. Relay egress can route around rate limits, and there is a per-IP rate limiter.
-- If a model is rejected with `429`/`5xx`, the daemon auto-fails over to the
+- If a model is rejected with `401`/`403`/`429`/`5xx`, the daemon auto-fails over to the
   closest equivalent model on a different upstream (same reasoning level,
   context window, and effort capability), retrying up to two extra candidates
   before surfacing an error. Request duration (`durationMs`) is logged on every
@@ -160,6 +160,13 @@ With `mode: "strict"`:
   thing. `Retry-After` sets the duration when the upstream sends one, otherwise
   it is a minute, capped at fifteen. Parked models stay listed in `/v1/models`
   and are still used when nothing else qualifies.
+- A `401`/`403` means the upstream will not serve that model from where the
+  request egressed (OpenCode Zen, for instance, returns `403 This service is
+  not available in your region` when Cloudflare routes through a region its
+  providers block). Retrying cannot help, so the model is parked for 30 minutes
+  and the request fails over instead of returning the error. Send
+  `x-bansos-no-failover: 1` when you want the model's own status back. The
+  upstream's own message is now logged alongside the status.
 
 ## Available models
 

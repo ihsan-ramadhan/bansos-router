@@ -173,7 +173,7 @@ function isAllowedInboundPath(pathname: string): boolean {
   return pathname.startsWith("/assets/") && /^[\w.-]+$/.test(pathname.slice(8));
 }
 
-// how many fallback models to try after the primary rejects with 429/5xx.
+// how many fallback models to try after the primary is rejected (401/403/429/5xx).
 // total attempts = 1 + MAX_FAILOVER_RETRIES.
 const MAX_FAILOVER_RETRIES = 2;
 
@@ -696,6 +696,7 @@ function selectFailover(
   status: number,
   requestStartedAt: number,
   log: Logger,
+  upstreamError?: string,
 ): ModelDef | undefined {
   if (!failoverAllowed) {
     log.warn("upstream rejected", {
@@ -704,6 +705,7 @@ function selectFailover(
       status,
       durationMs: Date.now() - requestStartedAt,
       failoverBlocked: true,
+      ...(upstreamError ? { upstreamError } : {}),
     });
     return undefined;
   }
@@ -858,18 +860,22 @@ async function runChatForward(
         if (!isStrictSecurity(security) && text) errorMsg = text.slice(0, 256);
       }
 
-      const transient = upstreamRes.status === 429 || upstreamRes.status >= 500;
+      const refused = upstreamRes.status === 401 || upstreamRes.status === 403;
+      const transient = refused || upstreamRes.status === 429 || upstreamRes.status >= 500;
       if (!transient) {
         log.warn("upstream rejected", {
           model: current.id,
           upstream: currentUpstream.id,
           status: upstreamRes.status,
           durationMs: Date.now() - requestStartedAt,
+          upstreamError: errorMsg,
         });
         return { status: upstreamRes.status, message: errorMsg };
       }
 
-      if (upstreamRes.status === 429) {
+      if (refused) {
+        catalog.markRefused(current.id);
+      } else if (upstreamRes.status === 429) {
         catalog.markRateLimited(
           current.id,
           parseRetryAfterMs(upstreamRes.headers.get("retry-after")),
@@ -879,7 +885,7 @@ async function runChatForward(
       transientError = { status: upstreamRes.status, message: errorMsg };
       const next = selectFailover(
         catalog, current, currentUpstream, tried, security, failoverAllowed,
-        upstreamRes.status, requestStartedAt, log,
+        upstreamRes.status, requestStartedAt, log, errorMsg,
       );
       if (!next) break;
       tried.add(next.id);

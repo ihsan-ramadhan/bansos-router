@@ -348,3 +348,67 @@ test("failover never hands the request to a model that is also cooling down", ()
     undefined,
   );
 });
+
+test("a 403 fails over to a healthy model and parks the refused one", async () => {
+  // reported in #10: a VPS gets 403 from zen, and muse is the default model
+  const refusing = await mockProvider(403, { error: { message: "This service is not available in your region." } });
+  const healthy = await mockProvider(200, {
+    id: "x",
+    choices: [{ index: 0, message: { role: "assistant", content: "hi" }, finish_reason: "stop" }],
+  });
+  const origin = md({ id: "zen-origin", source: "zen", reasoning: true, contextWindow: 128_000 });
+  const fallback = md({ id: "kilo-fallback", source: "kilo", reasoning: true, contextWindow: 128_000 });
+
+  const entries: Array<Record<string, unknown>> = [];
+  const daemon = await testDaemon(
+    [httpUpstream("zen", refusing.url), httpUpstream("kilo", healthy.url)],
+    [origin, fallback],
+    entries,
+  );
+
+  const ask = () =>
+    fetch(`${daemon.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: origin.id, messages: [{ role: "user", content: "hi" }] }),
+    });
+
+  try {
+    // before the fix this returned 403 and never reached the healthy model
+    assert.equal((await ask()).status, 200);
+    assert.equal(refusing.hits, 1);
+
+    assert.equal((await ask()).status, 200);
+    assert.equal(refusing.hits, 1, "the refused model must be parked, not retried");
+    assert.equal(healthy.hits, 2);
+  } finally {
+    await daemon.close();
+    await refusing.close();
+    await healthy.close();
+  }
+});
+
+test("a refused model still surfaces its own status when failover is off", async () => {
+  const refusing = await mockProvider(403, { error: { message: "This service is not available in your region." } });
+  const origin = md({ id: "zen-origin", source: "zen", reasoning: true, contextWindow: 128_000 });
+
+  const entries: Array<Record<string, unknown>> = [];
+  const daemon = await testDaemon([httpUpstream("zen", refusing.url)], [origin], entries);
+
+  try {
+    const res = await fetch(`${daemon.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-bansos-no-failover": "1" },
+      body: JSON.stringify({ model: origin.id, messages: [{ role: "user", content: "hi" }] }),
+    });
+    assert.equal(res.status, 403);
+
+    // the reporter's log showed a bare status=403 with no reason attached
+    const warn = entries.find((e) => e.msg === "upstream rejected");
+    assert.ok(warn, "expected a rejection warning");
+    assert.match(String(warn.upstreamError), /not available in your region/);
+  } finally {
+    await daemon.close();
+    await refusing.close();
+  }
+});

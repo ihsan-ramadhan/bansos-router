@@ -8,6 +8,10 @@ import type { ModelDef, Upstream, UpstreamSource } from "../upstreams/types";
 
 const DEFAULT_COOLDOWN_MS = 60_000;
 const MAX_COOLDOWN_MS = 15 * 60_000;
+// 401/403 is a policy refusal rather than a burst limit, so back off much
+// longer. Not forever: an upstream can refuse because of where the request
+// happened to egress from, and that changes under us.
+const REFUSED_COOLDOWN_MS = 30 * 60_000;
 
 export interface RefreshReport {
   checked: number;
@@ -55,6 +59,12 @@ export class RuntimeCatalog {
   markRateLimited(id: string, retryAfterMs?: number): void {
     const ms = Math.min(Math.max(retryAfterMs ?? DEFAULT_COOLDOWN_MS, 1_000), MAX_COOLDOWN_MS);
     this.coolUntil.set(id, Date.now() + ms);
+  }
+
+  // the upstream refused to serve this model at all (401/403), usually because
+  // of where we are egressing from rather than anything about the request
+  markRefused(id: string): void {
+    this.coolUntil.set(id, Date.now() + REFUSED_COOLDOWN_MS);
   }
 
   isCoolingDown(id: string, now = Date.now()): boolean {
