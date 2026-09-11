@@ -7,6 +7,7 @@ import {
   extractReasoningFromThinkTags,
   extractFrameDeltas,
   calculateCompletionMetrics,
+  dataFromSseFrame,
 } from "../utils/playground";
 
 interface UsePlaygroundChatProps {
@@ -134,10 +135,7 @@ export function usePlaygroundChat({
       buffer = lines.pop() || "";
 
       for (const frame of lines) {
-        const trimmed = frame.trim();
-        if (!trimmed || !trimmed.startsWith("data:")) continue;
-
-        const dataStr = trimmed.slice(5).trim();
+        const dataStr = dataFromSseFrame(frame);
         if (!dataStr || dataStr === "[DONE]") continue;
 
         setRawChunks((prev) => [...prev, dataStr]);

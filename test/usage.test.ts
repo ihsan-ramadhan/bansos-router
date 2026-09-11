@@ -95,23 +95,39 @@ async function throughTransform(input: string[]): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-test("reasoningToContentTransform folds reasoning-only deltas into content", async () => {
+test("reasoningToContentTransform keeps reasoning out of the answer when content arrives", async () => {
   const out = await throughTransform([
     'data: {"choices":[{"delta":{"reasoning_content":"thinking hard"}}]}\n\n',
     'data: {"choices":[{"delta":{"content":"final answer"}}]}\n\n',
     "data: [DONE]\n\n",
   ]);
-  assert.ok(out.includes('"content":"thinking hard"'), "reasoning folded into content");
-  assert.ok(!out.includes("reasoning_content"), "reasoning_content dropped from folded delta");
+  // the model answered, so its private reasoning must not be promoted
+  assert.ok(out.includes('"reasoning_content":"thinking hard"'), "reasoning passes through untouched");
+  assert.ok(!out.includes('"content":"thinking hard"'), "reasoning never becomes the answer");
   assert.ok(out.includes('"content":"final answer"'), "real content delta untouched");
   assert.ok(out.includes("[DONE]"), "done frame untouched");
+});
+
+test("reasoningToContentTransform promotes reasoning only when no content ever arrives", async () => {
+  const out = await throughTransform([
+    'data: {"id":"x","model":"m","choices":[{"delta":{"reasoning_content":"all I have"}}]}\n\n',
+    "data: [DONE]\n\n",
+  ]);
+  // a reasoning-only model would otherwise render as an empty reply
+  assert.ok(out.includes('"reasoning_content":"all I have"'), "original frame still passes through");
+  assert.ok(out.includes('"content":"all I have"'), "reasoning promoted to content");
+  assert.ok(
+    out.indexOf('"content":"all I have"') < out.indexOf("[DONE]"),
+    "the promoted frame lands before the terminator",
+  );
 });
 
 test("reasoningToContentTransform reassembles frames split across chunks", async () => {
   const frame = 'data: {"choices":[{"delta":{"reasoning_content":"split frame"}}]}\n\n';
   const out = await throughTransform([frame.slice(0, 20), frame.slice(20)]);
-  assert.ok(out.includes('"content":"split frame"'), "split frame folded correctly");
-  assert.equal(out, frame.replace("reasoning_content", "content"), "byte output equals folded frame");
+  assert.ok(out.startsWith(frame), "the split frame is reassembled byte-identical");
+  // no content ever arrived, so the promotion happens on flush
+  assert.ok(out.includes('"content":"split frame"'), "reasoning promoted at end of stream");
 });
 
 test("reasoningToContentTransform leaves non-reasoning frames byte-identical", async () => {

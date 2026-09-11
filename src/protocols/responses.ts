@@ -310,14 +310,13 @@ export class ResponsesStreamEncoder {
       (typeof delta.reasoning === "string" ? delta.reasoning : "") +
       (typeof delta.reasoning_content === "string" ? delta.reasoning_content : "");
     if (reasoningDelta.length > 0) {
-      this.textStarted = true;
       this.reasoningBuffer += reasoningDelta;
-      // surface the reasoning as text deltas too, so a streaming client that
-      // only reads the output_text block still receives the answer.
-      out.push(renderResponsesEvent("response.output_text.delta", {
+      // kept out of the output_text block: close() promotes it to the answer
+      // only when the model never produced content of its own
+      out.push(renderResponsesEvent("response.reasoning_summary_text.delta", {
         item_id: this.itemId,
         output_index: 0,
-        content_index: 0,
+        summary_index: 0,
         delta: reasoningDelta,
       }));
     }
@@ -332,6 +331,17 @@ export class ResponsesStreamEncoder {
     }
     // prefer streamed content; fall back to accumulated reasoning text
     const finalText = this.textBuffer.length > 0 ? this.textBuffer : this.reasoningBuffer;
+    // a reasoning-only model never opened the text block, but its reasoning is
+    // about to become the answer, so emit it as one delta before closing
+    if (!this.textStarted && finalText.length > 0) {
+      this.textStarted = true;
+      out.push(renderResponsesEvent("response.output_text.delta", {
+        item_id: this.itemId,
+        output_index: 0,
+        content_index: 0,
+        delta: finalText,
+      }));
+    }
     if (this.textStarted && !this.textDone) {
       this.textDone = true;
       out.push(renderResponsesEvent("response.output_text.done", {

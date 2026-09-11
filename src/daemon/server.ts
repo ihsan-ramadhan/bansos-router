@@ -527,41 +527,68 @@ function findUsageObject(tail: string): Record<string, unknown> | null {
 // but never `content`, which plain OpenAI clients render as an empty reply.
 // fold reasoning into content so there is always visible text; frames that
 // already carry content pass through byte-identical (C5).
-function maybeFoldReasoning(frame: string): string {
-  const lines = frame.split("\n");
-  let changed = false;
-  const out = lines.map((line) => {
-    if (!line.startsWith("data: ")) return line;
+// inspect a frame without touching it: note whether the model ever produced
+// real content, and keep any reasoning aside in case it never does
+function inspectChatFrame(
+  frame: string,
+  state: { sawContent: boolean; reasoning: string; envelope: Record<string, unknown> },
+): void {
+  for (const line of frame.split("\n")) {
+    if (!line.startsWith("data: ")) continue;
     const payload = line.slice(6);
-    if (payload === "[DONE]") return line;
+    if (payload === "[DONE]") continue;
     let json: any;
     try {
       json = JSON.parse(payload);
     } catch {
-      return line;
+      continue;
+    }
+    if (json?.id || json?.model) {
+      state.envelope = { id: json.id, model: json.model, created: json.created };
     }
     const delta = json?.choices?.[0]?.delta;
-    if (!delta || typeof delta !== "object") return line;
-    if (typeof delta.content === "string" && delta.content.length > 0) return line;
+    if (!delta || typeof delta !== "object") continue;
+    if (typeof delta.content === "string" && delta.content.length > 0) {
+      state.sawContent = true;
+      continue;
+    }
     const reasoning =
       typeof delta.reasoning_content === "string" && delta.reasoning_content.length > 0
         ? delta.reasoning_content
         : typeof delta.reasoning === "string" && delta.reasoning.length > 0
           ? delta.reasoning
           : "";
-    if (!reasoning) return line;
-    const { reasoning_content: _rc, reasoning: _r, ...rest } = delta;
-    json.choices[0].delta = { ...rest, content: reasoning };
-    changed = true;
-    return `data: ${JSON.stringify(json)}`;
-  });
-  return changed ? out.join("\n") : frame;
+    state.reasoning += reasoning;
+  }
+}
+
+function foldedContentFrame(state: { reasoning: string; envelope: Record<string, unknown> }): string {
+  return `data: ${JSON.stringify({
+    id: state.envelope.id ?? "chatcmpl-reasoning-fold",
+    object: "chat.completion.chunk",
+    created: state.envelope.created ?? Math.floor(Date.now() / 1000),
+    model: state.envelope.model ?? "",
+    choices: [{ index: 0, delta: { role: "assistant", content: state.reasoning }, finish_reason: null }],
+  })}\n\n`;
 }
 
 // stream transform: reassemble SSE frames split across chunks, fold
 // reasoning-only deltas, and pass everything else through untouched.
 export function reasoningToContentTransform(): Transform {
   let buffer = "";
+  let folded = false;
+  const state = { sawContent: false, reasoning: "", envelope: {} as Record<string, unknown> };
+
+  // `reasoning_content` is passed through untouched so clients that render it
+  // keep it out of the answer. Only a model that never produced content at all
+  // gets its reasoning promoted, and only once the stream is ending, because
+  // until then a real answer may still arrive.
+  const foldIfNothingElse = (push: (frame: string) => void) => {
+    if (folded) return;
+    folded = true;
+    if (!state.sawContent && state.reasoning.length > 0) push(foldedContentFrame(state));
+  };
+
   return new Transform({
     transform(chunk, _enc, cb) {
       buffer += chunk.toString("utf8");
@@ -569,13 +596,22 @@ export function reasoningToContentTransform(): Transform {
       while (end !== -1) {
         const frame = buffer.slice(0, end + 2);
         buffer = buffer.slice(end + 2);
-        this.push(Buffer.from(maybeFoldReasoning(frame), "utf8"));
+        if (frame.startsWith("data: [DONE]")) {
+          foldIfNothingElse((f) => this.push(Buffer.from(f, "utf8")));
+        } else {
+          inspectChatFrame(frame, state);
+        }
+        this.push(Buffer.from(frame, "utf8"));
         end = buffer.indexOf("\n\n");
       }
       cb();
     },
     flush(cb) {
-      if (buffer) this.push(Buffer.from(maybeFoldReasoning(buffer), "utf8"));
+      if (buffer) {
+        inspectChatFrame(buffer, state);
+        this.push(Buffer.from(buffer, "utf8"));
+      }
+      foldIfNothingElse((f) => this.push(Buffer.from(f, "utf8")));
       cb();
     },
   });

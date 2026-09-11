@@ -179,16 +179,28 @@ export function extractReasoningFromThinkTags(
   };
 }
 
-export function extractResponsesDelta(chunk: any): { delta: string; reasoningDelta: string } {
-  let delta = "";
-  if (chunk.type === "response.output_item.delta" && chunk.delta?.text) {
-    delta = chunk.delta.text;
-  } else if (chunk.type === "response.content_part.delta" && chunk.delta?.text) {
-    delta = chunk.delta.text;
-  } else if (chunk.type === "response.text.delta" && chunk.delta) {
-    delta = typeof chunk.delta === "string" ? chunk.delta : chunk.delta.text || "";
+// an Anthropic or Responses frame leads with an `event:` line, so a frame is not
+// always `data:` first. Per SSE, several data lines in one frame join with \n.
+export function dataFromSseFrame(frame: string): string | null {
+  const parts: string[] = [];
+  for (const line of frame.split("\n")) {
+    if (!line.startsWith("data:")) continue;
+    parts.push(line.slice(5).replace(/^ /, ""));
   }
-  return { delta, reasoningDelta: "" };
+  if (parts.length === 0) return null;
+  const joined = parts.join("\n").trim();
+  return joined.length > 0 ? joined : null;
+}
+
+export function extractResponsesDelta(chunk: any): { delta: string; reasoningDelta: string } {
+  // the daemon emits the official event names with a plain string delta
+  const raw = chunk?.delta;
+  const text = typeof raw === "string" ? raw : (raw?.text ?? "");
+  if (chunk?.type === "response.output_text.delta") return { delta: text, reasoningDelta: "" };
+  if (chunk?.type === "response.reasoning_summary_text.delta") {
+    return { delta: "", reasoningDelta: text };
+  }
+  return { delta: "", reasoningDelta: "" };
 }
 
 export function extractAnthropicDelta(chunk: any): { delta: string; reasoningDelta: string } {

@@ -252,6 +252,7 @@ export class AnthropicStreamEncoder {
   private textStarted = false;
   private textStopped = false;
   private thinkingIndex: number | null = null;
+  private thinkingBuffer = "";
   private thinkingStarted = false;
   private thinkingStopped = false;
   private toolBlocks = new Map<number, { index: number; id: string; name: string }>();
@@ -307,6 +308,7 @@ export class AnthropicStreamEncoder {
           content_block: { type: "thinking", thinking: "" },
         }));
       }
+      this.thinkingBuffer += reasoningText;
       out.push(sseEvent("content_block_delta", {
         type: "content_block_delta",
         index: this.thinkingIndex,
@@ -373,6 +375,27 @@ export class AnthropicStreamEncoder {
 
   close(): string[] {
     const out: string[] = [];
+    // a reasoning-only model produced a thinking block and nothing else, which
+    // renders as an empty reply. Promote the reasoning to the answer, matching
+    // what the chat and responses encoders do (C5).
+    if (!this.textStarted && this.toolBlocks.size === 0 && this.thinkingBuffer.length > 0) {
+      if (this.thinkingStarted && !this.thinkingStopped && this.thinkingIndex !== null) {
+        out.push(sseEvent("content_block_stop", { type: "content_block_stop", index: this.thinkingIndex }));
+        this.thinkingStopped = true;
+      }
+      this.textIndex = this.nextIndex++;
+      this.textStarted = true;
+      out.push(sseEvent("content_block_start", {
+        type: "content_block_start",
+        index: this.textIndex,
+        content_block: { type: "text", text: "" },
+      }));
+      out.push(sseEvent("content_block_delta", {
+        type: "content_block_delta",
+        index: this.textIndex,
+        delta: { type: "text_delta", text: this.thinkingBuffer },
+      }));
+    }
     if (this.thinkingStarted && !this.thinkingStopped && this.thinkingIndex !== null) {
       out.push(sseEvent("content_block_stop", { type: "content_block_stop", index: this.thinkingIndex }));
       this.thinkingStopped = true;
