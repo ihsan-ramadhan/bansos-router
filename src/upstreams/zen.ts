@@ -1,14 +1,33 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { modelDef, type ModelDef, type Upstream } from "./types";
 
 export const ZEN_BASE_URL = "https://opencode.ai/zen/v1";
-export const ZEN_USER_AGENT = "opencode/latest/1.14.50/cli";
+export const ZEN_USER_AGENT = "opencode/latest/2.0.5/cli";
 
-const ZEN_STATIC_HEADERS = {
-  "User-Agent": ZEN_USER_AGENT,
-  "x-opencode-client": "cli",
-  "x-opencode-project": "default",
-};
+const opencodeIDAlphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+export function opencodeDescendingID(): string {
+  const now = BigInt(Date.now());
+  const a = ~(now * 0x1000n + 1n);
+  const time = Array.from({ length: 6 }, (_, D) =>
+    Number((a >> BigInt(40 - 8 * D)) & 0xffn)
+      .toString(16)
+      .padStart(2, "0"),
+  ).join("");
+  const bytes = randomBytes(14);
+  const rand = Array.from(bytes, (b) => opencodeIDAlphabet[b % 62]).join("");
+  return time + rand;
+}
+
+export const ZEN_SPOOF_TOOLS_CHAT = [
+  { type: "function", function: { name: "read", description: "Read file contents", parameters: { type: "object" } } },
+  { type: "function", function: { name: "shell", description: "Execute shell command", parameters: { type: "object" } } },
+];
+
+export const ZEN_SPOOF_TOOLS_RESPONSES = [
+  { type: "function", name: "read", description: "Read file contents", parameters: { type: "object" } },
+  { type: "function", name: "shell", description: "Execute shell command", parameters: { type: "object" } },
+];
 
 // pinned zen free models verified keyless on the chat completions wire
 export const ZEN_MODELS: ModelDef[] = [
@@ -98,7 +117,7 @@ export const zenUpstream: Upstream = {
   async fetchCatalog(): Promise<ModelDef[] | null> {
     try {
       const res = await fetch(`${ZEN_BASE_URL}/models`, {
-        headers: ZEN_STATIC_HEADERS,
+        headers: this.requestHeaders(),
         signal: AbortSignal.timeout(6000),
       });
       if (!res.ok) return null;
@@ -119,15 +138,23 @@ export const zenUpstream: Upstream = {
           responsesWire ? `${ZEN_BASE_URL}/responses` : `${ZEN_BASE_URL}/chat/completions`,
           {
             method: "POST",
-            headers: { "content-type": "application/json", ...ZEN_STATIC_HEADERS },
+            headers: { "content-type": "application/json", ...this.requestHeaders(m) },
             body: JSON.stringify(
               responsesWire
-                ? { model: m.id, input: "ping", max_output_tokens: 16, stream: false }
+                ? {
+                    model: m.id,
+                    input: "ping",
+                    max_output_tokens: 16,
+                    stream: true,
+                    tools: ZEN_SPOOF_TOOLS_RESPONSES,
+                  }
                 : {
                     model: m.id,
                     messages: [{ role: "user", content: "ping" }],
                     max_tokens: 4,
-                    stream: false,
+                    stream: true,
+                    tools: ZEN_SPOOF_TOOLS_CHAT,
+                    tool_choice: "none",
                   },
             ),
             signal: AbortSignal.timeout(15000),
@@ -142,11 +169,55 @@ export const zenUpstream: Upstream = {
     }
   },
 
-  requestHeaders(): Record<string, string> {
+  requestHeaders(_model?: ModelDef): Record<string, string> {
+    const session = `ses_${opencodeDescendingID()}`;
+    const project = randomBytes(20).toString("hex");
+    const traceId = randomBytes(16).toString("hex");
+    const spanId = randomBytes(8).toString("hex");
     return {
-      ...ZEN_STATIC_HEADERS,
-      "x-opencode-session": randomUUID(),
-      "x-opencode-request": randomUUID(),
+      authorization: "Bearer public",
+      "User-Agent": ZEN_USER_AGENT,
+      "x-opencode-client": "cli",
+      "x-opencode-project": project,
+      "x-opencode-session": session,
+      "x-session-affinity": session,
+      "x-session-id": session,
+      b3: `${traceId}-${spanId}-1-${spanId}`,
+      traceparent: `00-${traceId}-${spanId}-01`,
     };
+  },
+
+  transformRequestBody(body: Record<string, unknown>, model: ModelDef): Record<string, unknown> {
+    const transformed = { ...body };
+    const responsesWire = model.wireApi === "responses";
+
+    transformed.stream = true;
+
+    if (responsesWire) {
+      if (!Array.isArray(transformed.tools) || transformed.tools.length === 0) {
+        transformed.tools = [...ZEN_SPOOF_TOOLS_RESPONSES];
+      } else {
+        const tools = [...(transformed.tools as Array<{ name?: string }>)];
+        const names = new Set(tools.map((t) => t?.name));
+        for (const t of ZEN_SPOOF_TOOLS_RESPONSES) {
+          if (!names.has(t.name)) tools.push(t);
+        }
+        transformed.tools = tools;
+      }
+    } else {
+      if (!Array.isArray(transformed.tools) || transformed.tools.length === 0) {
+        transformed.tools = [...ZEN_SPOOF_TOOLS_CHAT];
+        if (!transformed.tool_choice) transformed.tool_choice = "none";
+      } else {
+        const tools = [...(transformed.tools as Array<{ function?: { name?: string }; name?: string }>)];
+        const names = new Set(tools.map((t) => t?.function?.name ?? t?.name));
+        for (const t of ZEN_SPOOF_TOOLS_CHAT) {
+          if (!names.has(t.function.name)) tools.push(t);
+        }
+        transformed.tools = tools;
+      }
+    }
+
+    return transformed;
   },
 };

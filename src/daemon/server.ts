@@ -753,6 +753,61 @@ function selectFailover(
   });
 }
 
+async function streamToChatResponse(upstreamRes: Response, modelId: string): Promise<Response> {
+  if (!upstreamRes.body) return upstreamRes;
+  const text = await upstreamRes.text();
+  if (text.trim().startsWith("{")) {
+    return new Response(text, {
+      status: upstreamRes.status,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  const lines = text.split("\n");
+  let content = "";
+  let reasoning = "";
+  let finishReason = "stop";
+  let usage: unknown = undefined;
+  for (const line of lines) {
+    if (!line.startsWith("data: ")) continue;
+    const data = line.slice(6).trim();
+    if (data === "[DONE]") break;
+    try {
+      const json = JSON.parse(data);
+      const choice = json.choices?.[0];
+      if (choice?.delta?.content) content += choice.delta.content;
+      if (choice?.delta?.reasoning) reasoning += choice.delta.reasoning;
+      if (choice?.finish_reason) finishReason = choice.finish_reason;
+      if (json.usage) usage = json.usage;
+    } catch {
+      // ignore frame parse errors
+    }
+  }
+  return new Response(
+    JSON.stringify({
+      id: `chatcmpl-${Math.random().toString(36).slice(2, 12)}`,
+      object: "chat.completion",
+      created: Math.floor(Date.now() / 1000),
+      model: modelId,
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: "assistant",
+            content,
+            ...(reasoning ? { reasoning } : {}),
+          },
+          finish_reason: finishReason,
+        },
+      ],
+      ...(usage ? { usage } : {}),
+    }),
+    {
+      status: upstreamRes.status,
+      headers: { "content-type": "application/json" },
+    },
+  );
+}
+
 async function runChatForward(
   req: http.IncomingMessage,
   catalog: RuntimeCatalog,
@@ -836,10 +891,13 @@ async function runChatForward(
     // reply translated back, so the rest of the pipeline only ever sees chat
     const responsesWire = current.wireApi === "responses" && !!currentUpstream.responsesUrl;
     const outboundUrl = responsesWire ? currentUpstream.responsesUrl! : currentUpstream.chatUrl;
+    const transformedBody = currentUpstream.transformRequestBody
+      ? currentUpstream.transformRequestBody({ ...sanitizedBody, model: current.id }, current)
+      : { ...sanitizedBody, model: current.id };
     const outboundBody = JSON.stringify(
       responsesWire
-        ? chatToResponsesBody({ ...sanitizedBody, model: current.id }, current.id)
-        : { ...sanitizedBody, model: current.id },
+        ? chatToResponsesBody(transformedBody, current.id)
+        : transformedBody,
     );
 
     if (isExternalUpstream(currentUpstream)) {
@@ -930,10 +988,15 @@ async function runChatForward(
       continue;
     }
 
+    let finalResponse = upstreamRes;
+    if (responsesWire) {
+      finalResponse = await toChatResponse(upstreamRes, current.id, sanitizedBody.stream === true);
+    } else if (!sanitizedBody.stream && transformedBody.stream === true) {
+      finalResponse = await streamToChatResponse(upstreamRes, current.id);
+    }
+
     return {
-      response: responsesWire
-        ? await toChatResponse(upstreamRes, current.id, sanitizedBody.stream === true)
-        : upstreamRes,
+      response: finalResponse,
       model: current,
       upstream: currentUpstream,
     };

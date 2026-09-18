@@ -49,9 +49,10 @@ Catalog bansos-router bersifat **live-first dengan pinned fallback**:
 |---|---|
 | Base URL | `https://opencode.ai/zen/v1` (OpenAI-compatible) |
 | Auth | Keyless passthrough (no login) |
-| Spoofed headers | `User-Agent: opencode/latest/1.14.50/cli`, `x-opencode-client: cli`, `x-opencode-project: default`, `x-opencode-session: <uuid>`, `x-opencode-request: <uuid>` |
+| Spoofed headers | `User-Agent: opencode/latest/2.0.5/cli`, `authorization: Bearer public`, `x-opencode-client: cli`, `x-opencode-project: <hex40>`, `x-opencode-session: ses_<descending_id>`, `x-session-affinity: <session>`, `x-session-id: <session>`, `b3`, `traceparent` |
 | Model source | **Pinned seed** (`src/upstreams/zen.ts`) intersected with live `GET /v1/models`; seeded ids missing from the live list are probed once and dropped if they fail. Live ids outside the seed are never added, so the catalog cannot leak paid models |
 | Rate limit | Unpublished; treated as best-effort |
+| Gateway quirk | The free-tier gate requires `stream: true` and the presence of core tools (`read` + `shell`). The router auto-injects them with `tool_choice: "none"` when none were provided, and aggregates streams back to JSON for non-streaming clients |
 
 > ⚠️ ToS note: OpenCode Zen's free tier is intended for OpenCode users. The
 > passthrough pattern (already used by pi-bansos, 9router, zen-proxy) is

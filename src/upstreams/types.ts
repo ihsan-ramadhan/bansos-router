@@ -83,5 +83,7 @@ export interface Upstream {
   // live model catalog, or null when unreachable
   fetchCatalog(): Promise<ModelDef[] | null>;
   // extra headers for upstream requests (spoofed cli identity)
-  requestHeaders(model: ModelDef): Record<string, string>;
+  requestHeaders(model?: ModelDef): Record<string, string>;
+  // optionally adapt body for upstream quirks (e.g. gateway spoofing)
+  transformRequestBody?(body: Record<string, unknown>, model: ModelDef): Record<string, unknown>;
 }
