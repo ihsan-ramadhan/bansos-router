@@ -43,7 +43,7 @@ let endpoint: DaemonEndpoint = { host: "127.0.0.1", port: DEFAULT_PORT };
 const baseUrl = (e: DaemonEndpoint = endpoint) => `http://${e.host}:${e.port}/v1`;
 const healthzUrl = (e: DaemonEndpoint = endpoint) => `http://${e.host}:${e.port}/healthz`;
 const modelsUrl = (e: DaemonEndpoint = endpoint) => `http://${e.host}:${e.port}/v1/models`;
-const EXTENSION_VERSION = "0.2.6";
+const EXTENSION_VERSION = "0.3.0";
 
 function isNewer(current: string, latest: string): boolean {
   const parse = (v: string) => v.replace(/^v/, "").split(".").map((n) => parseInt(n, 10) || 0);
