@@ -120,12 +120,24 @@ lossless.
 
 ### 3.4 Vision / multimodal
 
-Vision capability is advertised per-model via the `input` field on `/v1/models`
-(`input: ["text", "image"]`). The daemon detects it automatically for the Kilo
-and LLM7 upstreams from the live catalog (`architecture.input_modalities`), and
-from a manual seed for Zen (static catalog). Image parts are passed through to
-upstreams only when the resolved model lists `image` in `input`; otherwise the
-image block is dropped and the text is sent alone.
+Input modalities are advertised per-model via the `input` field on
+`/v1/models`, typed `Array<"text" | "image" | "audio" | "video" | "pdf">`. The
+daemon detects them automatically for the Kilo and LLM7 upstreams from the live
+catalog (`architecture.input_modalities`), and from a manual seed for Zen
+(static catalog). Image parts are passed through to upstreams only when the
+resolved model lists `image` in `input`; otherwise the image block is dropped
+and the text is sent alone.
+
+**PDF** is carried on the Responses wire: a chat `file` part is renamed to
+`input_file` in `chatToResponsesBody`, keeping `file_id` / `file_data` /
+`filename`. Muse Spark is the only seeded model that lists `pdf`.
+
+**Seed a modality only after measuring it.** A model's published metadata
+(models.dev) describes the model, not what the gateway forwards. Both Zen models
+that advertise audio bill an `input_audio` part at ~3 prompt tokens, against ~71
+for a 191-byte PDF and ~11 for a 1x1 PNG: the part is accepted and discarded.
+The cheap check is a token delta against a text-only control plus one known-good
+modality as a positive control; it needs no cooperation from the model.
 
 ## 4. Streaming (SSE)
 

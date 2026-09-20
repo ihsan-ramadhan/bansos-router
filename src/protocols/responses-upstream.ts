@@ -30,6 +30,16 @@ function inputParts(content: unknown, role: string): unknown[] {
       if (typeof url === "string") parts.push({ type: "input_image", image_url: url });
       continue;
     }
+    if (p?.type === "file" || p?.type === "input_file") {
+      const file = p.file ?? p;
+      parts.push({
+        type: "input_file",
+        ...(typeof file.file_id === "string" ? { file_id: file.file_id } : {}),
+        ...(typeof file.file_data === "string" ? { file_data: file.file_data } : {}),
+        ...(typeof file.filename === "string" ? { filename: file.filename } : {}),
+      });
+      continue;
+    }
     if (typeof p?.text === "string") parts.push({ type: textType, text: p.text });
   }
   return parts;

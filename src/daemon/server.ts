@@ -574,6 +574,79 @@ function foldedContentFrame(state: { reasoning: string; envelope: Record<string,
 
 // stream transform: reassemble SSE frames split across chunks, fold
 // reasoning-only deltas, and pass everything else through untouched.
+export function declaredToolNames(body: unknown): Set<string> {
+  const tools = (body as Record<string, unknown> | null)?.tools;
+  return new Set(
+    (Array.isArray(tools) ? tools : [])
+      .map((t: any) => t?.function?.name ?? t?.name)
+      .filter((n: unknown): n is string => typeof n === "string"),
+  );
+}
+
+export function filterInjectedToolCallsTransform(callerTools: ReadonlySet<string>): Transform {
+  let buffer = "";
+  const verdict = new Map<number, boolean>();
+  let forwarded = false;
+
+  const rewriteFrame = (frame: string): string => {
+    const line = frame.trimStart();
+    if (!line.startsWith("data: ")) return frame;
+    const payload = line.slice(6).trim();
+    if (payload === "[DONE]" || payload === "") return frame;
+
+    let json: any;
+    try {
+      json = JSON.parse(payload);
+    } catch {
+      return frame;
+    }
+
+    const choice = json?.choices?.[0];
+    if (!choice) return frame;
+    let changed = false;
+
+    const calls = choice.delta?.tool_calls;
+    if (Array.isArray(calls)) {
+      const kept = calls.filter((tc: any) => {
+        const name = tc?.function?.name;
+        if (typeof name === "string") verdict.set(tc.index, callerTools.has(name));
+        return verdict.get(tc.index) ?? true;
+      });
+      if (kept.length > 0) forwarded = true;
+      if (kept.length !== calls.length) {
+        changed = true;
+        if (kept.length === 0) delete choice.delta.tool_calls;
+        else choice.delta.tool_calls = kept;
+      }
+    }
+
+    if (choice.finish_reason === "tool_calls" && !forwarded) {
+      choice.finish_reason = "stop";
+      changed = true;
+    }
+
+    return changed ? `data: ${JSON.stringify(json)}\n\n` : frame;
+  };
+
+  return new Transform({
+    transform(chunk, _enc, cb) {
+      buffer += chunk.toString("utf8");
+      let end = buffer.indexOf("\n\n");
+      while (end !== -1) {
+        const frame = buffer.slice(0, end + 2);
+        buffer = buffer.slice(end + 2);
+        this.push(Buffer.from(rewriteFrame(frame), "utf8"));
+        end = buffer.indexOf("\n\n");
+      }
+      cb();
+    },
+    flush(cb) {
+      if (buffer) this.push(Buffer.from(rewriteFrame(buffer), "utf8"));
+      cb();
+    },
+  });
+}
+
 export function reasoningToContentTransform(): Transform {
   let buffer = "";
   let folded = false;
@@ -753,7 +826,17 @@ function selectFailover(
   });
 }
 
-async function streamToChatResponse(upstreamRes: Response, modelId: string): Promise<Response> {
+interface ToolCallAcc {
+  id?: string;
+  name?: string;
+  args: string;
+}
+
+export async function streamToChatResponse(
+  upstreamRes: Response,
+  modelId: string,
+  callerTools?: ReadonlySet<string>,
+): Promise<Response> {
   if (!upstreamRes.body) return upstreamRes;
   const text = await upstreamRes.text();
   if (text.trim().startsWith("{")) {
@@ -767,6 +850,7 @@ async function streamToChatResponse(upstreamRes: Response, modelId: string): Pro
   let reasoning = "";
   let finishReason = "stop";
   let usage: unknown = undefined;
+  const calls = new Map<number, ToolCallAcc>();
   for (const line of lines) {
     if (!line.startsWith("data: ")) continue;
     const data = line.slice(6).trim();
@@ -776,12 +860,29 @@ async function streamToChatResponse(upstreamRes: Response, modelId: string): Pro
       const choice = json.choices?.[0];
       if (choice?.delta?.content) content += choice.delta.content;
       if (choice?.delta?.reasoning) reasoning += choice.delta.reasoning;
+      for (const tc of choice?.delta?.tool_calls ?? []) {
+        const slot = calls.get(tc.index) ?? { args: "" };
+        if (tc.id) slot.id = tc.id;
+        if (tc.function?.name) slot.name = tc.function.name;
+        if (tc.function?.arguments) slot.args += tc.function.arguments;
+        calls.set(tc.index, slot);
+      }
       if (choice?.finish_reason) finishReason = choice.finish_reason;
       if (json.usage) usage = json.usage;
     } catch {
       // ignore frame parse errors
     }
   }
+
+  const toolCalls = [...calls.entries()]
+    .sort(([a], [b]) => a - b)
+    .filter(([, c]) => c.name !== undefined && (!callerTools || callerTools.has(c.name)))
+    .map(([, c]) => ({
+      id: c.id ?? `call_${Math.random().toString(36).slice(2, 12)}`,
+      type: "function" as const,
+      function: { name: c.name!, arguments: c.args || "{}" },
+    }));
+  if (toolCalls.length === 0 && finishReason === "tool_calls") finishReason = "stop";
   return new Response(
     JSON.stringify({
       id: `chatcmpl-${Math.random().toString(36).slice(2, 12)}`,
@@ -795,6 +896,7 @@ async function streamToChatResponse(upstreamRes: Response, modelId: string): Pro
             role: "assistant",
             content,
             ...(reasoning ? { reasoning } : {}),
+            ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
           },
           finish_reason: finishReason,
         },
@@ -988,11 +1090,20 @@ async function runChatForward(
       continue;
     }
 
+    const forcedStream = !sanitizedBody.stream && transformedBody.stream === true;
+    const callerTools = declaredToolNames(sanitizedBody);
     let finalResponse = upstreamRes;
     if (responsesWire) {
-      finalResponse = await toChatResponse(upstreamRes, current.id, sanitizedBody.stream === true);
-    } else if (!sanitizedBody.stream && transformedBody.stream === true) {
-      finalResponse = await streamToChatResponse(upstreamRes, current.id);
+      finalResponse = await toChatResponse(
+        upstreamRes,
+        current.id,
+        sanitizedBody.stream === true || forcedStream,
+      );
+      if (forcedStream) {
+        finalResponse = await streamToChatResponse(finalResponse, current.id, callerTools);
+      }
+    } else if (forcedStream) {
+      finalResponse = await streamToChatResponse(upstreamRes, current.id, callerTools);
     }
 
     return {
@@ -1160,7 +1271,9 @@ async function handleChat(
     usageTx.on("error", failStream);
     res.on("error", () => src.destroy());
     signal.addEventListener("abort", () => src.destroy());
-    src.pipe(reasoningToContentTransform()).pipe(usageTx).pipe(res);
+    const filterTx = filterInjectedToolCallsTransform(declaredToolNames(body));
+    filterTx.on("error", failStream);
+    src.pipe(filterTx).pipe(reasoningToContentTransform()).pipe(usageTx).pipe(res);
   } else {
     res.end();
   }

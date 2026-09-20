@@ -71,3 +71,27 @@ test("zenUpstream transformRequestBody handles responses wire models", () => {
   assert.ok(names.includes("read"));
   assert.ok(names.includes("shell"));
 });
+
+test("spoof tools are parked with tool_choice on chat, but not on the responses wire", () => {
+  const chat = ZEN_MODELS.find((m) => m.wireApi !== "responses")!;
+  const responses = ZEN_MODELS.find((m) => m.wireApi === "responses")!;
+  const body = { model: "x", messages: [{ role: "user", content: "hi" }] };
+
+  const onChat = zenUpstream.transformRequestBody!(body, chat);
+  assert.ok(Array.isArray(onChat.tools) && onChat.tools.length > 0);
+  assert.equal(onChat.tool_choice, "none");
+
+  const onResponses = zenUpstream.transformRequestBody!(body, responses);
+  assert.ok(Array.isArray(onResponses.tools) && onResponses.tools.length > 0);
+  assert.equal(onResponses.tool_choice, undefined);
+});
+
+test("a caller's own tool_choice survives tool injection", () => {
+  const responses = ZEN_MODELS.find((m) => m.wireApi === "responses")!;
+  const out = zenUpstream.transformRequestBody!(
+    { model: "x", messages: [], tool_choice: "auto", tools: [{ type: "function", name: "grep" }] },
+    responses,
+  );
+  assert.equal(out.tool_choice, "auto");
+  assert.ok((out.tools as unknown[]).some((t: any) => t?.name === "grep"), "caller tool kept");
+});

@@ -346,3 +346,38 @@ test("responsesToChatStream does not repeat arguments already streamed as deltas
     .join("");
   assert.equal(args, '{"city":"Solo"}');
 });
+
+test("chatToResponsesBody forwards pdf parts instead of dropping them", () => {
+  const body = chatToResponsesBody(
+    {
+      model: "muse",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "transcribe and summarise" },
+            { type: "file", file: { file_data: "JVBERi0x", filename: "spec.pdf" } },
+          ],
+        },
+      ],
+    },
+    "muse",
+  ) as any;
+
+  const parts = body.input[0].content;
+  assert.deepEqual(parts, [
+    { type: "input_text", text: "transcribe and summarise" },
+    { type: "input_file", file_data: "JVBERi0x", filename: "spec.pdf" },
+  ]);
+});
+
+test("a message whose parts are all unmappable is omitted, not sent empty", () => {
+  const body = chatToResponsesBody(
+    {
+      model: "muse",
+      messages: [{ role: "user", content: [{ type: "video_url", video_url: { url: "x" } }] }],
+    },
+    "muse",
+  ) as any;
+  assert.deepEqual(body.input, []);
+});

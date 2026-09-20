@@ -26,7 +26,7 @@ export interface ModelDef {
   reasoning: boolean;
   contextWindow: number;
   maxTokens: number;
-  input: Array<"text" | "image">;
+  input: Array<"text" | "image" | "audio" | "video" | "pdf">;
   compat: ModelCompatibility;
   cost: ModelCost;
   // defaults to chat completions. "responses" models (zen's muse spark) return

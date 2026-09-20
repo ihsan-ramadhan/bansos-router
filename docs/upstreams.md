@@ -52,7 +52,37 @@ Catalog bansos-router bersifat **live-first dengan pinned fallback**:
 | Spoofed headers | `User-Agent: opencode/latest/2.0.5/cli`, `authorization: Bearer public`, `x-opencode-client: cli`, `x-opencode-project: <hex40>`, `x-opencode-session: ses_<descending_id>`, `x-session-affinity: <session>`, `x-session-id: <session>`, `b3`, `traceparent` |
 | Model source | **Pinned seed** (`src/upstreams/zen.ts`) intersected with live `GET /v1/models`; seeded ids missing from the live list are probed once and dropped if they fail. Live ids outside the seed are never added, so the catalog cannot leak paid models |
 | Rate limit | Unpublished; treated as best-effort |
-| Gateway quirk | The free-tier gate requires `stream: true` and the presence of core tools (`read` + `shell`). The router auto-injects them with `tool_choice: "none"` when none were provided, and aggregates streams back to JSON for non-streaming clients |
+| Gateway quirk | The free-tier gate requires `stream: true` and the presence of core tools (`read` + `shell`). The router injects them when the caller declared none, folds the forced stream back to JSON for non-streaming callers (both wires), and strips tool calls aimed at the injected tools. See §2.1.1 |
+
+#### 2.1.1 Consequences of the injected tools
+
+The gate forces two things on every Zen request, and each one has to be undone
+before the caller sees the answer.
+
+**`stream: true`.** Zen answers in SSE even when the caller asked for JSON. The
+chat wire folds those frames back with `streamToChatResponse`. The responses
+wire needs two hops: responses SSE to chat SSE first (`toChatResponse`), then
+the same fold. Handing `toChatResponse` an SSE body while asking it for JSON
+makes it fail its `JSON.parse` and pass raw SSE to the caller.
+
+**`read` + `shell` tool definitions.** The model does call them. Two guards:
+
+- On the **chat wire** the injected tools carry `tool_choice: "none"`, so they
+  are advertised but never used.
+- On the **responses wire** that is impossible: it answers
+  `400 only "auto" is supported for tool_choice`. The model there can and does
+  call our tools, so the cleanup happens on the response instead —
+  `streamToChatResponse` takes the set of tool names the caller actually
+  declared and drops any call outside it, demoting `finish_reason` from
+  `tool_calls` back to `stop` when nothing survives.
+
+Streaming callers are covered by `filterInjectedToolCallsTransform`, which sits
+at the head of the outbound SSE pipeline and therefore serves both wires (the
+responses wire reaches it already translated to chat SSE). A tool name arrives
+in the first delta for its index, so the verdict is taken there and reused for
+the argument deltas that follow; an index whose name is never seen is let
+through, so a malformed stream loses nothing. Frames it does not change are
+forwarded byte-for-byte.
 
 > ⚠️ ToS note: OpenCode Zen's free tier is intended for OpenCode users. The
 > passthrough pattern (already used by pi-bansos, 9router, zen-proxy) is

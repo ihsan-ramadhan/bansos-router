@@ -10,7 +10,7 @@ export interface ModelItem {
   max_tokens?: number;
   maxTokens?: number;
   reasoning?: boolean;
-  input?: Array<"text" | "image">;
+  input?: Array<"text" | "image" | "audio" | "video" | "pdf">;
 }
 
 export interface ModelsResponse {
