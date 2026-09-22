@@ -35,11 +35,13 @@ Catalog bansos-router bersifat **live-first dengan pinned fallback**:
   sehingga katalog tidak kosong.
 - Ketiga upstream diquery **paralel** dalam satu pass, jadi satu gateway lambat
   hanya memakan latensinya sendiri, bukan dijumlahkan.
-- **Zen memakai seed sebagai daftar induk**: endpoint `/models` mereka
-  memang mencantumkan id free kita, tapi juga puluhan model berbayar, jadi
-  `fetchCatalog()` hanya menyimpan id yang ada di seed dan mem-probe yang
-  tidak tercantum. Model free baru di Zen tidak ikut otomatis; harus
-  ditambahkan ke seed.
+- **Zen memakai models.dev sebagai sumber metadata**: endpoint `/models`
+  mereka hanya mengembalikan `{id, object, created, owned_by}` tanpa satu pun
+  field yang dibutuhkan `ModelDef`, dan tanpa penanda gratis/berbayar
+  (`created` pun palsu: di-stamp per request). Jadi katalog dibangun dari
+  irisan models.dev dengan listing Zen; seed lokal tinggal jadi sumber
+  `wireApi`, fallback field yang tidak dipublikasikan index, dan daftar id yang
+  diprobe. Model free baru ikut otomatis. Lihat §4.2.
 
 ## 2. Upstreams (v1)
 
@@ -204,6 +206,68 @@ derived from the upstream catalog containing that id. Zen's listing is not
 exhaustive (some servable promos are never listed), so zen re-checks each
 seed against the listing and only probe-verifies the unlisted ones keyless
 (typically zero to one model per refresh).
+
+### 4.2 Building the Zen catalog
+
+Kilo and LLM7 can auto-add a model they have never seen because their listings
+carry everything `ModelDef` needs. Zen's listing carries an id and nothing else,
+so `fetchCatalog()` assembles a model from two live sources:
+
+1. **models.dev** for the free/paid signal (`cost.input === 0`), retirement
+   (`status`), and the facts about the model itself: name, reasoning, context,
+   output limit, modalities. Values are used as published; a field the index
+   omits falls back to the matching `ZEN_MODELS` entry before the generic
+   default, so a dropped `limit` cannot silently shrink a known model to 128k.
+2. **Zen's live `/v1/models`** to confirm the gateway actually offers the id.
+
+`wireApi` is the only field neither source carries, and it is read off the
+matching `ZEN_MODELS` entry. Everything else about a model now comes from the
+index, so there is no override table to keep in sync.
+
+Two global rules still apply, because they are about this router rather than
+about any one model:
+
+- Modalities are filtered per wire. `ZEN_RESPONSES_MODALITIES` allows text,
+  image and pdf; `ZEN_CHAT_MODALITIES` allows text and image, because Zen
+  answers 500 for a `file` part on `/chat/completions` while carrying the same
+  PDF fine on `/responses`. A model the seed does not know defaults to the chat
+  set. Audio is in neither: both models advertising it discard it on the wire
+  (§3.4 of `protocols.md`).
+- `supportsReasoningEffort` is always `false`, never derived. `pickFailover`
+  only pairs models whose flag matches and every model in the catalog is
+  `false`, so a single derived `true` would leave that model with no failover
+  at all.
+
+#### Retirement and liveness
+
+A seeded model the index marks `deprecated` **or paid** is **probed** rather
+than trusted, even while Zen still lists it. Both verdicts mean the same thing
+for a keyless router: being listed no longer implies being servable. That is the difference between MiMo V2.5, which
+is retired and still answering, and DeepSeek V4 Flash Free, which was listed for
+days after it began returning 400. Alive keeps it; dead drops it.
+
+A seeded id missing from the listing is probed too, since the listing is not
+exhaustive. When models.dev is unreachable the seed alone drives the pass —
+unreachable covers a rejected fetch (DNS failure, refused connection, timeout)
+as well as a non-ok status, so an index outage degrades the pass instead of
+wiping Zen out of the catalog. When the Zen listing is unreachable the catalog
+keeps its last-known models.
+
+#### Failover tolerance
+
+`pickFailover` used to require a candidate's context to be greater than or equal
+to the origin's, which made Muse's published 1_048_576 unusable: it pushed
+Nemotron 3 Ultra's 1_000_000 out of the failover set over a 4.6% gap. The rule
+now admits anything within `FAILOVER_CONTEXT_TOLERANCE` (90%), so the published
+figure can be used as-is.
+
+Ranking is asymmetric, because the two directions are not equally safe. A
+candidate at or above the origin's context can serve every request the origin
+could; one inside the 90% band cannot, and a near-full-context request that
+lands there fails with a context-length 400. So candidates that cover the origin
+are preferred as a group, ranked among themselves by the smallest surplus, and
+the band is only reached for when nothing covers it. `maxTokens` breaks a tie,
+larger winning.
 
 ## 5. Rate limiting (daemon-local)
 

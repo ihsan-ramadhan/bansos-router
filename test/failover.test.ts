@@ -412,3 +412,39 @@ test("a refused model still surfaces its own status when failover is off", async
     await refusing.close();
   }
 });
+
+test("muse keeps nemotron as failover at its published context size", () => {
+  const muse = md({ id: "muse", source: "zen", reasoning: true, contextWindow: 1_048_576 });
+  const nemotron = md({ id: "nemotron", source: "kilo", reasoning: true, contextWindow: 1_000_000 });
+  const cat = new RuntimeCatalog([fakeUpstream("zen"), fakeUpstream("kilo")], logger());
+  cat.seed([muse, nemotron]);
+
+  assert.equal(
+    pickFailover(cat, muse)?.id,
+    "nemotron",
+    "a 4.6% smaller context is close enough to stand in",
+  );
+});
+
+test("a candidate that covers the origin beats a closer one that falls short", () => {
+  const origin = md({ id: "origin", source: "zen", reasoning: true, contextWindow: 200_000 });
+  const short = md({ id: "short", source: "kilo", reasoning: true, contextWindow: 190_000 });
+  const wide = md({ id: "wide", source: "kilo", reasoning: true, contextWindow: 256_000 });
+  const cat = new RuntimeCatalog([fakeUpstream("zen"), fakeUpstream("kilo")], logger());
+  cat.seed([origin, short, wide]);
+
+  assert.equal(
+    pickFailover(cat, origin)?.id,
+    "wide",
+    "a near-full-context request would 400 on the closer but smaller candidate",
+  );
+});
+
+test("a candidate far below the origin context is still refused", () => {
+  const big = md({ id: "big", source: "zen", reasoning: true, contextWindow: 1_000_000 });
+  const small = md({ id: "small", source: "kilo", reasoning: true, contextWindow: 200_000 });
+  const cat = new RuntimeCatalog([fakeUpstream("zen"), fakeUpstream("kilo")], logger());
+  cat.seed([big, small]);
+
+  assert.equal(pickFailover(cat, big), undefined);
+});

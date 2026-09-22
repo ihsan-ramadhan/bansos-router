@@ -128,9 +128,11 @@ catalog (`architecture.input_modalities`), and from a manual seed for Zen
 resolved model lists `image` in `input`; otherwise the image block is dropped
 and the text is sent alone.
 
-**PDF** is carried on the Responses wire: a chat `file` part is renamed to
+**PDF** is carried on the Responses wire only: a chat `file` part is renamed to
 `input_file` in `chatToResponsesBody`, keeping `file_id` / `file_data` /
-`filename`. Muse Spark is the only seeded model that lists `pdf`.
+`filename`. The same part sent to `/chat/completions` makes Zen answer 500, so
+`pdf` is filtered out for chat-wire models even when the index advertises it.
+Muse Spark is the only seeded model that keeps `pdf`.
 
 **Seed a modality only after measuring it.** A model's published metadata
 (models.dev) describes the model, not what the gateway forwards. Both Zen models

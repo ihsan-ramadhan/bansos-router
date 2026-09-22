@@ -749,6 +749,8 @@ export function parseRetryAfterMs(header: string | null, now = Date.now()): numb
   return delta > 0 ? delta : undefined;
 }
 
+export const FAILOVER_CONTEXT_TOLERANCE = 0.9;
+
 export function pickFailover(
   catalog: RuntimeCatalog,
   origin: ModelDef,
@@ -756,7 +758,8 @@ export function pickFailover(
   allowed: (candidate: ModelDef) => boolean = () => true,
 ): ModelDef | undefined {
   let best: ModelDef | undefined;
-  let bestScore = Number.POSITIVE_INFINITY; // lower is better
+  let bestShort = true;
+  let bestGap = Number.POSITIVE_INFINITY;
   for (const candidate of catalog.models) {
     if (candidate.id === origin.id) continue;
     if (attempts.has(candidate.id)) continue;
@@ -765,13 +768,20 @@ export function pickFailover(
     if (candidate.reasoning !== origin.reasoning) continue;
     if (candidate.compat.supportsDeveloperRole !== origin.compat.supportsDeveloperRole) continue;
     if (candidate.compat.supportsReasoningEffort !== origin.compat.supportsReasoningEffort) continue;
-    if (candidate.contextWindow < origin.contextWindow) continue;
+    if (candidate.contextWindow < origin.contextWindow * FAILOVER_CONTEXT_TOLERANCE) continue;
 
-    const score = (candidate.contextWindow - origin.contextWindow) * 1_000_000 - candidate.maxTokens;
-    if (score < bestScore) {
-      best = candidate;
-      bestScore = score;
+    const short = candidate.contextWindow < origin.contextWindow;
+    const gap = Math.abs(candidate.contextWindow - origin.contextWindow);
+    if (best !== undefined) {
+      if (short !== bestShort) {
+        if (short) continue;
+      } else if (gap !== bestGap) {
+        if (gap > bestGap) continue;
+      } else if (candidate.maxTokens <= best.maxTokens) continue;
     }
+    best = candidate;
+    bestShort = short;
+    bestGap = gap;
   }
   return best;
 }
