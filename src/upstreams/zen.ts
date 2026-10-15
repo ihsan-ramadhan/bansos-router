@@ -1,9 +1,255 @@
 import { randomBytes } from "node:crypto";
 import { modelDef, type ModelDef, type Upstream } from "./types";
 
-export const ZEN_BASE_URL = "https://opencode.ai/zen/v1";
-export const ZEN_USER_AGENT = "opencode/latest/2.0.5/cli";
+const ZEN_INFERENCE_URL = "https://opencode.ai/inference/v1";
+const ZEN_MODELS_URL = "https://opencode.ai/zen/v1";
 export const MODELS_DEV_URL = "https://models.dev/api.json";
+
+const OPENCODE_UA_FALLBACK = "1.18.31";
+const OPENCODE_UA_VERSION_RE = /^\d+\.\d+\.\d+$/;
+const OPENCODE_USER_AGENT_ENV = "BANSOS_OPENCODE_UA";
+const BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+const OPENCODE_EXACT_TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "read",
+      description:
+        "Read the contents of a file or directory. Supports text files, images, and PDFs. Images and PDFs are presented directly to the model. Each text line is prefixed by its 1-based line number as <line>: <content>. The prefix is for reference and is not part of the file content. Directory entries are returned one per line. Use offset and limit to read large files or directories in sections. Prefer one larger read over many small slices, and use grep to find specific content in large files.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "File or directory to read" },
+          offset: { type: "number", description: "The line or directory entry to start reading from (1-based)" },
+          limit: { type: "number", description: "The maximum number of lines or directory entries to read (defaults to and capped at 2000)" },
+        },
+        required: ["path"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "shell",
+      description:
+        "Execute a shell command and return its output. Quote file paths containing spaces or special characters. Prefer dedicated tools over shell commands when possible. When output is large, the full result is saved to a file and a truncated preview is returned. Rely on automatic truncation unless filtering the output is more useful. Commands accept an optional timeout, background commands have no timeout by default. Background commands return immediately, and you will be notified when they complete. DO NOT poll for completion.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: { type: "string", description: "Shell command string to execute" },
+          workdir: { type: "string", description: "Working directory to execute the command in. Defaults to the current working directory. When possible, avoid changing directories in the command and set the working directory here instead." },
+          timeout: { type: "number", description: "Timeout in milliseconds. Set to 0 to disable the timeout." },
+          background: { type: "boolean", description: "Run the command in the background and return immediately (useful for dev servers and long-running builds). You do not need to use '&' at the end of the command when using this parameter. You will be notified when it completes. DO NOT poll for completion." },
+        },
+        required: ["command"],
+      },
+    },
+  },
+] as const;
+
+const OPENCODE_TOOL_NAMES = new Set([
+  "read", "shell", "bash", "glob", "grep", "edit", "write", "patch",
+  "webfetch", "websearch", "question", "skill", "subagent", "todowrite",
+  "mcp-resource", "opencode",
+]);
+
+const OPENCODE_PROJECT_ID = randomBytes(20).toString("hex");
+const OPENCODE_SESSION_RE = /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
+const OPENCODE_RESPONSES_MODELS = new Set([
+  "muse-spark-1.2-contributor-free",
+  "muse-spark-1.3-contributor-free",
+]);
+
+let lastSessionTs = 0;
+let sessionCounter = 0;
+
+function unstableRandom(): string {
+  const bytes = randomBytes(14);
+  let out = "";
+  for (let i = 0; i < 14; i++) out += BASE62[bytes[i]! % 62];
+  return out;
+}
+
+const OPENCODE_ID_MASK = (1n << 48n) - 1n;
+
+function timeHexFrom(value: bigint): string {
+  const v = value & OPENCODE_ID_MASK;
+  return Array.from({ length: 6 }, (_, i) =>
+    Number((v >> BigInt(40 - 8 * i)) & 0xffn)
+      .toString(16)
+      .padStart(2, "0"),
+  ).join("");
+}
+
+function generateSessionId(timestamp = Date.now()): string {
+  if (timestamp !== lastSessionTs) {
+    lastSessionTs = timestamp;
+    sessionCounter = 0;
+  }
+  sessionCounter++;
+  const current = BigInt(timestamp) * 0x1000n + BigInt(sessionCounter);
+  return `ses_${timeHexFrom(~current)}${unstableRandom()}`;
+}
+
+function generateRequestId(timestamp = Date.now()): string {
+  const current = BigInt(timestamp) * 0x1000n + 1n;
+  return `msg_${timeHexFrom(current)}${unstableRandom()}`;
+}
+
+const OPENCODE_SESSION = generateSessionId();
+if (!OPENCODE_SESSION_RE.test(OPENCODE_SESSION)) {
+  throw new Error("opencode session id generation failed shape check");
+}
+
+let liveOpenCodeVersion: string | null = null;
+
+function getOpenCodeUA(): string {
+  const override = process.env[OPENCODE_USER_AGENT_ENV]?.trim();
+  if (override) return override.startsWith("opencode/") ? override : `opencode/${override}`;
+  if (liveOpenCodeVersion && OPENCODE_UA_VERSION_RE.test(liveOpenCodeVersion))
+    return `opencode/${liveOpenCodeVersion}`;
+  return `opencode/${OPENCODE_UA_FALLBACK}`;
+}
+
+function opencodeHeaders(withRequestHeader = false): Record<string, string> {
+  const traceId = randomBytes(16).toString("hex");
+  const spanId = randomBytes(8).toString("hex");
+  const headers: Record<string, string> = {
+    "User-Agent": getOpenCodeUA(),
+    authorization: "Bearer public",
+    "x-opencode-client": "desktop",
+    "x-opencode-project": OPENCODE_PROJECT_ID,
+    "x-opencode-session": OPENCODE_SESSION,
+    "x-opencode-session-id": OPENCODE_SESSION,
+    "x-session-affinity": OPENCODE_SESSION,
+    b3: `${traceId}-${spanId}-1-${spanId}`,
+    traceparent: `00-${traceId}-${spanId}-01`,
+    Accept: "text/event-stream",
+  };
+  if (withRequestHeader) headers["x-opencode-request"] = generateRequestId();
+  return headers;
+}
+
+function toolNameOf(tool: unknown): string {
+  if (!tool || typeof tool !== "object" || Array.isArray(tool)) return "";
+  const t = tool as Record<string, unknown>;
+  const fn =
+    t.function && typeof t.function === "object" && !Array.isArray(t.function)
+      ? (t.function as Record<string, unknown>)
+      : null;
+  const raw =
+    typeof t.name === "string"
+      ? t.name
+      : typeof fn?.name === "string"
+        ? fn.name
+        : "";
+  return raw.trim();
+}
+
+function ensureChatFingerprintTools(body: Record<string, unknown>): void {
+  if (!Array.isArray(body.tools)) body.tools = [];
+  const wireToCaller = new Map<string, string>();
+  body.tools = (body.tools as unknown[]).map((tool) => {
+    const name = toolNameOf(tool);
+    if (!name || !OPENCODE_TOOL_NAMES.has(name.toLowerCase())) return tool;
+    const alias = `${name}_pi`;
+    wireToCaller.set(alias, name);
+    if (tool && typeof tool === "object" && !Array.isArray(tool)) {
+      const t = tool as Record<string, unknown>;
+      if (t.function && typeof t.function === "object")
+        (t.function as Record<string, unknown>).name = alias;
+      else if (typeof t.name === "string") t.name = alias;
+    }
+    return tool;
+  });
+  if (wireToCaller.size) body.__bansosToolAliases = Object.fromEntries(wireToCaller);
+  const present = new Set<string>();
+  for (const tool of body.tools as unknown[]) {
+    const name = toolNameOf(tool);
+    if (name) present.add(name);
+  }
+  for (const t of OPENCODE_EXACT_TOOLS) {
+    if (present.has(t.function.name)) continue;
+    (body.tools as unknown[]).push(structuredClone(t));
+  }
+}
+
+function ensureResponsesFingerprintTools(body: Record<string, unknown>): void {
+  const present = new Set<string>();
+  if (!Array.isArray(body.tools)) body.tools = [];
+  for (const tool of body.tools as unknown[]) {
+    const name = toolNameOf(tool);
+    if (name) present.add(name);
+  }
+  for (const t of OPENCODE_EXACT_TOOLS) {
+    const name = t.function.name;
+    if (present.has(name)) continue;
+    (body.tools as unknown[]).push({
+      type: "function",
+      name,
+      description: t.function.description,
+      parameters: t.function.parameters,
+    });
+  }
+}
+
+function sanitizeResponsesItems(body: Record<string, unknown>): void {
+  if (!Array.isArray(body.input)) return;
+  body.input = (body.input as unknown[]).filter((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return true;
+    const it = item as Record<string, unknown>;
+    if (it.type === "reasoning") return false;
+    delete it.encrypted_content;
+    delete it.reasoning_encrypted_content;
+    return true;
+  });
+}
+
+function transformOpencodeBody(
+  body: Record<string, unknown>,
+): { body: Record<string, unknown>; responsesPath: boolean } {
+  body.stream = true;
+  const model = typeof body.model === "string" ? body.model : "";
+  if (OPENCODE_RESPONSES_MODELS.has(model) || model.includes("muse-spark")) {
+    if (body.max_output_tokens === undefined) {
+      if (typeof body.max_completion_tokens === "number")
+        body.max_output_tokens = body.max_completion_tokens;
+      else if (typeof body.max_tokens === "number")
+        body.max_output_tokens = body.max_tokens;
+    }
+    delete body.max_tokens;
+    delete body.max_completion_tokens;
+    body.store = false;
+    ensureResponsesFingerprintTools(body);
+    sanitizeResponsesItems(body);
+    return { body, responsesPath: true };
+  }
+  ensureChatFingerprintTools(body);
+  return { body, responsesPath: false };
+}
+
+function transformOpencodeBodyChat(body: Record<string, unknown>): Record<string, unknown> {
+  body.stream = true;
+  ensureChatFingerprintTools(body);
+  return body;
+}
+
+function transformOpencodeBodyResponses(body: Record<string, unknown>): Record<string, unknown> {
+  if (body.max_output_tokens === undefined) {
+    if (typeof body.max_completion_tokens === "number")
+      body.max_output_tokens = body.max_completion_tokens;
+    else if (typeof body.max_tokens === "number")
+      body.max_output_tokens = body.max_tokens;
+  }
+  delete body.max_tokens;
+  delete body.max_completion_tokens;
+  body.store = false;
+  body.stream = true;
+  ensureResponsesFingerprintTools(body);
+  sanitizeResponsesItems(body);
+  return body;
+}
 
 interface ModelsDevModel {
   name?: string;
@@ -45,71 +291,47 @@ export function zenModelFromIndex(id: string, m: ModelsDevModel): ModelDef {
   });
 }
 
-const opencodeIDAlphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-
-export function opencodeDescendingID(): string {
-  const now = BigInt(Date.now());
-  const a = ~(now * 0x1000n + 1n);
-  const time = Array.from({ length: 6 }, (_, D) =>
-    Number((a >> BigInt(40 - 8 * D)) & 0xffn)
-      .toString(16)
-      .padStart(2, "0"),
-  ).join("");
-  const bytes = randomBytes(14);
-  const rand = Array.from(bytes, (b) => opencodeIDAlphabet[b % 62]).join("");
-  return time + rand;
-}
-
-export const ZEN_SPOOF_TOOLS_CHAT = [
-  { type: "function", function: { name: "read", description: "Read file contents", parameters: { type: "object" } } },
-  { type: "function", function: { name: "shell", description: "Execute shell command", parameters: { type: "object" } } },
-];
-
-export const ZEN_SPOOF_TOOLS_RESPONSES = [
-  { type: "function", name: "read", description: "Read file contents", parameters: { type: "object" } },
-  { type: "function", name: "shell", description: "Execute shell command", parameters: { type: "object" } },
-];
-
-// pinned zen free models verified keyless on the chat completions wire
 export const ZEN_MODELS: ModelDef[] = [
   modelDef({
-    id: "mimo-v2.6-flash-free",
-    name: "MiMo V2.6 Flash Free",
+    id: "muse-spark-1.3-contributor-free",
+    name: "Muse Spark 1.3 Free",
     source: "zen",
     reasoning: true,
-    contextWindow: 200_000,
-    maxTokens: 32_000,
-    input: ["text", "image"],
+    contextWindow: 1_048_576,
+    maxTokens: 131_072,
+    input: ["text", "image", "pdf"],
+    compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
+    wireApi: "responses",
+  }),
+  modelDef({
+    id: "muse-spark-1.2-contributor-free",
+    name: "Muse Spark 1.2 Free",
+    source: "zen",
+    reasoning: true,
+    contextWindow: 1_048_576,
+    maxTokens: 131_072,
+    input: ["text", "image", "pdf"],
+    compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
+    wireApi: "responses",
+  }),
+  modelDef({
+    id: "cat-jam-free",
+    name: "Cat Jam Free",
+    source: "zen",
+    reasoning: true,
+    contextWindow: 262_144,
+    maxTokens: 131_072,
+    input: ["text"],
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
   }),
   modelDef({
-    id: "mimo-v2.5-free",
-    name: "Mimo V2.5 Free",
-    source: "zen",
-    reasoning: true,
-    contextWindow: 200_000,
-    maxTokens: 32_000,
-    input: ["text", "image"],
-    compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
-  }),
-  modelDef({
-    id: "nemotron-3-ultra-free",
-    name: "Nemotron 3 Ultra",
+    id: "space-bunny-free",
+    name: "Space Bunny Free",
     source: "zen",
     reasoning: true,
     contextWindow: 1_000_000,
-    maxTokens: 128_000,
-    input: ["text"],
-    compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
-  }),
-  modelDef({
-    id: "big-pickle",
-    name: "Big Pickle",
-    source: "zen",
-    reasoning: true,
-    contextWindow: 200_000,
-    maxTokens: 32_000,
-    input: ["text"],
+    maxTokens: 524_288,
+    input: ["text", "image"],
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
   }),
   modelDef({
@@ -123,55 +345,72 @@ export const ZEN_MODELS: ModelDef[] = [
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
   }),
   modelDef({
-    id: "ling-3.0-flash-fin-free",
-    name: "Ling 3.0 Flash Fin Free",
+    id: "longcat-2.5-preview-free",
+    name: "LongCat 2.5 Preview Free",
     source: "zen",
     reasoning: true,
-    contextWindow: 262_144,
-    maxTokens: 32_768,
+    contextWindow: 1_000_000,
+    maxTokens: 131_072,
+    input: ["text", "image"],
+    compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
+  }),
+  modelDef({
+    id: "mimo-v2.6-flash-free",
+    name: "MiMo V2.6 Flash Free",
+    source: "zen",
+    reasoning: true,
+    contextWindow: 200_000,
+    maxTokens: 32_000,
+    input: ["text", "image"],
+    compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
+  }),
+  modelDef({
+    id: "big-pickle",
+    name: "Big Pickle",
+    source: "zen",
+    reasoning: true,
+    contextWindow: 200_000,
+    maxTokens: 32_000,
     input: ["text"],
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
   }),
-  // Muse only answers on /v1/responses; /chat/completions returns HTTP 500 even
-  // with valid client headers, so these carry wireApi: "responses".
   modelDef({
-    id: "muse-spark-1.3-contributor-free",
-    name: "Muse Spark 1.3 Free",
+    id: "nemotron-3-ultra-free",
+    name: "Nemotron 3 Ultra Free",
     source: "zen",
     reasoning: true,
     contextWindow: 1_000_000,
-    maxTokens: 131_072,
-    input: ["text", "image", "pdf"],
+    maxTokens: 128_000,
+    input: ["text"],
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
-    wireApi: "responses",
   }),
   modelDef({
-    id: "muse-spark-1.2-contributor-free",
-    name: "Muse Spark 1.2 Free",
+    id: "step-5-preview-free",
+    name: "Step 5 Preview Free",
     source: "zen",
     reasoning: true,
     contextWindow: 1_000_000,
-    maxTokens: 131_072,
-    input: ["text", "image", "pdf"],
+    maxTokens: 65_536,
+    input: ["text", "image"],
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
-    wireApi: "responses",
   }),
 ];
+
 
 export const zenUpstream: Upstream = {
   id: "zen",
   kind: "remote-keyless",
   relayAllowed: true,
-  chatUrl: `${ZEN_BASE_URL}/chat/completions`,
-  responsesUrl: `${ZEN_BASE_URL}/responses`,
+  chatUrl: `${ZEN_INFERENCE_URL}/chat/completions`,
+  responsesUrl: `${ZEN_INFERENCE_URL}/responses`,
 
   async fetchCatalog(): Promise<ModelDef[] | null> {
     try {
       const [indexRes, listRes] = await Promise.all([
-        fetch(MODELS_DEV_URL, { signal: AbortSignal.timeout(10000) }).catch(() => null),
-        fetch(`${ZEN_BASE_URL}/models`, {
-          headers: this.requestHeaders(),
-          signal: AbortSignal.timeout(6000),
+        fetch(MODELS_DEV_URL, { signal: AbortSignal.timeout(10_000) }).catch(() => null),
+        fetch(`${ZEN_MODELS_URL}/models`, {
+          headers: opencodeHeaders(true),
+          signal: AbortSignal.timeout(6_000),
         }),
       ]);
 
@@ -208,10 +447,10 @@ export const zenUpstream: Upstream = {
         }
         const responsesWire = m.wireApi === "responses";
         const probe = await fetch(
-          responsesWire ? `${ZEN_BASE_URL}/responses` : `${ZEN_BASE_URL}/chat/completions`,
+          responsesWire ? `${ZEN_INFERENCE_URL}/responses` : `${ZEN_INFERENCE_URL}/chat/completions`,
           {
             method: "POST",
-            headers: { "content-type": "application/json", ...this.requestHeaders(m) },
+            headers: { "content-type": "application/json", ...opencodeHeaders() },
             body: JSON.stringify(
               responsesWire
                 ? {
@@ -219,18 +458,23 @@ export const zenUpstream: Upstream = {
                     input: "ping",
                     max_output_tokens: 16,
                     stream: true,
-                    tools: ZEN_SPOOF_TOOLS_RESPONSES,
+                    tools: OPENCODE_EXACT_TOOLS.map(t => ({
+                      type: "function",
+                      name: t.function.name,
+                      description: t.function.description,
+                      parameters: t.function.parameters,
+                    })),
                   }
                 : {
                     model: m.id,
                     messages: [{ role: "user", content: "ping" }],
                     max_tokens: 4,
                     stream: true,
-                    tools: ZEN_SPOOF_TOOLS_CHAT,
+                    tools: OPENCODE_EXACT_TOOLS,
                     tool_choice: "none",
                   },
             ),
-            signal: AbortSignal.timeout(15000),
+            signal: AbortSignal.timeout(15_000),
           },
         );
         if (probe.ok) kept.push(m);
@@ -244,54 +488,14 @@ export const zenUpstream: Upstream = {
   },
 
   requestHeaders(_model?: ModelDef): Record<string, string> {
-    const session = `ses_${opencodeDescendingID()}`;
-    const project = randomBytes(20).toString("hex");
-    const traceId = randomBytes(16).toString("hex");
-    const spanId = randomBytes(8).toString("hex");
-    return {
-      authorization: "Bearer public",
-      "User-Agent": ZEN_USER_AGENT,
-      "x-opencode-client": "cli",
-      "x-opencode-project": project,
-      "x-opencode-session": session,
-      "x-session-affinity": session,
-      "x-session-id": session,
-      b3: `${traceId}-${spanId}-1-${spanId}`,
-      traceparent: `00-${traceId}-${spanId}-01`,
-    };
+    return opencodeHeaders();
   },
 
   transformRequestBody(body: Record<string, unknown>, model: ModelDef): Record<string, unknown> {
-    const transformed = { ...body };
-    const responsesWire = model.wireApi === "responses";
-
-    transformed.stream = true;
-
-    if (responsesWire) {
-      if (!Array.isArray(transformed.tools) || transformed.tools.length === 0) {
-        transformed.tools = [...ZEN_SPOOF_TOOLS_RESPONSES];
-      } else {
-        const tools = [...(transformed.tools as Array<{ name?: string }>)];
-        const names = new Set(tools.map((t) => t?.name));
-        for (const t of ZEN_SPOOF_TOOLS_RESPONSES) {
-          if (!names.has(t.name)) tools.push(t);
-        }
-        transformed.tools = tools;
-      }
-    } else {
-      if (!Array.isArray(transformed.tools) || transformed.tools.length === 0) {
-        transformed.tools = [...ZEN_SPOOF_TOOLS_CHAT];
-        if (!transformed.tool_choice) transformed.tool_choice = "none";
-      } else {
-        const tools = [...(transformed.tools as Array<{ function?: { name?: string }; name?: string }>)];
-        const names = new Set(tools.map((t) => t?.function?.name ?? t?.name));
-        for (const t of ZEN_SPOOF_TOOLS_CHAT) {
-          if (!names.has(t.function.name)) tools.push(t);
-        }
-        transformed.tools = tools;
-      }
-    }
-
+    const isResponses = model.wireApi === "responses";
+    const transformed = isResponses
+      ? transformOpencodeBodyResponses(body)
+      : transformOpencodeBodyChat(body);
     return transformed;
   },
 };

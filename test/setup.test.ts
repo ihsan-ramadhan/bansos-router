@@ -67,25 +67,25 @@ test("opencode adapter populates all models by default or single model when spec
   // default: all models
   const allWrites = adapter.render({
     baseUrl: "http://127.0.0.1:17070/v1",
-    defaultModel: "mimo-v2.5-free",
+    defaultModel: "mimo-v2.6-flash-free",
     models: SEEDED_MODELS,
     specificModel: false,
   });
   const allParsed = JSON.parse(allWrites[0]!.content);
   assert.ok(Object.keys(allParsed.provider.bansos.models).length >= 10);
-  assert.ok(allParsed.provider.bansos.models["mimo-v2.5-free"]);
-  assert.ok(allParsed.provider.bansos.models["mimo-v2.5-free"]);
+  assert.ok(allParsed.provider.bansos.models["mimo-v2.6-flash-free"]);
+  assert.ok(allParsed.provider.bansos.models["mimo-v2.6-flash-free"]);
   assert.ok(allParsed.provider.bansos.models["kilo-auto/free"]);
 
   // specific model
   const specificWrites = adapter.render({
     baseUrl: "http://127.0.0.1:17070/v1",
-    defaultModel: "mimo-v2.5-free",
+    defaultModel: "mimo-v2.6-flash-free",
     models: SEEDED_MODELS,
     specificModel: true,
   });
   const specificParsed = JSON.parse(specificWrites[0]!.content);
-  assert.deepEqual(Object.keys(specificParsed.provider.bansos.models), ["mimo-v2.5-free"]);
+  assert.deepEqual(Object.keys(specificParsed.provider.bansos.models), ["mimo-v2.6-flash-free"]);
 });
 
 test("goose and openclaw adapters populate all models by default or single model when specified", () => {
@@ -181,7 +181,7 @@ test("continue adapter populates models array and supports merge", () => {
 
   const writes = adapter.render({
     baseUrl: "http://127.0.0.1:17070/v1",
-    defaultModel: "mimo-v2.5-free",
+    defaultModel: "mimo-v2.6-flash-free",
     models: SEEDED_MODELS,
     specificModel: false,
   });
@@ -203,7 +203,7 @@ test("cline and roo adapters render valid openai-compatible configs and support 
 
     const writes = adapter.render({
       baseUrl: "http://127.0.0.1:17070/v1",
-      defaultModel: "mimo-v2.5-free",
+      defaultModel: "mimo-v2.6-flash-free",
       models: SEEDED_MODELS,
       specificModel: true,
     });
@@ -215,7 +215,7 @@ test("cline and roo adapters render valid openai-compatible configs and support 
     assert.equal(parsed.apiProvider, "openai-compatible");
     assert.equal(parsed.openAiBaseUrl, "http://127.0.0.1:17070/v1");
     assert.equal(parsed.openAiApiKey, "bansos");
-    assert.equal(parsed.openAiModelId, "mimo-v2.5-free");
+    assert.equal(parsed.openAiModelId, "mimo-v2.6-flash-free");
 
     const merged = applyMergeWrite(JSON.stringify({ customSetting: true }), writes[0]!.content);
     const parsedMerged = JSON.parse(merged);
@@ -248,7 +248,7 @@ test("jcode toml-block patches existing [providers.openai-compatible] without du
   const adapter = findAdapter("jcode")!;
   const write = adapter.render({
     baseUrl: "http://127.0.0.1:17070/v1",
-    defaultModel: "mimo-v2.5-free",
+    defaultModel: "mimo-v2.6-flash-free",
     models: SEEDED_MODELS,
     specificModel: true,
   })[0]!;
@@ -263,7 +263,7 @@ test("jcode toml-block patches existing [providers.openai-compatible] without du
   const firstSection = out.split("\n").findIndex((l) => /^\s*\[/.test(l));
   const before = out.split("\n").slice(0, firstSection).join("\n");
   assert.match(before, /default_provider = "openai-compatible"/);
-  assert.match(before, /default_model = "mimo-v2\.5-free"/);
+  assert.match(before, /default_model = "mimo-v2\.6-flash-free"/);
 
   // patched values inside the existing section
   assert.match(out, /base_url = "http:\/\/127\.0\.0\.1:17070\/v1"/);
@@ -282,7 +282,7 @@ test("jcode toml-block on fresh file keeps root keys at top and single table", (
   const adapter = findAdapter("jcode")!;
   const write = adapter.render({
     baseUrl: "http://127.0.0.1:17070/v1",
-    defaultModel: "mimo-v2.5-free",
+    defaultModel: "mimo-v2.6-flash-free",
     models: SEEDED_MODELS,
     specificModel: true,
   })[0]!;
@@ -301,7 +301,7 @@ test("claude-code adapter maps smart tiers in auto mode and pinned model in spec
   // auto mode, seeded with both reasoning and non-reasoning models
   const autoWrites = adapter.render({
     baseUrl: "http://127.0.0.1:17070/v1",
-    defaultModel: "mimo-v2.5-free",
+    defaultModel: "mimo-v2.6-flash-free",
     models: SEEDED_MODELS,
     specificModel: false,
   });

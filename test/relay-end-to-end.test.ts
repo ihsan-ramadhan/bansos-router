@@ -266,7 +266,7 @@ test("Relay Egress: OpenAI Chat completions route through active relay with x-re
     assert.ok(forwarded);
     assert.equal(forwarded.method, "POST");
     assert.equal(forwarded.headers["x-relay-target"], "https://opencode.ai");
-    assert.equal(forwarded.headers["x-relay-path"], "/zen/v1/chat/completions");
+    assert.equal(forwarded.headers["x-relay-path"], "/inference/v1/chat/completions");
     assert.ok(forwarded.body.includes("Hello relay"));
   } finally {
     saveRelayState(originalState);
@@ -323,7 +323,7 @@ test("Relay Egress: Anthropic Messages API routes through active relay and conve
     const forwarded = mockRelay.receivedRequests[0];
     assert.ok(forwarded);
     assert.equal(forwarded.headers["x-relay-target"], "https://opencode.ai");
-    assert.equal(forwarded.headers["x-relay-path"], "/zen/v1/chat/completions");
+    assert.equal(forwarded.headers["x-relay-path"], "/inference/v1/chat/completions");
     assert.ok(forwarded.body.includes("Hello from Claude"));
   } finally {
     saveRelayState(originalState);
