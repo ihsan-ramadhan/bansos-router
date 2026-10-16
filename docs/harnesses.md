@@ -37,6 +37,7 @@ Legend: 🟢 config-only · 🟡 config + small adapter · 🔵 works manually, 
 | **Continue** | OpenAI Chat | `~/.continue/config.json` | 🟢 | Appends/merges OpenAI provider entries in `models` array |
 | **Cline** | OpenAI Chat | `~/.config/cline/config.json` | 🟢 | Sets `apiProvider: "openai-compatible"`, `openAiBaseUrl` |
 | **Roo Code** | OpenAI Chat | `~/.config/roo-cline/config.json` | 🟢 | Sets `apiProvider: "openai-compatible"`, `openAiBaseUrl` |
+| **OMP (Oh My Pi)** | OpenAI Chat | `~/.omp/agent/models.yml` | 🟢 | Appends `bansos` provider with `openai-models-list` discovery |
 | **Claude Desktop** | Anthropic Messages |- | 🔴 | No supported custom base URL; out of scope (hacky MITM only) |
 | **Copilot CLI** |- |- | 🔴 | OAuth-only, no custom endpoint |
 | **Gemini CLI** |- |- | 🔴 | Retired (June 2026) -> Antigravity CLI |

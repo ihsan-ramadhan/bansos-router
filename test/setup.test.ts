@@ -329,3 +329,19 @@ test("claude-code adapter maps smart tiers in auto mode and pinned model in spec
   assert.equal(pinnedParsed.env.ANTHROPIC_DEFAULT_SONNET_MODEL, "custom-pinned-model");
   assert.equal(pinnedParsed.env.ANTHROPIC_DEFAULT_OPUS_MODEL, "custom-pinned-model");
 });
+test("omp adapter renders bansos provider block for models.yml", () => {
+  const adapter = findAdapter("omp")!;
+  assert.ok(adapter);
+  assert.equal(adapter.wire, "chat");
+  const write = adapter.render({
+    baseUrl: "http://127.0.0.1:17070/v1",
+    defaultModel: "mimo-v2.6-flash-free",
+    models: SEEDED_MODELS,
+    specificModel: false,
+  })[0]!;
+  assert.equal(write.path, "~/.omp/agent/models.yml");
+  assert.match(write.content, /baseUrl: "http:\/\/127\.0\.0\.1:17070\/v1"/);
+  assert.match(write.content, /api: openai-completions/);
+  assert.match(write.content, /type: openai-models-list/);
+  assert.deepEqual(adapter.undo(), ["~/.omp/agent/models.yml"]);
+});

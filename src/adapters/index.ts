@@ -524,6 +524,37 @@ function rooAdapter(): HarnessAdapter {
     undoKeys: OPENAI_COMPAT_UNDO_KEYS,
   };
 }
+function ompAdapter(): HarnessAdapter {
+  return {
+    id: "omp",
+    name: "OMP (Oh My Pi)",
+    wire: "chat",
+    configPaths: ["~/.omp/agent/models.yml"],
+    render(ctx: SetupContext): ConfigWrite[] {
+      const yaml = [
+        `# ${START_MARKER}`,
+        `  bansos:`,
+        `    baseUrl: "${ctx.baseUrl}"`,
+        `    apiKey: bansos`,
+        `    api: openai-completions`,
+        `    discovery:`,
+        `      type: openai-models-list`,
+        `      timeoutMs: 15000`,
+        `# ${END_MARKER}`,
+      ];
+      return [
+        {
+          path: "~/.omp/agent/models.yml",
+          content: `${yaml.join("\n")}\n`,
+          ...yamlBlock(),
+        },
+      ];
+    },
+    undo(): string[] {
+      return ["~/.omp/agent/models.yml"];
+    },
+  };
+}
 
 export const ADAPTERS: HarnessAdapter[] = [
   claudeCodeAdapter(),
@@ -539,6 +570,7 @@ export const ADAPTERS: HarnessAdapter[] = [
   continueAdapter(),
   clineAdapter(),
   rooAdapter(),
+  ompAdapter(),
 ];
 
 export function findAdapter(id: string): HarnessAdapter | undefined {
