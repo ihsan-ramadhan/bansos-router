@@ -10,6 +10,7 @@ import {
   applyBlockWrite,
   applyMergeWrite,
   applyTomlBlockWrite,
+  applyYamlBlockWrite,
   expandHome,
   parseJsonc,
   removeBlock,
@@ -179,6 +180,14 @@ function applyAdapter(adapter: HarnessAdapter, ctx: SetupContext): number {
       }
     } else if (write.mode === "toml-block") {
       content = applyTomlBlockWrite(existing ?? "", write.content, write.markers!, write.tomlTable!);
+    } else if (write.mode === "yaml-block") {
+      try {
+        content = applyYamlBlockWrite(existing ?? "", write.content, write.markers!, write.yamlParent!);
+      } catch (err) {
+        console.error(`  ✗ ${targetPath}: ${(err as Error).message}`);
+        failed++;
+        continue;
+      }
     } else {
       content = applyBlockWrite(existing ?? "", write.content, write.markers!);
     }

@@ -37,7 +37,7 @@ For **[pi](https://github.com/earendil-works/pi)**, install the companion extens
 pi install npm:pi-bansos-router
 ```
 
-Supported harnesses for `bansos setup`: `claude-code`, `aider`, `opencode`, `codex`, `hermes`, `goose`, `openclaw`, `antigravity`, `jcode`, `9router`, `continue`, `cline`, and `roo`. See [docs/harnesses.md](docs/harnesses.md) for harness-specific details.
+Supported harnesses for `bansos setup`: `claude-code`, `aider`, `opencode`, `codex`, `hermes`, `goose`, `openclaw`, `antigravity`, `jcode`, `9router`, `continue`, `cline`, `roo`, and `omp`. See [docs/harnesses.md](docs/harnesses.md) for harness-specific details.
 
 Open `http://127.0.0.1:17070` in your browser for the Web UI dashboard (model catalog, live latency ping, 1-click config generator, relay manager, playground).
 
@@ -173,7 +173,7 @@ With `mode: "strict"`:
 
 By default, `bansos setup` automatically configures intelligent defaults per harness:
 - **Claude Code**: Maps tiers automatically (`haiku` -> fast non-reasoning, `sonnet` -> daily reasoning, `opus` -> highest-capacity reasoning).
-- **Multi-model harnesses** (`opencode`, `goose`, `openclaw`, `continue`, `9router`, `jcode`): Registers all available models (or dynamic `/v1/models` provider) with the smart default (currently `muse-spark-1.3-contributor-free`) as primary.
+- **Multi-model harnesses** (`opencode`, `goose`, `openclaw`, `continue`, `9router`, `jcode`, `omp`): Registers all available models (or dynamic `/v1/models` provider) with the smart default (currently `muse-spark-1.3-contributor-free`) as primary.
 - **Single-model harnesses** (`aider`, `codex`, `hermes`, `antigravity`, `cline`, `roo`): Same smart default. Pass `--model <id>` to pin a specific model. Context and max output
 are token counts. The seeded catalog is ~30 models and the live one changes as
 upstreams rotate free tiers; run `bansos models` or `bansos ping` to see what is

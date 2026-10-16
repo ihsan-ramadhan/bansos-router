@@ -172,6 +172,64 @@ export function applyTomlBlockWrite(
   return `${lines.join("\n").replace(/\s+$/, "")}\n`;
 }
 
+// insert or replace a child mapping under a top-level YAML key (e.g. providers:),
+// keyed by a marker block. Unlike applyBlockWrite (which appends at root) this
+// nests under parentKey at the sibling indent, creating parentKey if absent, so
+// the child lands where the schema expects it rather than at the document root.
+// content is the child at column 0 (e.g. "bansos:\n  baseUrl: ..."). Refuses a
+// flow-style parent rather than corrupt it.
+export function applyYamlBlockWrite(
+  existing: string,
+  content: string,
+  markers: [string, string],
+  parentKey: string,
+): string {
+  const key = parentKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const stripped = removeBlock(existing, markers).replace(/\s+$/, "");
+  const lines = stripped === "" ? [] : stripped.split("\n");
+
+  const parentRe = new RegExp(`^${key}:\\s*(#.*)?$`);
+  const inlineRe = new RegExp(`^${key}:\\s*\\S`);
+  if (lines.some((l) => inlineRe.test(l) && !parentRe.test(l))) {
+    throw new Error(`cannot merge under inline "${parentKey}:"; edit the file by hand`);
+  }
+
+  const body = content.replace(/\s+$/, "").split("\n");
+  const parentIdx = lines.findIndex((l) => parentRe.test(l));
+
+  if (parentIdx === -1) {
+    // no parent key: create it and nest the child, markers wrapping both so
+    // --undo removes the whole thing and leaves no empty "providers:" behind
+    const inner = body.map((l) => (l ? `  ${l}` : l));
+    const block = [markers[0], `${parentKey}:`, ...inner, markers[1]].join("\n");
+    return stripped ? `${stripped}\n\n${block}\n` : `${block}\n`;
+  }
+
+  // parent exists: match the indent of its existing children (default 2)
+  let childIndent = 2;
+  for (let i = parentIdx + 1; i < lines.length; i++) {
+    if (lines[i]!.trim() === "") continue;
+    const indent = lines[i]!.length - lines[i]!.trimStart().length;
+    if (indent > 0) childIndent = indent;
+    break;
+  }
+  const pad = " ".repeat(childIndent);
+  const block = [`${pad}${markers[0]}`, ...body.map((l) => (l ? `${pad}${l}` : l)), `${pad}${markers[1]}`];
+
+  // insert after the parent's existing children, before the next top-level key
+  let insertAt = lines.length;
+  for (let i = parentIdx + 1; i < lines.length; i++) {
+    if (lines[i]!.trim() === "") continue;
+    const indent = lines[i]!.length - lines[i]!.trimStart().length;
+    if (indent === 0) {
+      insertAt = i;
+      break;
+    }
+  }
+  lines.splice(insertAt, 0, ...block);
+  return `${lines.join("\n").replace(/\s+$/, "")}\n`;
+}
+
 // remove the marked block (markers inclusive)
 export function removeBlock(
   existing: string,

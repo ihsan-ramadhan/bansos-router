@@ -13,10 +13,13 @@ export interface ConfigWrite {
   content: string;
   // overwrite-block = wrapped in markers so --undo can remove it
   // toml-block = same markers, but table-aware (patches existing [table])
-  mode: "merge" | "overwrite-block" | "toml-block";
+  // yaml-block = markers, but nested under a top-level key (patches under it)
+  mode: "merge" | "overwrite-block" | "toml-block" | "yaml-block";
   markers?: [string, string];
   // for toml-block: the table name the block defines (e.g. "providers.bansos")
   tomlTable?: string;
+  // for yaml-block: the top-level key the block nests under (e.g. "providers")
+  yamlParent?: string;
 }
 
 export interface HarnessAdapter {

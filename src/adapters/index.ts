@@ -524,6 +524,39 @@ function rooAdapter(): HarnessAdapter {
     undoKeys: OPENAI_COMPAT_UNDO_KEYS,
   };
 }
+function ompAdapter(): HarnessAdapter {
+  return {
+    id: "omp",
+    name: "OMP (Oh My Pi)",
+    wire: "chat",
+    configPaths: ["~/.omp/agent/models.yml"],
+    render(ctx: SetupContext): ConfigWrite[] {
+      // child at column 0; applyYamlBlockWrite nests it under providers: at the
+      // right indent, creating providers: when the file does not have it yet
+      const child = [
+        `bansos:`,
+        `  baseUrl: "${ctx.baseUrl}"`,
+        `  apiKey: bansos`,
+        `  api: openai-completions`,
+        `  discovery:`,
+        `    type: openai-models-list`,
+        `    timeoutMs: 15000`,
+      ];
+      return [
+        {
+          path: "~/.omp/agent/models.yml",
+          content: `${child.join("\n")}\n`,
+          mode: "yaml-block",
+          markers: [`# ${START_MARKER}`, `# ${END_MARKER}`],
+          yamlParent: "providers",
+        },
+      ];
+    },
+    undo(): string[] {
+      return ["~/.omp/agent/models.yml"];
+    },
+  };
+}
 
 export const ADAPTERS: HarnessAdapter[] = [
   claudeCodeAdapter(),
@@ -539,6 +572,7 @@ export const ADAPTERS: HarnessAdapter[] = [
   continueAdapter(),
   clineAdapter(),
   rooAdapter(),
+  ompAdapter(),
 ];
 
 export function findAdapter(id: string): HarnessAdapter | undefined {
