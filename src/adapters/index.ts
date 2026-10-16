@@ -531,22 +531,24 @@ function ompAdapter(): HarnessAdapter {
     wire: "chat",
     configPaths: ["~/.omp/agent/models.yml"],
     render(ctx: SetupContext): ConfigWrite[] {
-      const yaml = [
-        `# ${START_MARKER}`,
-        `  bansos:`,
-        `    baseUrl: "${ctx.baseUrl}"`,
-        `    apiKey: bansos`,
-        `    api: openai-completions`,
-        `    discovery:`,
-        `      type: openai-models-list`,
-        `      timeoutMs: 15000`,
-        `# ${END_MARKER}`,
+      // child at column 0; applyYamlBlockWrite nests it under providers: at the
+      // right indent, creating providers: when the file does not have it yet
+      const child = [
+        `bansos:`,
+        `  baseUrl: "${ctx.baseUrl}"`,
+        `  apiKey: bansos`,
+        `  api: openai-completions`,
+        `  discovery:`,
+        `    type: openai-models-list`,
+        `    timeoutMs: 15000`,
       ];
       return [
         {
           path: "~/.omp/agent/models.yml",
-          content: `${yaml.join("\n")}\n`,
-          ...yamlBlock(),
+          content: `${child.join("\n")}\n`,
+          mode: "yaml-block",
+          markers: [`# ${START_MARKER}`, `# ${END_MARKER}`],
+          yamlParent: "providers",
         },
       ];
     },

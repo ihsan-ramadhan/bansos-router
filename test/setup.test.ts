@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
 import { findAdapter } from "../src/adapters";
-import { applyMergeWrite, applyTomlBlockWrite, expandHome, parseJsonc, removeKeys } from "../src/cli/write";
+import { applyMergeWrite, applyTomlBlockWrite, applyYamlBlockWrite, expandHome, parseJsonc, removeBlock, removeKeys } from "../src/cli/write";
 import { SEEDED_MODELS } from "../src/upstreams";
+import { START_MARKER, END_MARKER } from "../src/adapters/types";
 
 test("expandHome uses os.homedir cross-platform", () => {
   const home = os.homedir();
@@ -329,19 +330,86 @@ test("claude-code adapter maps smart tiers in auto mode and pinned model in spec
   assert.equal(pinnedParsed.env.ANTHROPIC_DEFAULT_SONNET_MODEL, "custom-pinned-model");
   assert.equal(pinnedParsed.env.ANTHROPIC_DEFAULT_OPUS_MODEL, "custom-pinned-model");
 });
-test("omp adapter renders bansos provider block for models.yml", () => {
+const OMP_CTX = {
+  baseUrl: "http://127.0.0.1:17070/v1",
+  defaultModel: "mimo-v2.6-flash-free",
+  models: SEEDED_MODELS,
+  specificModel: false,
+};
+const OMP_MARKERS: [string, string] = [`# ${START_MARKER}`, `# ${END_MARKER}`];
+
+test("omp adapter renders a providers-nested yaml-block write", () => {
   const adapter = findAdapter("omp")!;
-  assert.ok(adapter);
   assert.equal(adapter.wire, "chat");
-  const write = adapter.render({
-    baseUrl: "http://127.0.0.1:17070/v1",
-    defaultModel: "mimo-v2.6-flash-free",
-    models: SEEDED_MODELS,
-    specificModel: false,
-  })[0]!;
+  const write = adapter.render(OMP_CTX)[0]!;
   assert.equal(write.path, "~/.omp/agent/models.yml");
-  assert.match(write.content, /baseUrl: "http:\/\/127\.0\.0\.1:17070\/v1"/);
-  assert.match(write.content, /api: openai-completions/);
-  assert.match(write.content, /type: openai-models-list/);
-  assert.deepEqual(adapter.undo(), ["~/.omp/agent/models.yml"]);
+  assert.equal(write.mode, "yaml-block");
+  assert.equal(write.yamlParent, "providers");
+  // child is emitted at column 0; the writer owns the nesting
+  assert.match(write.content, /^bansos:\n {2}baseUrl: "http:\/\/127\.0\.0\.1:17070\/v1"/);
+  assert.deepEqual(adapter.undo(OMP_CTX), ["~/.omp/agent/models.yml"]);
+});
+
+test("omp on a fresh file creates providers: and nests bansos under it", () => {
+  const { content } = findAdapter("omp")!.render(OMP_CTX)[0]!;
+  const out = applyYamlBlockWrite("", content, OMP_MARKERS, "providers");
+  assert.equal(
+    out,
+    `# ${START_MARKER}\n` +
+      `providers:\n` +
+      `  bansos:\n` +
+      `    baseUrl: "http://127.0.0.1:17070/v1"\n` +
+      `    apiKey: bansos\n` +
+      `    api: openai-completions\n` +
+      `    discovery:\n` +
+      `      type: openai-models-list\n` +
+      `      timeoutMs: 15000\n` +
+      `# ${END_MARKER}\n`,
+  );
+});
+
+test("omp nests under an existing providers: that is not the last key", () => {
+  const { content } = findAdapter("omp")!.render(OMP_CTX)[0]!;
+  const existing = `providers:\n  openai:\n    apiKey: sk-xxx\ndefaults:\n  model: gpt-4\n`;
+  const out = applyYamlBlockWrite(existing, content, OMP_MARKERS, "providers");
+  // bansos sits under providers (2-space), openai is preserved, defaults stays top-level
+  assert.equal(
+    out,
+    `providers:\n` +
+      `  openai:\n` +
+      `    apiKey: sk-xxx\n` +
+      `  # ${START_MARKER}\n` +
+      `  bansos:\n` +
+      `    baseUrl: "http://127.0.0.1:17070/v1"\n` +
+      `    apiKey: bansos\n` +
+      `    api: openai-completions\n` +
+      `    discovery:\n` +
+      `      type: openai-models-list\n` +
+      `      timeoutMs: 15000\n` +
+      `  # ${END_MARKER}\n` +
+      `defaults:\n` +
+      `  model: gpt-4\n`,
+  );
+});
+
+test("omp write is idempotent and cleanly undoable", () => {
+  const { content } = findAdapter("omp")!.render(OMP_CTX)[0]!;
+  const original = `version: 1\nproviders:\n  openai:\n    apiKey: sk-xxx\n`;
+  const once = applyYamlBlockWrite(original, content, OMP_MARKERS, "providers");
+  const twice = applyYamlBlockWrite(once, content, OMP_MARKERS, "providers");
+  assert.equal(twice, once, "re-run replaces the block instead of duplicating it");
+  assert.equal(
+    (once.match(new RegExp(START_MARKER, "g")) ?? []).length,
+    1,
+    "exactly one bansos block",
+  );
+  assert.equal(removeBlock(once, OMP_MARKERS), original, "undo restores the file byte-for-byte");
+});
+
+test("omp refuses a flow-style providers: instead of corrupting it", () => {
+  const { content } = findAdapter("omp")!.render(OMP_CTX)[0]!;
+  assert.throws(
+    () => applyYamlBlockWrite(`providers: { openai: {} }\n`, content, OMP_MARKERS, "providers"),
+    /inline "providers:"/,
+  );
 });
