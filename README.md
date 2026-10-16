@@ -137,7 +137,8 @@ With `mode: "strict"`:
 - One local daemon on `127.0.0.1:17070`, started with `bansos start`. It speaks
   three wire protocols: OpenAI Chat Completions, Anthropic Messages, and OpenAI
   Responses (Codex CLI).
-- Keyless free upstreams only: OpenCode Zen, KiloCode gateway, and LLM7.
+- Keyless free upstreams only: OpenCode Zen, KiloCode gateway, LLM7, and
+  OVHcloud AI Endpoints (anonymous tier).
 - `bansos setup <harness>` writes config for Claude Code, Aider, OpenCode,
   Codex, Hermes, Goose, OpenClaw, Antigravity, JCode, 9Router, Continue, Cline, and Roo Code.
 - Web UI dashboard served at `http://127.0.0.1:17070/` with model catalog explorer,
@@ -227,6 +228,19 @@ all see their usual wire format, tool calls included.
 | `default` | ✗ | ✗ | 128k | 8k |
 | `fast` | ✗ | ✗ | 128k | 8k |
 
+### OVHcloud AI Endpoints
+
+| model id | reasoning | vision | context | max output |
+|---|---|---|---|---|
+| `ovh/gpt-oss-120b` | ✓ | ✗ | 131k | 32k |
+| `ovh/gpt-oss-20b` | ✓ | ✗ | 131k | 32k |
+| `ovh/Qwen3.5-397B-A17B` | ✓ | ✓ | 262k | 65k |
+| `ovh/Qwen3.8-27B` | ✓ | ✓ | 262k | 32k |
+| `ovh/Qwen3.6-27B` | ✓ | ✓ | 262k | 65k |
+| `ovh/Qwen3.5-9B` | ✓ | ✓ | 262k | 65k |
+| `ovh/Mistral-Small-3.2-24B-Instruct-2506` | ✗ | ✓ | 131k | 16k |
+| `ovh/Meta-Llama-3_3-70B-Instruct` | ✗ | ✗ | 131k | 16k |
+
 Notes:
 
 - The tables above mirror the seeds in `src/upstreams/*`, which were verified
@@ -241,6 +255,9 @@ Notes:
   gone and answering 401) disappears automatically.
 - LLM7 models are filtered dynamically by `usage_based_only: false` (tier turbo);
   `default` and `fast` are stable selectors. `pro` tier is paid-only and excluded.
+- OVH's anonymous tier allows only 2 requests per minute per IP, so its models
+  mostly serve as failover targets. The `ovh/` prefix is local to bansos and
+  stripped before the request leaves; a bare id like `gpt-oss-120b` resolves too.
 
 ## Development
 

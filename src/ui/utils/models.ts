@@ -19,6 +19,8 @@ export function formatProviderLabel(provider: string): string {
       return "KiloCode";
     case "llm7":
       return "LLM7";
+    case "ovh":
+      return "OVHcloud";
     case "local":
       return "Local / OpenAI";
     default:
@@ -36,6 +38,8 @@ export function getProviderBadgeColor(provider: string): string {
       return "bg-purple-950/70 text-purple-300 border-purple-800/60";
     case "llm7":
       return "bg-emerald-950/70 text-emerald-300 border-emerald-800/60";
+    case "ovh":
+      return "bg-amber-950/70 text-amber-300 border-amber-800/60";
     default:
       return "bg-zinc-800/70 text-zinc-300 border-zinc-700/60";
   }

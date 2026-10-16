@@ -26,6 +26,8 @@ export function getProviderDotColor(provider: string): string {
       return "bg-purple-400";
     case "llm7":
       return "bg-emerald-400";
+    case "ovh":
+      return "bg-amber-400";
     default:
       return "bg-zinc-400";
   }
@@ -81,7 +83,7 @@ export function groupModelsByProvider(models: ModelItem[]): GroupedModel[] {
     groups[p] ??= [];
     groups[p].push(m);
   }
-  const order = ["zen", "kilo", "llm7", "local"];
+  const order = ["zen", "kilo", "llm7", "ovh", "local"];
   const sortedKeys = Object.keys(groups).sort((a, b) => {
     const idxA = order.indexOf(a);
     const idxB = order.indexOf(b);

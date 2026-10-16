@@ -57,7 +57,7 @@ export function PlaygroundSidebar({
             <button
               type="button"
               onClick={onToggleModelDropdown}
-              className="w-full min-h-[42px] flex items-center justify-between bg-[#121215] hover:bg-[#18181d] border border-[#262630] hover:border-[#383846] rounded-lg px-3 py-2 text-xs font-mono text-white transition cursor-pointer"
+              className="w-full min-h-10.5 flex items-center justify-between bg-[#121215] hover:bg-[#18181d] border border-[#262630] hover:border-[#383846] rounded-lg px-3 py-2 text-xs font-mono text-white transition cursor-pointer"
             >
               <div className="flex items-center gap-2 truncate">
                 <span className="font-semibold truncate">{selectedModel || "Select Model..."}</span>
@@ -115,6 +115,8 @@ export function PlaygroundSidebar({
                                     ? "bg-purple-400"
                                     : group.provider === "llm7"
                                     ? "bg-emerald-400"
+                                    : group.provider === "ovh"
+                                    ? "bg-amber-400"
                                     : "bg-zinc-400"
                                 }`}
                               />

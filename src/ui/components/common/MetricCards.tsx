@@ -91,7 +91,7 @@ export function MetricCards({ status, loading, daemonAddress }: MetricCardsProps
         </div>
         <div className="text-[11px] sm:text-xs text-[#71717a] mt-1.5 truncate">
           {status?.models && status.models.length > 0
-            ? "Zen, Kilo, LLM7, Local ready"
+            ? "Zen, Kilo, LLM7, OVH, Local ready"
             : "Keyless coding models ready"}
         </div>
       </div>

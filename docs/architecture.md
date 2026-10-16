@@ -43,9 +43,9 @@ harness.**
                 ┌───────────────▼────────────────┐
                 │   keyless free upstreams        │
                 │   OpenCode Zen · KiloCode GW ·  │
-                │   LLM7 (anonymous) ·            │
+                │   LLM7 (anonymous) · OVHcloud   │
                 │   (future: OpenRouter :free,    │
-                │    Routeway, OVH, ...)            │
+                │    Routeway, ...)               │
                 └────────────────────────────────┘
 ```
 
@@ -291,6 +291,7 @@ bansos-router/
 │   │   ├── zen.ts          # OpenCode Zen (keyless)
 │   │   ├── kilo.ts         # KiloCode gateway (keyless)
 │   │   ├── llm7.ts         # LLM7 (keyless, dynamic catalog)
+│   │   ├── ovh.ts          # OVHcloud AI Endpoints (anonymous, seeds ∩ live)
 │   │   ├── local.ts        # local OpenAI-compatible gateways
 │   │   │                   #   (freebuff-proxy, LiteLLM, 9router, ollama)
 │   │   └── types.ts
@@ -320,4 +321,4 @@ bansos-router/
 | **M2: Setup CLI** | `bansos setup` (9 harness adapters), `bansos start/stop`, `bansos status/models/doctor`, single `bansos` binary (+ `bansosd` alias) | Fresh machine: `npm i -g` -> `bansos setup aider` -> aider works |
 | **M3: Responses wire** | `/v1/responses` translation | Codex CLI works via `wire_api = "responses"` |
 | **M4: Relay UX** | `relay on/off/url/use/list/remove/deploy` + rotation | Rate-limit hit -> relay on -> back in business, no restart |
-| **M5: More upstreams** | OpenRouter `:free`, Routeway, OVHcloud anonymous tier, FreeBuff via `freebuff-proxy` (token-based local gateway, relay off), periodic health refresh | Catalog grows without breaking `/v1/models` contract |
+| **M5: More upstreams** | OpenRouter `:free`, Routeway, OVHcloud anonymous tier (shipped), FreeBuff via `freebuff-proxy` (token-based local gateway, relay off), periodic health refresh | Catalog grows without breaking `/v1/models` contract |

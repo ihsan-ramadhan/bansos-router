@@ -15,8 +15,8 @@
 - **Relay escape hatch**: per-IP rate limits are dodged by routing egress
   through a user-owned relay, toggled live, no daemon restart.
 - **Upstream taxonomy**: two kinds:
-  - *remote keyless* (Zen, Kilo, LLM7): zero credentials; spoofed headers
-    where needed; relay egress allowed.
+  - *remote keyless* (Zen, Kilo, LLM7, OVH): zero credentials; spoofed headers
+    where needed; relay egress allowed (OVH: direct only).
   - *local token gateways* (freebuff-proxy, LiteLLM, 9router, ollama):
     **roadmap (M5)**: opt-in, chained at `127.0.0.1:<port>`; may carry a
     token; relay egress **off**.
@@ -114,7 +114,19 @@ forwarded byte-for-byte.
 > `usage_based_only: false` (tier turbo) are registered as free models. The
 > pro tier models (paid per token) are automatically excluded.
 
-### 2.4 Future (roadmap: out of v1 scope)
+### 2.4 OVHcloud AI Endpoints
+
+| Field | Value |
+|---|---|
+| Base URL | `https://oai.endpoints.kepler.ai.cloud.ovh.net/v1` (OpenAI-compatible) |
+| Auth | **Anonymous**: no `Authorization` header at all, no account |
+| Model source | `GET /v1/models`, intersected with the seeds in `src/upstreams/ovh.ts`. The listing carries only id and context (no reasoning or vision flags) and mixes in TTS, embedding, image and guard models, so unseeded ids are never auto-added |
+| Rate limit | **2 requests/min per IP** (`x-ratelimit-limit-minute: 2`); a 429 parks the model via `retry-after` |
+| Routing | Direct only (`relayAllowed: false`) |
+| Ids | Served as `ovh/<id>`; `transformRequestBody` strips the prefix. The prefix keeps OVH ids apart from look-alikes such as LLM7's `mistral-Nemo-Instruct-2407` |
+| Quirk | Chat wire only: OVH's `/v1/responses` rejects array `input` with 422, so Codex traffic is translated to chat like any other chat model. `reasoning_effort` and tool calls verified on gpt-oss and Qwen (2026-10-16); `supportsReasoningEffort` stays `false` like every other source so failover can pair OVH with Zen/Kilo models |
+
+### 2.5 Future (roadmap: out of v1 scope)
 
 v1 ships **keyless upstreams only**. These land later:
 
@@ -128,8 +140,7 @@ v1 ships **keyless upstreams only**. These land later:
   with `{ type: "local-openai", baseUrl, apiKey? }` in `~/.bansos/config.json`.
 - **OpenRouter `:free`** models (20 req/min, 200 req/day per model: needs no
   key for some models, else optional key)
-- **Routeway `:free`**, **OVHcloud AI Endpoints anonymous tier** (2 req/min/IP,
-  no signup), DashScope free tokens
+- **Routeway `:free`**, DashScope free tokens
 - Each new upstream must declare: base URL, auth mode, catalog source, rate
   limits, and `compat` flags (see `docs/protocols.md` §5).
 
@@ -190,6 +201,11 @@ Muse ids are `wireApi: "responses"`)
 `mistral-Nemo-Instruct-2407`, `default`, `fast`. Live models are filtered by
 `usage_based_only: false` (tier turbo); the retired `DeepSeek-V4-Flash-0731` /
 `gpt-oss:20b` ids and the paid-only `gemini-3.1-flash-lite` were dropped.
+
+**OVH (8 seeded, live-gated):** `ovh/gpt-oss-120b`, `ovh/gpt-oss-20b`,
+`ovh/Qwen3.5-397B-A17B`, `ovh/Qwen3.8-27B`, `ovh/Qwen3.6-27B`, `ovh/Qwen3.5-9B`,
+`ovh/Mistral-Small-3.2-24B-Instruct-2506`, `ovh/Meta-Llama-3_3-70B-Instruct`.
+A seed absent from the live listing is dropped on refresh.
 
 ## 4. Health checking
 

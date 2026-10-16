@@ -1,6 +1,6 @@
 
 
-export type UpstreamSource = "zen" | "kilo" | "llm7" | "local";
+export type UpstreamSource = "zen" | "kilo" | "llm7" | "ovh" | "local";
 export type UpstreamKind = "remote-keyless" | "local-openai";
 
 // per-model translation flags
