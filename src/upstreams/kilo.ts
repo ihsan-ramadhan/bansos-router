@@ -68,6 +68,7 @@ export const KILO_MODELS: ModelDef[] = [
     maxTokens: 8_192,
     input: ["text", "image"],
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
+    supportsTools: false,
   }),
   modelDef({
     id: "liquid/lfm-2.5-2.6b:free",
@@ -214,12 +215,14 @@ export const kiloUpstream: Upstream = {
         const input: ("text" | "image")[] = modalities.includes("image")
           ? ["text", "image"]
           : ["text"];
+        const tools = m.supported_parameters ? { supportsTools: m.supported_parameters.includes("tools") } : {};
         if (known) {
           return modelDef({
             ...known,
             contextWindow: m.context_length ?? known.contextWindow,
             reasoning: m.supported_parameters?.includes("reasoning") ?? known.reasoning,
             input,
+            ...tools,
           });
         }
         return modelDef({
@@ -231,6 +234,7 @@ export const kiloUpstream: Upstream = {
           maxTokens: 10_000,
           input,
           compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
+          ...tools,
         });
       });
     } catch {

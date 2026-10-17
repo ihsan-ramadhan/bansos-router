@@ -47,14 +47,13 @@ export function parseJsonc(text: string): Record<string, unknown> {
         i += 2;
         while (i < clean.length && !(clean[i] === "*" && clean[i + 1] === "/")) i++;
         i++; // skip /
+      } else if (ch === "}" || ch === "]") {
+        out = out.replace(/,(\s*)$/, "$1") + ch;
       } else {
         out += ch;
       }
     }
   }
-
-  // strip trailing commas before } or ]
-  out = out.replace(/,(\s*[}\]])/g, "$1");
 
   return JSON.parse(out) as Record<string, unknown>;
 }
@@ -95,41 +94,64 @@ export function applyBlockWrite(
   return base ? `${base}\n\n${block}` : block;
 }
 
-// insert before the first [table] so root keys keep scope, and patch an existing table in place
+const TOML_ROOT_TAG = "# bansos-router";
+const TOML_PREV_TAG = "# bansos-router-prev: ";
+const TOML_TAGGED_RE = /#\s*bansos-router\s*$/;
+
+function tomlKeyRe(key: string): RegExp {
+  return new RegExp(`^\\s*${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*=`);
+}
+
+function upsertTomlRootKeys(lines: string[], rootKeys: string[]): void {
+  for (const raw of rootKeys) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const key = line.split("=", 1)[0]!.trim();
+    const keyRe = tomlKeyRe(key);
+    let rootEnd = lines.findIndex((l) => /^\s*\[/.test(l));
+    if (rootEnd === -1) rootEnd = lines.length;
+    const tagged = `${line}  ${TOML_ROOT_TAG}`;
+    const idx = lines.slice(0, rootEnd).findIndex((l) => keyRe.test(l));
+    if (idx === -1) {
+      let at = rootEnd;
+      while (at > 0 && lines[at - 1]!.trim() === "") at--;
+      lines.splice(at, 0, tagged);
+      if (lines[at + 1] !== undefined && /^\s*\[/.test(lines[at + 1]!)) lines.splice(at + 1, 0, "");
+    } else if (TOML_TAGGED_RE.test(lines[idx]!) || lines[idx]!.trim() === line) {
+      lines[idx] = tagged;
+    } else {
+      lines.splice(idx, 1, `${TOML_PREV_TAG}${lines[idx]!.trim()}`, tagged);
+    }
+  }
+}
+
+// root keys go in root scope (tagged); the table is patched in place when present, else appended in markers
 export function applyTomlBlockWrite(
   existing: string,
   content: string,
   markers: [string, string],
   tableName: string,
 ): string {
-  // work on the file without our old marked block
   const stripped = removeBlock(existing, markers).replace(/\s+$/, "");
-  const lines = stripped.split("\n");
+  const lines = stripped === "" ? [] : stripped.split("\n");
 
-  const headerRe = new RegExp(`^\\[${tableName.replace(/\./g, "\\.")}\\]\\s*$`);
-  const headerIdx = lines.findIndex((l) => headerRe.test(l.trim()));
-
-  // split our block content into root keys and table body
-  const contentLines = content.split("\n");
+  const contentLines = content.replace(/\s+$/, "").split("\n");
   const tblIdx = contentLines.findIndex((l) => /^\[/.test(l.trim()));
   const rootKeys = tblIdx === -1 ? contentLines : contentLines.slice(0, tblIdx);
   const tableBody = tblIdx === -1 ? [] : contentLines.slice(tblIdx + 1);
+  const tableSection = tblIdx === -1 ? [] : contentLines.slice(tblIdx);
 
+  upsertTomlRootKeys(lines, rootKeys);
+
+  const headerRe = new RegExp(`^\\[${tableName.replace(/\./g, "\\.")}\\]\\s*$`);
+  const headerIdx = lines.findIndex((l) => headerRe.test(l.trim()));
   if (headerIdx === -1) {
-    // no table yet: root keys before the first section header, then the marked block
-    const block = markerBlock(content, markers);
-    const firstSection = lines.findIndex((l) => /^\s*\[/.test(l));
-    if (firstSection === -1) {
-      const base = stripped;
-      return base ? `${base}\n\n${block}` : block;
-    }
-    const rootText = rootKeys.join("\n").replace(/\s+$/, "");
-    const head = lines.slice(0, firstSection).join("\n").replace(/\s+$/, "");
-    const tail = lines.slice(firstSection).join("\n");
-    return `${[head, rootText].filter((s) => s !== "").join("\n\n")}\n\n${tail}\n\n${block}`;
+    const base = lines.join("\n").replace(/\s+$/, "");
+    if (tableSection.length === 0) return `${base}\n`;
+    const block = markerBlock(tableSection.join("\n"), markers);
+    return base ? `${base}\n\n${block}` : block;
   }
 
-  // table exists: patch keys in place, keep everything else untouched
   let sectionEnd = lines.length;
   for (let i = headerIdx + 1; i < lines.length; i++) {
     if (/^\s*\[/.test(lines[i]!)) {
@@ -139,8 +161,7 @@ export function applyTomlBlockWrite(
   }
   for (const line of tableBody) {
     if (!line.trim() || /^#/.test(line.trim())) continue;
-    const key = line.split("=", 1)[0]!.trim();
-    const keyRe = new RegExp(`^\\s*${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*=`);
+    const keyRe = tomlKeyRe(line.split("=", 1)[0]!.trim());
     let replaced = false;
     for (let i = headerIdx + 1; i < sectionEnd; i++) {
       if (keyRe.test(lines[i]!)) {
@@ -154,19 +175,17 @@ export function applyTomlBlockWrite(
       sectionEnd++;
     }
   }
-  // ensure root defaults exist (insert before first section header)
-  const rootText = rootKeys.join("\n").replace(/\s+$/, "");
-  if (rootText) {
-    const missing = rootKeys.filter((l) => {
-      const key = l.split("=", 1)[0]?.trim();
-      return key && !new RegExp(`^\\s*${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*=`).test(stripped);
-    });
-    if (missing.length > 0) {
-      const firstSection = lines.findIndex((l) => /^\s*\[/.test(l));
-      lines.splice(firstSection === -1 ? lines.length : firstSection, 0, ...missing);
-    }
-  }
   return `${lines.join("\n").replace(/\s+$/, "")}\n`;
+}
+
+export function removeTomlBlock(existing: string, markers: [string, string]): string {
+  const lines = removeBlock(existing, markers).split("\n");
+  const out: string[] = [];
+  for (const l of lines) {
+    if (TOML_TAGGED_RE.test(l)) continue;
+    out.push(l.startsWith(TOML_PREV_TAG) ? l.slice(TOML_PREV_TAG.length) : l);
+  }
+  return `${out.join("\n").replace(/\s+$/, "")}\n`.replace(/^\n+/, "");
 }
 
 // nest a child mapping (content at column 0) under a top-level YAML key, keyed by a marker block
@@ -274,9 +293,10 @@ function deepMerge(target: Record<string, unknown>, patch: Record<string, unknow
 }
 
 // merge a rendered json/jsonc fragment into the existing file (valid formatted json out)
-export function applyMergeWrite(existing: string | null, content: string): string {
+export function applyMergeWrite(existing: string | null, content: string, replace: string[] = []): string {
   const patch = parseJsonc(content);
   const base = existing && existing.trim().length > 0 ? parseJsonc(existing) : {};
+  removeKeys(base, replace);
   deepMerge(base, patch);
   return `${JSON.stringify(base, null, 2)}\n`;
 }
@@ -293,11 +313,15 @@ export function removeKeys(obj: Record<string, unknown>, keys: string[]): void {
     }
     if (cur && typeof cur === "object") {
       const last = parts[parts.length - 1]!;
+      const matches = last.endsWith("*")
+        ? (k: string | undefined) => k !== undefined && k.startsWith(last.slice(0, -1))
+        : (k: string | undefined) => k === last;
       if (Array.isArray(cur)) {
-        const idx = cur.findIndex((item) => getItemKey(item) === last);
-        if (idx >= 0) cur.splice(idx, 1);
+        for (let idx = cur.length - 1; idx >= 0; idx--) {
+          if (matches(getItemKey(cur[idx]))) cur.splice(idx, 1);
+        }
       } else {
-        delete (cur as Record<string, unknown>)[last];
+        for (const k of Object.keys(cur)) if (matches(k)) delete (cur as Record<string, unknown>)[k];
       }
     }
   }

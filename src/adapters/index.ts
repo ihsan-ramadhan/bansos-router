@@ -141,6 +141,7 @@ function opencodeAdapter(): HarnessAdapter {
           path: "~/.config/opencode/opencode.json",
           content: `${JSON.stringify({ provider }, null, 2)}\n`,
           mode: "merge",
+          replace: ["provider.bansos.models"],
         },
       ];
     },
@@ -244,6 +245,7 @@ function gooseAdapter(): HarnessAdapter {
           path: "~/.config/goose/custom_providers/bansos.json",
           content: `${JSON.stringify(provider, null, 2)}\n`,
           mode: "merge",
+          replace: ["models"],
         },
       ];
     },
@@ -287,6 +289,7 @@ function openclawAdapter(): HarnessAdapter {
           path: "~/.openclaw/config.json",
           content: `${JSON.stringify(config, null, 2)}\n`,
           mode: "merge",
+          replace: ["models.providers.bansos.models"],
         },
       ];
     },
@@ -452,6 +455,7 @@ function continueAdapter(): HarnessAdapter {
           path: "~/.continue/config.json",
           content: `${JSON.stringify({ models }, null, 2)}\n`,
           mode: "merge",
+          replace: ["models.Bansos - *"],
         },
       ];
     },
@@ -459,7 +463,7 @@ function continueAdapter(): HarnessAdapter {
       return ["~/.continue/config.json", ".continue/config.json"];
     },
     undoKeys: [
-      "models.Bansos",
+      "models.Bansos - *",
     ],
   };
 }

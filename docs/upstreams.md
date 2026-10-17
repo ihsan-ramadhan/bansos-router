@@ -67,20 +67,63 @@ wire needs two hops: responses SSE to chat SSE first (`toChatResponse`), then
 the same fold. Handing `toChatResponse` an SSE body while asking it for JSON
 makes it fail its `JSON.parse` and pass raw SSE to the caller.
 
-**`read` + `shell` tool definitions.** The model does call them. Two guards:
+**`read` + `shell` tool definitions.** They are added only when the caller
+did not declare a tool of that name, and the caller's `tool_choice` is left
+alone (`none` would not help on the responses wire anyway: it answers
+`400 only "auto" is supported for tool_choice`). The model can and does call
+them, so the cleanup happens on the response: `streamToChatResponse` takes the
+tools the caller actually declared and drops (or bridges, below) any call
+outside them, demoting `finish_reason` from `tool_calls` back to `stop` when
+nothing survives.
 
-- On the **chat wire** the injected tools carry `tool_choice: "none"`, so they
-  are advertised but never used.
-- On the **responses wire** that is impossible: it answers
-  `400 only "auto" is supported for tool_choice`. The model there can and does
-  call our tools, so the cleanup happens on the response instead —
-  `streamToChatResponse` takes the set of tool names the caller actually
-  declared and drops any call outside it, demoting `finish_reason` from
-  `tool_calls` back to `stop` when nothing survives.
+Streaming chat callers are covered by `filterInjectedToolCallsTransform`, which
+sits in the outbound SSE pipeline right after the reasoning fold (so the fold
+still sees the hidden call and does not promote planning text to an answer) and
+therefore serves both wires
+(the responses wire reaches it already translated to chat SSE). Streaming
+`/v1/messages` and `/v1/responses` callers get the same filter inside
+`AnthropicStreamEncoder` / `ResponsesStreamEncoder`, which take the declared
+names as a constructor argument.
 
-Streaming callers are covered by `filterInjectedToolCallsTransform`, which sits
-at the head of the outbound SSE pipeline and therefore serves both wires (the
-responses wire reaches it already translated to chat SSE). A tool name arrives
+**Bridging instead of hiding.** Hiding alone left the turn empty whenever the
+model picked an injected tool over the caller's own (pi/OMP `bash`, Codex
+`exec_command`, Claude Code `Bash`/`Read`): the agent loop simply stopped. So
+before a hidden call is dropped, `callerToolsFromBody` (`src/protocols/tool-bridge.ts`)
+looks for the caller's equivalent and re-emits the call under that name:
+
+- target by known name first (`bash`, `exec_command`, `run_command`, … /
+  `read_file`, `read`, `view`, …, case-insensitive), and only if its JSON schema
+  has a matching argument (`command`/`cmd`/…, `path`/`file_path`/`filePath`/…);
+- arguments are mapped key by key from the target schema (`workdir`→`cwd`,
+  `timeout`, `offset`/`limit`); an array-typed command becomes
+  `["bash", "-lc", cmd]`;
+- `read` with no reader but a shell (Codex) becomes `sed -n 'a,bp' -- '<path>'`
+  with the path single-quoted;
+- if a `required` field of the target cannot be filled, or the arguments are
+  not JSON, the call stays hidden as before;
+- a caller's own `read`/`shell` is never bridged;
+- required description-style fields (`i` in OMP, `intent`, `description`,
+  `reason`) are filled with a short "Run …"/"Read …" line; any other required
+  field we cannot fill blocks the mapping.
+
+The bridge remembers each translated call id (in memory, last 2000). When the
+caller sends that turn back, the Zen transform restores the call to the
+injected name and arguments the model actually produced, because a model that
+sees `exec_command` where it remembers calling `read` concludes the read never
+happened and calls it again (seen with Codex + muse looping on the same file).
+Other upstreams receive the caller's own version.
+
+Arguments are buffered until complete and the call is emitted whole, right
+before the finish frame (chat) or at close (Anthropic block, Responses item),
+keeping the upstream call id. Only the response side changes; what is sent
+upstream is untouched.
+
+The declared set is computed from the inbound body **before** forwarding, and
+the Zen transform works on its own copy of the `tools` array. Both matter: the
+transform used to `push` into the caller's array, which made the injected
+`read`/`shell` count as caller tools (so the filter let them through, e.g.
+Codex logged `unsupported call: read`) and carried them to whichever upstream
+the request failed over to. A tool name arrives
 in the first delta for its index, so the verdict is taken there and reused for
 the argument deltas that follow; an index whose name is never seen is let
 through, so a malformed stream loses nothing. Frames it does not change are
@@ -367,6 +410,10 @@ x-relay-path:   /api/gateway/chat/completions
 | Per-IP rate limit hit | upstream 429/402 | error surfaced (mapped per protocol); `bansos relay on` is the fix |
 | Whole upstream down | connect timeout | mark source degraded, keep last-known catalog, log |
 | Relay down | relay 5xx/timeout | silent direct fallback (keep working); `bansos relay off` untuk mematikan egress relay |
+| Error under HTTP 200 (JSON) | `{error}` with no `choices` (Kilo → Nvidia overloaded) | treated as 502, fails over |
+| Error under HTTP 200 (SSE) | first `data:` frame carries `error` (Zen `Streaming response failed: [503]`; Kilo/OpenRouter send it after `: KILO PROCESSING` keepalives and keep a `choices` array in the same frame) | `peekStreamError` buffers up to the first data frame, keepalives included, for at most 5 s so headers are never held back longer; an error there is treated as 502 and fails over; a later error frame becomes a 502 for non-stream callers, an Anthropic `error` event, or `response.failed` |
+| Model cannot take tools / images | 400/404 `does not support tools`, `No endpoints found that support tool use`, `does not support vision` | catalog flag `supportsTools` (Kilo `supported_parameters`, LLM7 `capabilities.tools`) and `input` skip such models up front; a matching error message fails over too. With failover off the upstream error is returned as-is: tools are never silently dropped |
+| Quota hint only in the body | 429 `Retry after 80618 seconds` with no `Retry-After` header (LLM7 daily quota) | `retryAfterFromMessage` feeds the cooldown (still capped at 15 min) |
 
 ## 9. ToS & ethical guardrails (ship in README)
 

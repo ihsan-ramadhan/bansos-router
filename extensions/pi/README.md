@@ -19,8 +19,12 @@ pi install /path/to/bansos-router/extensions/pi
 - Registers the `bansosr` provider in pi. The daemon address comes from
   `~/.bansos/state.json`, so an auto-bumped port (17070 -> 17071 when 17070 is
   taken) is picked up instead of assumed.
-- Fetches the live free-model list from the daemon, falling back to a pinned
-  list when the daemon cannot be reached.
+- Fetches the live free-model list from the daemon (5 s timeout, one retry
+  while a fresh daemon seeds its catalog) and caches it in
+  `~/.bansos/pi-models.json`. When the daemon cannot be reached it uses that
+  cache, and only falls back to the bundled snapshot if no catalog was ever
+  cached. Model names carry their upstream (`Big Pickle (Zen)`), and vision
+  models are registered with image input.
 - Spawns the daemon on demand if it is offline (`bansos start --bg`).
 - On quit, stops only the daemon it started itself: a daemon you were already
   running is left alone.

@@ -94,3 +94,29 @@ test("a caller's own tool_choice survives tool injection", () => {
   assert.equal(out.tool_choice, "auto");
   assert.ok((out.tools as unknown[]).some((t: any) => t?.name === "grep"), "caller tool kept");
 });
+test("a caller's read/shell satisfy the gate and are never renamed or leaked", () => {
+  const model = ZEN_MODELS.find((m) => m.wireApi !== "responses")!;
+  const out = zenUpstream.transformRequestBody!(
+    {
+      model: model.id,
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ type: "function", function: { name: "read", description: "x", parameters: { type: "object" } } }],
+    },
+    model,
+  );
+  assert.equal("__bansosToolAliases" in out, false, "strict upstreams 400 on unknown body fields");
+  const names = (out.tools as Array<{ function: { name: string } }>).map((t) => t.function.name);
+  assert.ok(!names.some((n) => n.endsWith("_pi")), "the caller's tools are never renamed");
+  assert.equal(names.filter((n) => n === "read").length, 1, "the caller's read is kept, not duplicated");
+  assert.ok(names.includes("shell"), "the missing fingerprint tool is added");
+});
+
+test("fingerprint injection never leaks into the caller's own body", () => {
+  for (const model of [ZEN_MODELS.find((m) => m.wireApi !== "responses")!, ZEN_MODELS.find((m) => m.wireApi === "responses")!]) {
+    const tools = [{ type: "function", function: { name: "exec_command", parameters: { type: "object" } } }];
+    const body = { model: model.id, messages: [{ role: "user", content: "hi" }], tools };
+    const out = zenUpstream.transformRequestBody!(body, model);
+    assert.equal(tools.length, 1, "caller's tools array untouched");
+    assert.ok((out.tools as unknown[]).length > 1);
+  }
+});

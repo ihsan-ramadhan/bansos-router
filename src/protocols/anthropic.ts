@@ -1,6 +1,7 @@
 import { sseEvent } from "./stream";
 import { extractReasoningText } from "./responses";
 import type { ParseResult } from "./internal";
+import type { CallerTools, Translator } from "./tool-bridge";
 
 export interface AnthropicParsedRequest {
   model: string;
@@ -65,20 +66,19 @@ function normalizeText(x: unknown): string | null {
         if (typeof b.text === "string") return b.text;
         return "";
       })
-      .join("");
+      .filter(Boolean)
+      .join("\n\n");
     return text.trim() || null;
   }
   return null;
 }
 
 function blocksToText(blocks: any[]): string {
-  let t = "";
+  const texts: string[] = [];
   for (const b of blocks) {
-    if (!b || typeof b !== "object") continue;
-    if (b.type === "text" && typeof b.text === "string") t += b.text;
-    else if (typeof b.text === "string") t += b.text;
+    if (b && typeof b === "object" && typeof b.text === "string" && b.text) texts.push(b.text);
   }
-  return t;
+  return texts.join("\n\n");
 }
 
 export function imageToOpenAi(block: any): any | null {
@@ -138,7 +138,8 @@ function convertMessage(m: any): any[] | null {
     const toolResults: any[] = [];
     for (const b of parts) {
       if (b && b.type === "tool_result") {
-        toolResults.push({ role: "tool", tool_call_id: b.tool_use_id, content: toolResultContent(b.content) });
+        const out = toolResultContent(b.content);
+        toolResults.push({ role: "tool", tool_call_id: b.tool_use_id, content: b.is_error ? `Error: ${out}` : out });
       }
     }
     const text = blocksToText(parts);
@@ -166,7 +167,7 @@ function convertMessage(m: any): any[] | null {
 function toolResultContent(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
-    return content.map((b) => (b && b.type === "text" ? (b.text ?? "") : "")).join("");
+    return content.map((b) => (b && b.type === "text" ? (b.text ?? "") : "")).filter(Boolean).join("\n");
   }
   return "";
 }
@@ -240,54 +241,35 @@ export function openAiCompletionToAnthropicMessage(resp: any, model: string): Js
   };
 }
 
+type OpenBlock = { kind: "thinking" | "text" | "tool"; index: number; toolIndex?: number };
+
 // stateful translator: upstream openai sse chunks -> anthropic sse events
 export class AnthropicStreamEncoder {
   private started = false;
   private model = "";
-  private textIndex: number | null = null;
-  private textStarted = false;
-  private textStopped = false;
-  private thinkingIndex: number | null = null;
-  private thinkingBuffer = "";
-  private thinkingStarted = false;
-  private thinkingStopped = false;
-  private toolBlocks = new Map<number, { index: number; id: string; name: string }>();
+  private open: OpenBlock | null = null;
   private nextIndex = 0;
+  private sawText = false;
+  private thinkingBuffer = "";
+  private tools = new Map<number, { dropped: boolean; id?: string; args: string; translate?: Translator }>();
   private usage = { input_tokens: 0, output_tokens: 0 };
   private stopReason: string | null = null;
 
+  constructor(private readonly callerTools?: CallerTools) {}
+
   push(chunk: Json, model: string): string[] {
     if (model) this.model = model;
-    const out: string[] = [];
-    const choice = chunk?.choices?.[0];
-
-    if (!this.started) {
-      out.push(sseEvent("message_start", {
-        type: "message_start",
-        message: {
-          id: `msg_${chunk?.id ?? Date.now()}`,
-          type: "message",
-          role: "assistant",
-          model: this.model,
-          content: [],
-          stop_reason: null,
-          stop_sequence: null,
-          usage: { input_tokens: this.usage.input_tokens, output_tokens: 0 },
-        },
-      }));
-      this.started = true;
-    }
+    const out: string[] = this.start(chunk?.id);
 
     if (chunk?.usage) {
       if (typeof chunk.usage.prompt_tokens === "number") this.usage.input_tokens = chunk.usage.prompt_tokens;
       if (typeof chunk.usage.completion_tokens === "number") this.usage.output_tokens = chunk.usage.completion_tokens;
     }
 
+    const choice = chunk?.choices?.[0];
     if (!choice) return out;
-
     const delta = choice.delta ?? {};
 
-    // translate upstream reasoning delta into an Anthropic thinking block
     const reasoningText =
       typeof delta.reasoning === "string" && delta.reasoning.length > 0
         ? delta.reasoning
@@ -295,72 +277,42 @@ export class AnthropicStreamEncoder {
           ? delta.reasoning_content
           : null;
     if (reasoningText) {
-      if (this.thinkingIndex === null) {
-        this.thinkingIndex = this.nextIndex++;
-        this.thinkingStarted = true;
-        out.push(sseEvent("content_block_start", {
-          type: "content_block_start",
-          index: this.thinkingIndex,
-          content_block: { type: "thinking", thinking: "" },
-        }));
-      }
       this.thinkingBuffer += reasoningText;
-      out.push(sseEvent("content_block_delta", {
-        type: "content_block_delta",
-        index: this.thinkingIndex,
-        delta: { type: "thinking_delta", thinking: reasoningText },
-      }));
+      out.push(...this.ensureOpen("thinking", { type: "thinking", thinking: "" }));
+      out.push(this.delta({ type: "thinking_delta", thinking: reasoningText }));
     }
 
     if (typeof delta.content === "string" && delta.content.length > 0) {
-      if (this.thinkingStarted && !this.thinkingStopped && this.thinkingIndex !== null) {
-        out.push(sseEvent("content_block_stop", { type: "content_block_stop", index: this.thinkingIndex }));
-        this.thinkingStopped = true;
-      }
-      if (this.textIndex === null) {
-        this.textIndex = this.nextIndex++;
-        this.textStarted = true;
-        out.push(sseEvent("content_block_start", {
-          type: "content_block_start",
-          index: this.textIndex,
-          content_block: { type: "text", text: "" },
-        }));
-      }
-      out.push(sseEvent("content_block_delta", {
-        type: "content_block_delta",
-        index: this.textIndex,
-        delta: { type: "text_delta", text: delta.content },
-      }));
+      this.sawText = true;
+      out.push(...this.ensureOpen("text", { type: "text", text: "" }));
+      out.push(this.delta({ type: "text_delta", text: delta.content }));
     }
 
     if (Array.isArray(delta.tool_calls)) {
       for (const tc of delta.tool_calls) {
-        const ti = typeof tc.index === "number" ? tc.index : 0;
-        let blk = this.toolBlocks.get(ti);
-        if (!blk) {
-          if (this.thinkingStarted && !this.thinkingStopped && this.thinkingIndex !== null) {
-            out.push(sseEvent("content_block_stop", { type: "content_block_stop", index: this.thinkingIndex }));
-            this.thinkingStopped = true;
+        const ti = typeof tc?.index === "number" ? tc.index : 0;
+        let tool = this.tools.get(ti);
+        if (!tool) {
+          const name = tc?.function?.name;
+          if (typeof name !== "string") continue;
+          const dropped = this.callerTools !== undefined && !this.callerTools.has(name);
+          tool = { dropped, id: tc.id, args: "", translate: dropped ? this.callerTools?.bridge?.(name) ?? undefined : undefined };
+          this.tools.set(ti, tool);
+          if (!tool.dropped) {
+            out.push(...this.closeOpen());
+            this.open = { kind: "tool", index: this.nextIndex++, toolIndex: ti };
+            out.push(sseEvent("content_block_start", {
+              type: "content_block_start",
+              index: this.open.index,
+              content_block: { type: "tool_use", id: tc.id || `toolu_${ti}_${Date.now().toString(36)}`, name, input: {} },
+            }));
           }
-          if (this.textStarted && !this.textStopped && this.textIndex !== null) {
-            out.push(sseEvent("content_block_stop", { type: "content_block_stop", index: this.textIndex }));
-            this.textStopped = true;
-          }
-          const index = this.nextIndex++;
-          blk = { index, id: tc.id ?? `tool_${ti}`, name: tc.function?.name ?? `tool_${ti}` };
-          this.toolBlocks.set(ti, blk);
-          out.push(sseEvent("content_block_start", {
-            type: "content_block_start",
-            index,
-            content_block: { type: "tool_use", id: blk.id, name: blk.name, input: {} },
-          }));
         }
-        if (typeof tc.function?.arguments === "string" && tc.function.arguments.length > 0) {
-          out.push(sseEvent("content_block_delta", {
-            type: "content_block_delta",
-            index: blk.index,
-            delta: { type: "input_json_delta", partial_json: tc.function.arguments },
-          }));
+        const args = tc?.function?.arguments;
+        if (tool.translate && typeof args === "string") tool.args += args;
+        if (tool.dropped || typeof args !== "string" || args.length === 0) continue;
+        if (this.open?.kind === "tool" && this.open.toolIndex === ti) {
+          out.push(this.delta({ type: "input_json_delta", partial_json: args }));
         }
       }
     }
@@ -370,43 +322,82 @@ export class AnthropicStreamEncoder {
   }
 
   close(): string[] {
-    const out: string[] = [];
-    // reasoning-only reply: promote the reasoning to the answer (C5)
-    if (!this.textStarted && this.toolBlocks.size === 0 && this.thinkingBuffer.length > 0) {
-      if (this.thinkingStarted && !this.thinkingStopped && this.thinkingIndex !== null) {
-        out.push(sseEvent("content_block_stop", { type: "content_block_stop", index: this.thinkingIndex }));
-        this.thinkingStopped = true;
-      }
-      this.textIndex = this.nextIndex++;
-      this.textStarted = true;
+    const out: string[] = this.start();
+    let bridged = false;
+    for (const [ti, tool] of this.tools) {
+      const id = tool.id || `toolu_${ti}_${Date.now().toString(36)}`;
+      const call = tool.translate?.(tool.args, id);
+      if (!call) continue;
+      tool.dropped = false;
+      bridged = true;
+      out.push(...this.closeOpen());
+      this.open = { kind: "tool", index: this.nextIndex++, toolIndex: ti };
       out.push(sseEvent("content_block_start", {
         type: "content_block_start",
-        index: this.textIndex,
-        content_block: { type: "text", text: "" },
+        index: this.open.index,
+        content_block: { type: "tool_use", id, name: call.name, input: {} },
       }));
-      out.push(sseEvent("content_block_delta", {
-        type: "content_block_delta",
-        index: this.textIndex,
-        delta: { type: "text_delta", text: this.thinkingBuffer },
-      }));
+      out.push(this.delta({ type: "input_json_delta", partial_json: call.arguments }));
     }
-    if (this.thinkingStarted && !this.thinkingStopped && this.thinkingIndex !== null) {
-      out.push(sseEvent("content_block_stop", { type: "content_block_stop", index: this.thinkingIndex }));
-      this.thinkingStopped = true;
+    if (bridged) this.stopReason = "tool_use";
+    const visibleTools = [...this.tools.values()].some((t) => !t.dropped);
+    if (!this.sawText && this.tools.size === 0 && this.thinkingBuffer.length > 0) {
+      out.push(...this.ensureOpen("text", { type: "text", text: "" }));
+      out.push(this.delta({ type: "text_delta", text: this.thinkingBuffer }));
     }
-    if (this.textStarted && !this.textStopped && this.textIndex !== null) {
-      out.push(sseEvent("content_block_stop", { type: "content_block_stop", index: this.textIndex }));
-      this.textStopped = true;
-    }
-    for (const blk of this.toolBlocks.values()) {
-      out.push(sseEvent("content_block_stop", { type: "content_block_stop", index: blk.index }));
-    }
+    out.push(...this.closeOpen());
+    let stopReason = this.stopReason ?? "end_turn";
+    if (stopReason === "tool_use" && !visibleTools) stopReason = "end_turn";
     out.push(sseEvent("message_delta", {
       type: "message_delta",
-      delta: { stop_reason: this.stopReason ?? "end_turn", stop_sequence: null },
-      usage: { output_tokens: this.usage.output_tokens },
+      delta: { stop_reason: stopReason, stop_sequence: null },
+      usage: { input_tokens: this.usage.input_tokens, output_tokens: this.usage.output_tokens },
     }));
     out.push(sseEvent("message_stop", { type: "message_stop" }));
     return out;
+  }
+
+  fail(message: string): string[] {
+    return [
+      ...this.start(),
+      sseEvent("error", { type: "error", error: { type: /overload|busy|capacity/i.test(message) ? "overloaded_error" : "api_error", message } }),
+    ];
+  }
+
+  private start(id?: unknown): string[] {
+    if (this.started) return [];
+    this.started = true;
+    return [sseEvent("message_start", {
+      type: "message_start",
+      message: {
+        id: `msg_${typeof id === "string" && id ? id : Date.now().toString(36)}`,
+        type: "message",
+        role: "assistant",
+        model: this.model,
+        content: [],
+        stop_reason: null,
+        stop_sequence: null,
+        usage: { input_tokens: this.usage.input_tokens, output_tokens: 0 },
+      },
+    })];
+  }
+
+  private ensureOpen(kind: "thinking" | "text", block: Json): string[] {
+    if (this.open?.kind === kind) return [];
+    const out = this.closeOpen();
+    this.open = { kind, index: this.nextIndex++ };
+    out.push(sseEvent("content_block_start", { type: "content_block_start", index: this.open.index, content_block: block }));
+    return out;
+  }
+
+  private closeOpen(): string[] {
+    if (!this.open) return [];
+    const index = this.open.index;
+    this.open = null;
+    return [sseEvent("content_block_stop", { type: "content_block_stop", index })];
+  }
+
+  private delta(delta: Json): string {
+    return sseEvent("content_block_delta", { type: "content_block_delta", index: this.open!.index, delta });
   }
 }

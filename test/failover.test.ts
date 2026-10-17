@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { RuntimeCatalog } from "../src/daemon/catalog";
-import { createServer, parseRetryAfterMs, pickFailover } from "../src/daemon/server";
+import { createServer, parseRetryAfterMs, peekStreamError, pickFailover, retryAfterFromMessage, streamToChatResponse } from "../src/daemon/server";
 import { RateLimiter } from "../src/daemon/rate-limit";
 import { normalizeSecurityConfig } from "../src/security/policy";
 import type { Logger } from "../src/logger";
@@ -32,6 +32,7 @@ function md(partial: Partial<ModelDef> & { id: string; source: ModelDef["source"
       supportsDeveloperRole: false,
     },
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    ...(partial.supportsTools !== undefined ? { supportsTools: partial.supportsTools } : {}),
   };
 }
 
@@ -482,4 +483,212 @@ test("a 200 carrying an error envelope fails over instead of returning empty", a
     await overloaded.close();
     await healthy.close();
   }
+});
+
+async function mockSse(frames: string[]): Promise<{ url: string; hits: number; close(): Promise<void> }> {
+  const state = { hits: 0 };
+  const server = http.createServer((_req, res) => {
+    state.hits++;
+    res.writeHead(200, { "content-type": "text/event-stream" });
+    for (const f of frames) res.write(`data: ${f}\n\n`);
+    res.end("data: [DONE]\n\n");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as { port: number };
+  return {
+    url: `http://127.0.0.1:${port}/v1/chat/completions`,
+    get hits() {
+      return state.hits;
+    },
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
+}
+
+const chunk = (content: string) =>
+  JSON.stringify({ id: "c", object: "chat.completion.chunk", choices: [{ index: 0, delta: { content }, finish_reason: null }] });
+const overloadedFrame = JSON.stringify({ error: { type: "server_error", message: "Service temporarily overloaded" } });
+
+test("an error frame opening a 200 stream fails over for streaming clients", async () => {
+  const broken = await mockSse([overloadedFrame]);
+  const healthy = await mockSse([chunk("hello")]);
+  const origin = md({ id: "zen-origin", source: "zen", reasoning: true });
+  const fallback = md({ id: "kilo-fallback", source: "kilo", reasoning: true });
+  const daemon = await testDaemon(
+    [httpUpstream("zen", broken.url), httpUpstream("kilo", healthy.url)],
+    [origin, fallback],
+    [],
+  );
+  try {
+    const res = await fetch(`${daemon.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: origin.id, stream: true, messages: [{ role: "user", content: "hi" }] }),
+    });
+    const text = await res.text();
+    assert.equal(res.status, 200);
+    assert.ok(text.includes("hello"), "the healthy stream reaches the client");
+    assert.ok(!text.includes("overloaded"), "the broken stream is not leaked");
+    assert.equal(broken.hits, 1);
+    assert.equal(healthy.hits, 1);
+  } finally {
+    await daemon.close();
+    await broken.close();
+    await healthy.close();
+  }
+});
+
+test("an error frame with no failover surfaces as an error, not an empty reply", async () => {
+  const broken = await mockSse([overloadedFrame]);
+  const origin = md({ id: "zen-origin", source: "zen" });
+  const daemon = await testDaemon([httpUpstream("zen", broken.url)], [origin], []);
+  try {
+    const res = await fetch(`${daemon.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: origin.id, messages: [{ role: "user", content: "hi" }] }),
+    });
+    assert.equal(res.status, 502);
+    const body = (await res.json()) as { error?: { message?: string } };
+    assert.match(body.error?.message ?? "", /overloaded/);
+  } finally {
+    await daemon.close();
+    await broken.close();
+  }
+});
+
+test("peekStreamError replays every byte of a healthy stream", async () => {
+  const sse = `data: ${chunk("a")}\n\ndata: ${chunk("b")}\n\ndata: [DONE]\n\n`;
+  const res = new Response(sse, { headers: { "content-type": "text/event-stream" } });
+  const peeked = await peekStreamError(res);
+  assert.equal(peeked.error, null);
+  assert.equal(await peeked.response.text(), sse);
+});
+
+test("a mid-stream error after no output becomes a 502 for non-stream callers", async () => {
+  const sse = `data: ${chunk("")}\n\ndata: ${overloadedFrame}\n\ndata: [DONE]\n\n`;
+  const out = await streamToChatResponse(new Response(sse, { status: 200 }), "m");
+  assert.equal(out.status, 502);
+});
+
+test("a tool request skips a model that cannot take tools", async () => {
+  const noTools = await mockProvider(400, { error: { message: "Model 'x' does not support tools." } });
+  const capable = await mockProvider(200, {
+    id: "ok",
+    choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }],
+  });
+  const origin = md({ id: "llm7-nemo", source: "llm7", supportsTools: false });
+  const fallback = md({ id: "kilo-tools", source: "kilo" });
+  const daemon = await testDaemon(
+    [httpUpstream("llm7", noTools.url), httpUpstream("kilo", capable.url)],
+    [origin, fallback],
+    [],
+  );
+  try {
+    const res = await fetch(`${daemon.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: origin.id,
+        messages: [{ role: "user", content: "hi" }],
+        tools: [{ type: "function", function: { name: "read", parameters: { type: "object" } } }],
+      }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal(noTools.hits, 0, "the tool-less model is never called with tools");
+    assert.equal(capable.hits, 1);
+  } finally {
+    await daemon.close();
+    await noTools.close();
+    await capable.close();
+  }
+});
+
+test("an upstream that rejects tools at request time fails over", async () => {
+  const noTools = await mockProvider(404, { error: { message: "No endpoints found that support tool use." } });
+  const capable = await mockProvider(200, {
+    id: "ok",
+    choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }],
+  });
+  const origin = md({ id: "kilo-guard", source: "kilo" });
+  const fallback = md({ id: "zen-tools", source: "zen" });
+  const daemon = await testDaemon(
+    [httpUpstream("kilo", noTools.url), httpUpstream("zen", capable.url)],
+    [origin, fallback],
+    [],
+  );
+  try {
+    const res = await fetch(`${daemon.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: origin.id,
+        messages: [{ role: "user", content: "hi" }],
+        tools: [{ type: "function", function: { name: "read", parameters: { type: "object" } } }],
+      }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal(noTools.hits, 1);
+    assert.equal(capable.hits, 1);
+  } finally {
+    await daemon.close();
+    await noTools.close();
+    await capable.close();
+  }
+});
+
+test("peekStreamError holds keepalives only until its timeout, then replays them", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const enc = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      controller.enqueue(enc.encode(": KILO PROCESSING\n\n"));
+      await gate;
+      controller.enqueue(enc.encode(`data: ${chunk("late")}\n\n`));
+      controller.close();
+    },
+  });
+  const peeked = await peekStreamError(new Response(body, { headers: { "content-type": "text/event-stream" } }), 30);
+  assert.equal(peeked.error, null);
+  release();
+  const text = await peeked.response.text();
+  assert.ok(text.startsWith(": KILO PROCESSING") && text.includes("late"));
+});
+
+test("peekStreamError gives up after its timeout and still replays the stream", async () => {
+  const enc = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      await new Promise((r) => setTimeout(r, 200));
+      controller.enqueue(enc.encode(`data: ${chunk("slow")}\n\n`));
+      controller.close();
+    },
+  });
+  const startedAt = Date.now();
+  const peeked = await peekStreamError(new Response(body, { headers: { "content-type": "text/event-stream" } }), 30);
+  assert.ok(Date.now() - startedAt < 150, "the peek does not wait for the first frame");
+  assert.ok((await peeked.response.text()).includes("slow"));
+});
+
+test("retryAfterFromMessage reads the wait that some upstreams only put in the body", () => {
+  assert.equal(retryAfterFromMessage("Daily token quota exceeded. Retry after 80618 seconds."), 80_618_000);
+  assert.equal(retryAfterFromMessage("please retry in 2 minutes"), 120_000);
+  assert.equal(retryAfterFromMessage("retry after 500ms"), 500);
+  assert.equal(retryAfterFromMessage("API rate limit exceeded"), undefined);
+});
+
+test("peekStreamError reads CRLF-framed error frames without waiting for its timeout", async () => {
+  const res = new Response(`data: ${overloadedFrame}\r\n\r\n`, { headers: { "content-type": "text/event-stream" } });
+  const startedAt = Date.now();
+  const peeked = await peekStreamError(res, 2000);
+  assert.match(peeked.error ?? "", /overloaded/);
+  assert.ok(Date.now() - startedAt < 500);
+});
+
+test("an OpenRouter-style error frame that still carries choices is recognised", async () => {
+  const frame = JSON.stringify({ id: "g", choices: [{ index: 0, delta: { content: "" }, finish_reason: null }], error: { code: 503, message: "Upstream error from Nvidia: Service temporarily overloaded" } });
+  const peeked = await peekStreamError(new Response(`: KILO PROCESSING\n\ndata: ${frame}\n\n`, { headers: { "content-type": "text/event-stream" } }));
+  assert.match(peeked.error ?? "", /overloaded/, "a keepalive before the error does not commit the stream");
+  const out = await streamToChatResponse(new Response(`data: ${frame}\n\ndata: [DONE]\n\n`), "m");
+  assert.equal(out.status, 502);
 });

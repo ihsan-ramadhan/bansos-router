@@ -37,14 +37,13 @@ test("parseResponsesTurn: instructions -> system, input[] items -> messages", ()
   assert.ok(r.ok);
   if (!r.ok) return;
   assert.equal(r.value.system, "You are a helpful assistant.");
-  assert.equal(r.value.messages.length, 4);
+  assert.equal(r.value.messages.length, 3);
   assert.equal(r.value.messages[0]!.role, "user");
-  // function_call -> assistant tool_calls (3rd message: user, plaintext assistant, then tool-call assistant)
-  const assistant = r.value.messages[2]!;
+  const assistant = r.value.messages[1]!;
   assert.equal(assistant.role, "assistant");
+  assert.equal(assistant.content, "hello there");
   assert.ok(assistant.toolCalls && assistant.toolCalls[0]!.name === "get_weather");
-  // function_call_output -> tool message
-  const tool = r.value.messages[3]!;
+  const tool = r.value.messages[2]!;
   assert.equal(tool.role, "tool");
   assert.equal(tool.toolCallId, "call_1");
 });
@@ -99,10 +98,43 @@ test("parseResponsesTurn: input array of content blocks", () => {
   });
   assert.ok(r.ok);
   if (!r.ok) return;
-  const m0 = r.value.messages[0]!;
-  assert.match(String(m0.content), /describe/);
-  assert.match(String(m0.content), /this/);
-  assert.match(String(m0.content), /\[image/);
+  assert.deepEqual(r.value.messages[0]!.content, [
+    { type: "text", text: "describe " },
+    { type: "image_url", url: "https://x/y.png" },
+    { type: "text", text: "this" },
+  ]);
+});
+
+test("parseResponsesTurn: parallel function calls share one assistant message", () => {
+  const r = parseResponsesTurn({
+    model: "m",
+    input: [
+      { role: "user", content: "both" },
+      { type: "function_call", call_id: "a", name: "read", arguments: "{}" },
+      { type: "function_call", call_id: "b", name: "bash", arguments: "{}" },
+      { type: "function_call_output", call_id: "a", output: "1" },
+      { type: "function_call_output", call_id: "b", output: "2" },
+    ],
+  });
+  assert.ok(r.ok);
+  if (!r.ok) return;
+  assert.deepEqual(r.value.messages.map((m) => m.role), ["user", "assistant", "tool", "tool"]);
+  assert.deepEqual(r.value.messages[1]!.toolCalls!.map((c) => c.id), ["a", "b"]);
+});
+
+test("parseResponsesTurn: replayed reasoning items are skipped, not rejected", () => {
+  const r = parseResponsesTurn({
+    model: "m",
+    input: [
+      { role: "user", content: "hi" },
+      { type: "reasoning", id: "rs_1", summary: [], encrypted_content: "x" },
+      { type: "message", role: "assistant", content: [{ type: "output_text", text: "hello" }] },
+      { role: "user", content: "again" },
+    ],
+  });
+  assert.ok(r.ok);
+  if (!r.ok) return;
+  assert.deepEqual(r.value.messages.map((m) => m.content), ["hi", "hello", "again"]);
 });
 
 test("parseResponsesTurn: rejects missing model/input", () => {
@@ -155,22 +187,23 @@ test("ResponsesStreamEncoder: open/push/close emits spec event sequence", () => 
   const open = enc.open("mimo-v2.5-free").join("");
   assert.match(open, /event: response\.created/);
   assert.match(open, /event: response\.in_progress/);
-  assert.match(open, /event: response\.output_item\.added/);
 
   const delta = enc.push({ choices: [{ delta: { content: "Hi" } }], usage: { prompt_tokens: 3, completion_tokens: 1 } }).join("");
+  assert.match(delta, /event: response\.output_item\.added/);
+  assert.match(delta, /event: response\.content_part\.added/);
   assert.match(delta, /event: response\.output_text\.delta/);
   assert.match(delta, /"delta":"Hi"/);
-  assert.doesNotMatch(delta, /event: response\.content_part\.added/);
+  assert.doesNotMatch(enc.push({ choices: [{ delta: { content: "!" } }] }).join(""), /output_item\.added/);
 
   const close = enc.close().join("");
   assert.match(close, /event: response\.output_text\.done/);
-  assert.match(close, /"text":"Hi"/);
+  assert.match(close, /"text":"Hi!"/);
   assert.match(close, /event: response\.output_item\.done/);
   assert.match(close, /event: response\.completed/);
   assert.match(close, /"input_tokens":3/);
   // Codex reads the final result from response.completed.output
   assert.match(close, /"output":\[\{"id":"msg_/);
-  assert.match(close, /"type":"output_text","text":"Hi"/);
+  assert.match(close, /"type":"output_text","text":"Hi!"/);
 });
 
 test("renderResponse: empty content + reasoning falls back to reasoning text", () => {
@@ -222,4 +255,74 @@ test("ResponsesStreamEncoder: empty content but reasoning deltas surface as text
   assert.match(close, /event: response\.output_text\.done/);
   assert.match(close, /"text":"The number is 42\."/);
   assert.match(close, /"type":"output_text","text":"The number is 42\."/);
+});
+
+function events(wire: string[]): Array<Record<string, any>> {
+  return wire.join("").split("\n\n").filter(Boolean).map((f) => JSON.parse(f.split("\ndata: ")[1]!));
+}
+
+test("ResponsesStreamEncoder: streamed tool calls become function_call items", () => {
+  const enc = new ResponsesStreamEncoder(new Set(["shell", "read"]));
+  const wire = [
+    ...enc.open("m"),
+    ...enc.push({ choices: [{ delta: { content: "Checking." } }] }),
+    ...enc.push({ choices: [{ delta: { tool_calls: [{ index: 0, id: "call_a", function: { name: "shell", arguments: "" } }] } }] }),
+    ...enc.push({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '{"cmd":' } }] } }] }),
+    ...enc.push({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '"ls"}' } }] } }] }),
+    ...enc.push({ choices: [{ delta: { tool_calls: [{ index: 1, id: "call_b", function: { name: "read", arguments: '{"path":"x"}' } }] } }] }),
+    ...enc.push({ choices: [{ delta: {}, finish_reason: "tool_calls" }] }),
+    ...enc.close(),
+  ];
+  const evs = events(wire);
+  const types = evs.map((e) => e.type);
+  assert.equal(types[0], "response.created");
+  assert.equal(types.at(-1), "response.completed");
+  assert.ok(types.indexOf("response.output_item.done") < types.indexOf("response.function_call_arguments.delta"), "text item closes before the first call opens");
+  const done = evs.filter((e) => e.type === "response.function_call_arguments.done");
+  assert.deepEqual(done.map((e) => e.arguments), ['{"cmd":"ls"}', '{"path":"x"}']);
+  const output = evs.at(-1)!.response.output;
+  assert.deepEqual(output.map((o: any) => o.type), ["message", "function_call", "function_call"]);
+  assert.deepEqual(output.slice(1).map((o: any) => [o.call_id, o.name]), [["call_a", "shell"], ["call_b", "read"]]);
+  assert.deepEqual(output.map((o: any) => o.id), [...new Set(output.map((o: any) => o.id))]);
+});
+
+test("ResponsesStreamEncoder: calls to tools the caller never declared are hidden", () => {
+  const enc = new ResponsesStreamEncoder(new Set(["grep"]));
+  const wire = [
+    ...enc.open("m"),
+    ...enc.push({ choices: [{ delta: { tool_calls: [{ index: 0, id: "z", function: { name: "shell", arguments: "{}" } }] } }] }),
+    ...enc.close(),
+  ];
+  const output = events(wire).at(-1)!.response.output;
+  assert.ok(!JSON.stringify(wire).includes("function_call_arguments"));
+  assert.deepEqual(output.map((o: any) => o.type), ["message"]);
+});
+
+test("ResponsesStreamEncoder: an empty upstream stream still opens with response.created", () => {
+  const enc = new ResponsesStreamEncoder();
+  const types = events(enc.close()).map((e) => e.type);
+  assert.equal(types[0], "response.created");
+  assert.equal(types.at(-1), "response.completed");
+  assert.ok(types.includes("response.content_part.done"));
+});
+
+test("renderResponse: text alongside tool calls is kept", () => {
+  const out = renderResponse(
+    { choices: [{ message: { content: "Let me check.", tool_calls: [{ id: "c1", function: { name: "read", arguments: "{}" } }] } }] },
+    "m",
+  ) as any;
+  assert.deepEqual(out.output.map((o: any) => o.type), ["message", "function_call"]);
+  assert.equal(out.output[1].call_id, "c1");
+});
+
+test("ResponsesStreamEncoder: planning before a hidden tool call is not promoted to the answer", () => {
+  const enc = new ResponsesStreamEncoder(new Set(["exec_command"]));
+  const wire = [
+    ...enc.open("m"),
+    ...enc.push({ choices: [{ delta: { reasoning: "I will call read" } }] }),
+    ...enc.push({ choices: [{ delta: { tool_calls: [{ index: 0, id: "z", function: { name: "read", arguments: "{}" } }] } }] }),
+    ...enc.close(),
+  ].join("");
+  assert.doesNotMatch(wire, /"output_text","text":"I will call read"/);
+  assert.doesNotMatch(wire, /response\.output_text\.delta/);
 });

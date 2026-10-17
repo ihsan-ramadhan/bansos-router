@@ -18,6 +18,8 @@ export interface ConfigWrite {
   tomlTable?: string;
   // for yaml-block: the top-level key the block nests under (e.g. "providers")
   yamlParent?: string;
+  // for merge: dotted paths replaced wholesale so a rerun drops models that left the catalog
+  replace?: string[];
 }
 
 export interface HarnessAdapter {

@@ -1,6 +1,7 @@
 // node's web ReadableStream type: the DOM global lacks [Symbol.asyncIterator], node has it
 import type { ReadableStream } from "node:stream/web";
 import type http from "node:http";
+import { StringDecoder } from "node:string_decoder";
 
 // openai-style data:{json} frame
 export function sseData(data: unknown): string {
@@ -19,6 +20,31 @@ export function sseDone(): string {
 
 export function writeSse(res: http.ServerResponse, frame: string): void {
   res.write(frame);
+}
+
+// split raw sse bytes into complete "\n\n"-terminated frames; multibyte chars and CRLF survive chunk boundaries
+export function createSseFrameSplitter(): { push(chunk: Buffer | string): string[]; rest(): string } {
+  const decoder = new StringDecoder("utf8");
+  let buffer = "";
+  return {
+    push(chunk) {
+      buffer += typeof chunk === "string" ? chunk : decoder.write(chunk);
+      buffer = buffer.replace(/\r\n/g, "\n");
+      const frames: string[] = [];
+      let end = buffer.indexOf("\n\n");
+      while (end !== -1) {
+        frames.push(buffer.slice(0, end + 2));
+        buffer = buffer.slice(end + 2);
+        end = buffer.indexOf("\n\n");
+      }
+      return frames;
+    },
+    rest() {
+      const out = (buffer + decoder.end()).replace(/\r\n/g, "\n");
+      buffer = "";
+      return out;
+    },
+  };
 }
 
 export interface SseChunk {

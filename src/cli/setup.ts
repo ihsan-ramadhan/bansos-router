@@ -14,6 +14,7 @@ import {
   expandHome,
   parseJsonc,
   removeBlock,
+  removeTomlBlock,
   removeKeys,
   writeConfig,
 } from "./write";
@@ -172,7 +173,7 @@ function applyAdapter(adapter: HarnessAdapter, ctx: SetupContext): number {
     let content: string;
     if (write.mode === "merge") {
       try {
-        content = applyMergeWrite(existing, write.content);
+        content = applyMergeWrite(existing, write.content, write.replace);
       } catch {
         console.error(`  ✗ ${targetPath}: existing file is not valid JSON, skipping`);
         failed++;
@@ -236,9 +237,12 @@ function undoAdapter(adapter: HarnessAdapter, ctx: SetupContext): void {
         console.log(`  ✗ ${writePath}: bansos keys removed`);
       }
     } else {
-      const markers = adapter.render(ctx)[0]?.markers;
+      const first = adapter.render(ctx)[0];
+      const markers = first?.markers;
       if (markers) {
-        const out = removeBlock(existing, markers);
+        const out = first.mode === "toml-block" && writePath.endsWith(".toml")
+          ? removeTomlBlock(existing, markers)
+          : removeBlock(existing, markers);
         if (out === existing) {
           console.log(`  · ${writePath}: no bansos block found`);
         } else {

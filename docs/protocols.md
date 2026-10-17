@@ -172,6 +172,21 @@ Anthropic and Responses consumers get a **full event re-render**:
   `response.completed` (+ final `response.output_item.done` for any tool calls).
 - **Stop-reason rewrite** must happen on the final chunk (`finish_reason` ->
   the target protocol's stop enum from §3.1).
+- **One open block / item at a time.** Anthropic text that arrives after a
+  tool call opens a new text block; a tool block is stopped before the next
+  one starts. Responses items are opened lazily (reasoning, message,
+  function_call each get their own `output_index`) and closed in the same
+  order, so `response.completed.output` lists them as streamed.
+- **Reasoning-only fold (C5).** When a model streams only reasoning, it is
+  promoted to the answer. On the chat wire the fold frame is inserted *before*
+  the first `finish_reason` frame (opencode v2 rejects content after it), and
+  no protocol folds when the model called a tool.
+- An upstream that sends no data frame at all still yields a well-formed
+  stream (`message_start` … `message_stop`, `response.created` …
+  `response.completed`); the SDKs reject anything else.
+- Upstream bytes go through `createSseFrameSplitter` (StringDecoder + CRLF
+  normalisation): a multibyte character split across TCP chunks must not
+  become U+FFFD, and CRLF-delimited events must not wait for stream end.
 
 ### 4.2 Heartbeats & idempotency
 
@@ -231,6 +246,15 @@ Translation code switches on `compat`:
 
 Error bodies always JSON; streaming requests that fail **before** the first
 frame get a plain error JSON (clients handle this), never a half-open stream.
+
+Anthropic error `type` follows the status (`429 rate_limit_error`, `503/529
+overloaded_error`, other 5xx `api_error`, 401/403/404/413 their own types,
+everything else `invalid_request_error`).
+
+Cross-site browser POSTs (an `Origin` that is neither loopback nor the
+daemon's own host) are refused with 403 before routing. Native clients send no
+`Origin`; without this a web page could `no-cors` POST `text/plain` JSON to
+`/bansos/relay` and redirect all upstream traffic.
 
 ## 7. Test matrix (acceptance)
 

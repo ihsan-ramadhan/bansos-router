@@ -35,6 +35,7 @@ export const LLM7_MODELS: ModelDef[] = [
     maxTokens: 16_384,
     input: ["text"],
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
+    supportsTools: false,
   }),
   modelDef({
     id: "default",
@@ -65,6 +66,8 @@ interface LLM7ApiModel {
   reasoning?: boolean;
   context_window?: { tokens?: number };
   modalities?: { input?: string[] };
+  tools_calling?: boolean;
+  capabilities?: { tools?: boolean };
 }
 
 // tier "pro" needs balance or a subscription (402) even when usage_based_only is false
@@ -98,6 +101,7 @@ export const llm7Upstream: Upstream = {
         const input: ("text" | "image")[] = Array.isArray(m.modalities?.input) && m.modalities?.input.includes("image")
           ? ["text", "image"]
           : ["text"];
+        const tools = m.capabilities?.tools ?? m.tools_calling;
 
         return modelDef({
           id: m.id,
@@ -108,6 +112,7 @@ export const llm7Upstream: Upstream = {
           maxTokens: seeded?.maxTokens ?? 16_384,
           input,
           compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
+          ...(typeof tools === "boolean" ? { supportsTools: tools } : {}),
         });
       });
 

@@ -73,10 +73,20 @@ type ConfigWrite = {
 - **JSON targets** (Claude Code `settings.json`, OpenCode, Goose, OpenClaw):
   the existing file is parsed, the bansos fragment is deep-merged, and the
   file is re-serialized as valid JSON. `--undo` removes exactly the keys
-  bansos added (per-adapter `undoKeys`), never touching user keys.
+  bansos added (per-adapter `undoKeys`, a trailing `*` matches a prefix such
+  as Continue's `Bansos - <name>` titles), never touching user keys. Model
+  lists are listed in the write's `replace` paths and rewritten wholesale on
+  every run, so models that left the catalog do not pile up (Goose's
+  key-less `{name}` entries used to double on each rerun).
 - **Non-JSON formats** (TOML, YAML, env: Aider, Codex, Hermes, Antigravity,
   JCode): a marked block (`# bansos-router:start` / `# ...:end`) is replaced or
   appended; `--undo` deletes between the markers.
+- **TOML root keys** (Codex `model` / `model_provider`, JCode `default_*`)
+  cannot live in the marked block, which sits after other tables. They are
+  written in root scope with a trailing `# bansos-router` tag; a value the user
+  already had is kept on the line above as `# bansos-router-prev: <line>`.
+  `--undo` drops tagged lines and restores the `-prev` ones, so Codex is never
+  left pointing at a provider table that no longer exists.
 
 ### 3.2 Env-based adapters (Aider, Claude Code)
 

@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { restoreBridgedCalls } from "../protocols/tool-bridge";
 import { modelDef, type ModelDef, type Upstream } from "./types";
 
 const ZEN_INFERENCE_URL = "https://opencode.ai/inference/v1";
@@ -48,11 +49,6 @@ const OPENCODE_EXACT_TOOLS = [
   },
 ] as const;
 
-const OPENCODE_TOOL_NAMES = new Set([
-  "read", "shell", "bash", "glob", "grep", "edit", "write", "patch",
-  "webfetch", "websearch", "question", "skill", "subagent", "todowrite",
-  "mcp-resource", "opencode",
-]);
 
 const OPENCODE_PROJECT_ID = randomBytes(20).toString("hex");
 const OPENCODE_SESSION_RE = /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
@@ -147,23 +143,9 @@ function toolNameOf(tool: unknown): string {
   return raw.trim();
 }
 
+// the Zen gate needs read/shell tool names present; add the exact ones only when missing, never rename the caller's
 function ensureChatFingerprintTools(body: Record<string, unknown>): void {
   if (!Array.isArray(body.tools)) body.tools = [];
-  const wireToCaller = new Map<string, string>();
-  body.tools = (body.tools as unknown[]).map((tool) => {
-    const name = toolNameOf(tool);
-    if (!name || !OPENCODE_TOOL_NAMES.has(name.toLowerCase())) return tool;
-    const alias = `${name}_pi`;
-    wireToCaller.set(alias, name);
-    if (tool && typeof tool === "object" && !Array.isArray(tool)) {
-      const t = tool as Record<string, unknown>;
-      if (t.function && typeof t.function === "object")
-        (t.function as Record<string, unknown>).name = alias;
-      else if (typeof t.name === "string") t.name = alias;
-    }
-    return tool;
-  });
-  if (wireToCaller.size) body.__bansosToolAliases = Object.fromEntries(wireToCaller);
   const present = new Set<string>();
   for (const tool of body.tools as unknown[]) {
     const name = toolNameOf(tool);
@@ -492,10 +474,11 @@ export const zenUpstream: Upstream = {
   },
 
   transformRequestBody(body: Record<string, unknown>, model: ModelDef): Record<string, unknown> {
-    const isResponses = model.wireApi === "responses";
-    const transformed = isResponses
-      ? transformOpencodeBodyResponses(body)
-      : transformOpencodeBodyChat(body);
-    return transformed;
+    const own = {
+      ...body,
+      ...(Array.isArray(body.tools) ? { tools: [...body.tools] } : {}),
+      ...(Array.isArray(body.messages) ? { messages: restoreBridgedCalls(body.messages) } : {}),
+    };
+    return model.wireApi === "responses" ? transformOpencodeBodyResponses(own) : transformOpencodeBodyChat(own);
   },
 };

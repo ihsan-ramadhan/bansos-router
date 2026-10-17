@@ -31,6 +31,7 @@ export interface ModelDef {
   cost: ModelCost;
   // defaults to chat; "responses" models (muse spark) 500 on /chat and are translated instead
   wireApi?: "chat" | "responses";
+  supportsTools?: boolean;
 }
 
 export const ZERO_COST: ModelCost = {

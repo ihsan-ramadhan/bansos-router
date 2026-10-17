@@ -36,7 +36,8 @@ import {
   type RelayState,
 } from "../relay/egress";
 import { ADAPTERS, findAdapter } from "../adapters";
-import { readSseStream } from "../protocols/stream";
+import { createSseFrameSplitter, readSseStream } from "../protocols/stream";
+import { callerToolsFromBody, type CallerTools, type Translator } from "../protocols/tool-bridge";
 import type { RuntimeCatalog } from "./catalog";
 import type { RateLimiter } from "./rate-limit";
 
@@ -230,6 +231,20 @@ function isHostTrusted(req: http.IncomingMessage): boolean {
   const peer = req.socket.remoteAddress ?? "";
   if (isLoopbackBind(peer)) return isOwnAddress(hostname);
   return true;
+}
+
+// CSRF guard: browsers always send Origin cross-site; native clients send none
+export function isOriginTrusted(req: http.IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (origin === undefined) return true;
+  let url: URL;
+  try {
+    url = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (isLoopbackBind(url.hostname)) return true;
+  return url.host === req.headers.host;
 }
 
 // validates a user-supplied relay URL before it is stored or probed
@@ -510,13 +525,13 @@ function findUsageObject(tail: string): Record<string, unknown> | null {
 }
 
 // fold reasoning into content when a model streams reasoning_content but no content (C5)
-function inspectChatFrame(
-  frame: string,
-  state: { sawContent: boolean; reasoning: string; envelope: Record<string, unknown> },
-): void {
+type ChatFoldState = { sawContent: boolean; sawToolCalls: boolean; reasoning: string; envelope: Record<string, unknown> };
+
+function inspectChatFrame(frame: string, state: ChatFoldState): { finished: boolean } {
+  let finished = false;
   for (const line of frame.split("\n")) {
-    if (!line.startsWith("data: ")) continue;
-    const payload = line.slice(6);
+    if (!line.startsWith("data:")) continue;
+    const payload = line.slice(5).trim();
     if (payload === "[DONE]") continue;
     let json: any;
     try {
@@ -527,8 +542,11 @@ function inspectChatFrame(
     if (json?.id || json?.model) {
       state.envelope = { id: json.id, model: json.model, created: json.created };
     }
-    const delta = json?.choices?.[0]?.delta;
+    const choice = json?.choices?.[0];
+    if (choice?.finish_reason) finished = true;
+    const delta = choice?.delta;
     if (!delta || typeof delta !== "object") continue;
+    if (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0) state.sawToolCalls = true;
     if (typeof delta.content === "string" && delta.content.length > 0) {
       state.sawContent = true;
       continue;
@@ -541,6 +559,7 @@ function inspectChatFrame(
           : "";
     state.reasoning += reasoning;
   }
+  return { finished };
 }
 
 function foldedContentFrame(state: { reasoning: string; envelope: Record<string, unknown> }): string {
@@ -563,16 +582,37 @@ export function declaredToolNames(body: unknown): Set<string> {
   );
 }
 
-export function filterInjectedToolCallsTransform(callerTools: ReadonlySet<string>): Transform {
-  let buffer = "";
+export function filterInjectedToolCallsTransform(callerTools: CallerTools): Transform {
   const verdict = new Map<number, boolean>();
+  const bridged = new Map<number, { id?: string; args: string; translate: Translator }>();
   let forwarded = false;
+  let envelope: Record<string, unknown> = {};
+
+  const flushBridged = (): string => {
+    const toolCalls: unknown[] = [];
+    for (const [index, b] of bridged) {
+      const id = b.id ?? `call_${index}_${Date.now().toString(36)}`;
+      const call = b.translate(b.args, id);
+      if (call) toolCalls.push({ index, id, type: "function", function: call });
+    }
+    bridged.clear();
+    if (toolCalls.length === 0) return "";
+    forwarded = true;
+    return `data: ${JSON.stringify({
+      id: envelope.id ?? "chatcmpl-bridge",
+      object: "chat.completion.chunk",
+      created: envelope.created ?? Math.floor(Date.now() / 1000),
+      model: envelope.model ?? "",
+      choices: [{ index: 0, delta: { tool_calls: toolCalls }, finish_reason: null }],
+    })}\n\n`;
+  };
 
   const rewriteFrame = (frame: string): string => {
     const line = frame.trimStart();
-    if (!line.startsWith("data: ")) return frame;
-    const payload = line.slice(6).trim();
-    if (payload === "[DONE]" || payload === "") return frame;
+    if (!line.startsWith("data:")) return frame;
+    const payload = line.slice(5).trim();
+    if (payload === "[DONE]") return flushBridged() + frame;
+    if (payload === "") return frame;
 
     let json: any;
     try {
@@ -580,6 +620,7 @@ export function filterInjectedToolCallsTransform(callerTools: ReadonlySet<string
     } catch {
       return frame;
     }
+    if (json?.id || json?.model) envelope = { id: json.id, model: json.model, created: json.created };
 
     const choice = json?.choices?.[0];
     if (!choice) return frame;
@@ -589,7 +630,14 @@ export function filterInjectedToolCallsTransform(callerTools: ReadonlySet<string
     if (Array.isArray(calls)) {
       const kept = calls.filter((tc: any) => {
         const name = tc?.function?.name;
-        if (typeof name === "string") verdict.set(tc.index, callerTools.has(name));
+        if (typeof name === "string" && !verdict.has(tc.index)) {
+          const own = callerTools.has(name);
+          verdict.set(tc.index, own);
+          const translate = own ? null : callerTools.bridge?.(name);
+          if (translate) bridged.set(tc.index, { id: tc.id, args: "", translate });
+        }
+        const b = bridged.get(tc.index);
+        if (b && typeof tc?.function?.arguments === "string") b.args += tc.function.arguments;
         return verdict.get(tc.index) ?? true;
       });
       if (kept.length > 0) forwarded = true;
@@ -600,66 +648,65 @@ export function filterInjectedToolCallsTransform(callerTools: ReadonlySet<string
       }
     }
 
+    let prefix = "";
+    if (choice.finish_reason) {
+      prefix = flushBridged();
+      if (prefix && choice.finish_reason !== "tool_calls") {
+        choice.finish_reason = "tool_calls";
+        changed = true;
+      }
+    }
     if (choice.finish_reason === "tool_calls" && !forwarded) {
       choice.finish_reason = "stop";
       changed = true;
     }
 
-    return changed ? `data: ${JSON.stringify(json)}\n\n` : frame;
+    return prefix + (changed ? `data: ${JSON.stringify(json)}\n\n` : frame);
   };
 
+  const splitter = createSseFrameSplitter();
   return new Transform({
     transform(chunk, _enc, cb) {
-      buffer += chunk.toString("utf8");
-      let end = buffer.indexOf("\n\n");
-      while (end !== -1) {
-        const frame = buffer.slice(0, end + 2);
-        buffer = buffer.slice(end + 2);
-        this.push(Buffer.from(rewriteFrame(frame), "utf8"));
-        end = buffer.indexOf("\n\n");
-      }
+      for (const frame of splitter.push(chunk)) this.push(Buffer.from(rewriteFrame(frame), "utf8"));
       cb();
     },
     flush(cb) {
-      if (buffer) this.push(Buffer.from(rewriteFrame(buffer), "utf8"));
+      const rest = splitter.rest();
+      if (rest) this.push(Buffer.from(rewriteFrame(rest), "utf8"));
+      const tail = flushBridged();
+      if (tail) this.push(Buffer.from(tail, "utf8"));
       cb();
     },
   });
 }
 
 export function reasoningToContentTransform(): Transform {
-  let buffer = "";
+  const splitter = createSseFrameSplitter();
   let folded = false;
-  const state = { sawContent: false, reasoning: "", envelope: {} as Record<string, unknown> };
+  const state: ChatFoldState = { sawContent: false, sawToolCalls: false, reasoning: "", envelope: {} };
 
-  // pass reasoning_content through; promote it to the answer only at stream end if no content came
+  // promote reasoning to the answer only when nothing else came, and before the finish frame
   const foldIfNothingElse = (push: (frame: string) => void) => {
     if (folded) return;
     folded = true;
-    if (!state.sawContent && state.reasoning.length > 0) push(foldedContentFrame(state));
+    if (!state.sawContent && !state.sawToolCalls && state.reasoning.length > 0) push(foldedContentFrame(state));
   };
 
   return new Transform({
     transform(chunk, _enc, cb) {
-      buffer += chunk.toString("utf8");
-      let end = buffer.indexOf("\n\n");
-      while (end !== -1) {
-        const frame = buffer.slice(0, end + 2);
-        buffer = buffer.slice(end + 2);
-        if (frame.startsWith("data: [DONE]")) {
+      for (const frame of splitter.push(chunk)) {
+        if (/^data: ?\[DONE\]/.test(frame) || inspectChatFrame(frame, state).finished) {
           foldIfNothingElse((f) => this.push(Buffer.from(f, "utf8")));
-        } else {
-          inspectChatFrame(frame, state);
         }
         this.push(Buffer.from(frame, "utf8"));
-        end = buffer.indexOf("\n\n");
       }
       cb();
     },
     flush(cb) {
-      if (buffer) {
-        inspectChatFrame(buffer, state);
-        this.push(Buffer.from(buffer, "utf8"));
+      const rest = splitter.rest();
+      if (rest) {
+        if (inspectChatFrame(rest, state).finished) foldIfNothingElse((f) => this.push(Buffer.from(f, "utf8")));
+        this.push(Buffer.from(rest, "utf8"));
       }
       foldIfNothingElse((f) => this.push(Buffer.from(f, "utf8")));
       cb();
@@ -723,6 +770,16 @@ export function parseRetryAfterMs(header: string | null, now = Date.now()): numb
   if (Number.isNaN(at)) return undefined;
   const delta = at - now;
   return delta > 0 ? delta : undefined;
+}
+
+export function retryAfterFromMessage(message: string): number | undefined {
+  const m = /retry (?:after|in) (\d+(?:\.\d+)?) ?(s|sec|seconds?|ms|m|min|minutes?)\b/i.exec(message);
+  if (!m) return undefined;
+  const n = Number(m[1]);
+  const unit = m[2]!.toLowerCase();
+  if (unit === "ms") return n;
+  if (unit.startsWith("m")) return n * 60_000;
+  return n * 1000;
 }
 
 export const FAILOVER_CONTEXT_TOLERANCE = 0.9;
@@ -817,10 +874,115 @@ interface ToolCallAcc {
   args: string;
 }
 
+export function sseErrorMessage(json: any): string | null {
+  if (!json || typeof json !== "object") return null;
+  if (json.error) return json.error.message ?? String(json.error);
+  if (json.choices) return null;
+  if (json.type === "error") return json.message ?? json.error?.message ?? "upstream stream error";
+  if (json.type === "response.failed") return json.response?.error?.message ?? "upstream response failed";
+  return null;
+}
+
+const SSE_PEEK_LIMIT = 65536;
+const SSE_PEEK_TIMEOUT_MS = 5000;
+
+export const VISION_UNSUPPORTED_RE = /(does not|doesn't|not) support(s)? (vision|image|images|image input|multimodal)|image input is not supported/i;
+
+export function hasImageInput(body: unknown): boolean {
+  const messages = (body as Record<string, unknown> | null)?.messages;
+  if (!Array.isArray(messages)) return false;
+  return messages.some((m: any) =>
+    Array.isArray(m?.content) &&
+    m.content.some((p: any) => p?.type === "image_url" || p?.type === "input_image" || p?.type === "image"),
+  );
+}
+
+export const TOOLS_UNSUPPORTED_RE = /(does not|doesn't|not) support(s)? (tools|tool use|tool calls|function calling)|support tool use/i;
+
+// some upstreams answer 200 and then put the failure in the first SSE frame
+export async function peekStreamError(
+  res: Response,
+  timeoutMs = SSE_PEEK_TIMEOUT_MS,
+): Promise<{ response: Response; error: string | null }> {
+  if (!res.body || (res.headers.get("content-type") ?? "").includes("json")) return { response: res, error: null };
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  const chunks: Uint8Array[] = [];
+  const deadline = Date.now() + timeoutMs;
+  let text = "";
+  let scanned = 0;
+  let error: string | null = null;
+  let done = false;
+  let pending: Promise<ReadableStreamReadResult<Uint8Array>> | null = null;
+  scan: while (text.length < SSE_PEEK_LIMIT) {
+    pending = reader.read();
+    const wait = deadline - Date.now();
+    if (wait <= 0) break;
+    let timer: NodeJS.Timeout | undefined;
+    const next = await Promise.race([
+      pending,
+      new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), wait))),
+    ]);
+    clearTimeout(timer);
+    if (next === null) break;
+    pending = null;
+    if (next.done) {
+      done = true;
+      break;
+    }
+    chunks.push(next.value);
+    text = (text + decoder.decode(next.value, { stream: true })).replace(/\r\n/g, "\n");
+    let end = text.indexOf("\n\n", scanned);
+    while (end !== -1) {
+      const lines = text.slice(scanned, end).split("\n");
+      scanned = end + 2;
+      for (const line of lines) {
+        if (!line.startsWith("data:")) continue;
+        const payload = line.slice(5).trim();
+        if (!payload) continue;
+        if (payload === "[DONE]") break scan;
+        let json: any;
+        try {
+          json = JSON.parse(payload);
+        } catch {
+          break scan;
+        }
+        error = sseErrorMessage(json);
+        if (error || json?.choices || typeof json?.type === "string") break scan;
+      }
+      end = text.indexOf("\n\n", scanned);
+    }
+  }
+
+  if (error) {
+    void reader.cancel().catch(() => {});
+    return { response: res, error };
+  }
+  const replay = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const c of chunks) controller.enqueue(c);
+      if (done) controller.close();
+    },
+    async pull(controller) {
+      const next = await (pending ?? reader.read());
+      pending = null;
+      if (next.done) controller.close();
+      else controller.enqueue(next.value);
+    },
+    cancel(reason) {
+      return reader.cancel(reason);
+    },
+  });
+  return {
+    response: new Response(replay, { status: res.status, statusText: res.statusText, headers: res.headers }),
+    error: null,
+  };
+}
+
 export async function streamToChatResponse(
   upstreamRes: Response,
   modelId: string,
-  callerTools?: ReadonlySet<string>,
+  callerTools?: CallerTools,
 ): Promise<Response> {
   if (!upstreamRes.body) return upstreamRes;
   const text = await upstreamRes.text();
@@ -835,16 +997,19 @@ export async function streamToChatResponse(
   let reasoning = "";
   let finishReason = "stop";
   let usage: unknown = undefined;
+  let streamError: string | null = null;
   const calls = new Map<number, ToolCallAcc>();
   for (const line of lines) {
-    if (!line.startsWith("data: ")) continue;
-    const data = line.slice(6).trim();
+    if (!line.startsWith("data:")) continue;
+    const data = line.slice(5).trim();
     if (data === "[DONE]") break;
     try {
       const json = JSON.parse(data);
+      streamError ??= sseErrorMessage(json);
       const choice = json.choices?.[0];
       if (choice?.delta?.content) content += choice.delta.content;
       if (choice?.delta?.reasoning) reasoning += choice.delta.reasoning;
+      else if (choice?.delta?.reasoning_content) reasoning += choice.delta.reasoning_content;
       for (const tc of choice?.delta?.tool_calls ?? []) {
         const slot = calls.get(tc.index) ?? { args: "" };
         if (tc.id) slot.id = tc.id;
@@ -861,13 +1026,22 @@ export async function streamToChatResponse(
 
   const toolCalls = [...calls.entries()]
     .sort(([a], [b]) => a - b)
-    .filter(([, c]) => c.name !== undefined && (!callerTools || callerTools.has(c.name)))
-    .map(([, c]) => ({
-      id: c.id ?? `call_${Math.random().toString(36).slice(2, 12)}`,
-      type: "function" as const,
-      function: { name: c.name!, arguments: c.args || "{}" },
-    }));
+    .flatMap(([, c]) => {
+      if (c.name === undefined) return [];
+      const id = c.id ?? `call_${Math.random().toString(36).slice(2, 12)}`;
+      const fn = !callerTools || callerTools.has(c.name)
+        ? { name: c.name, arguments: c.args || "{}" }
+        : callerTools.bridge?.(c.name)?.(c.args, id);
+      if (!fn) return [];
+      return [{ id, type: "function" as const, function: fn }];
+    });
   if (toolCalls.length === 0 && finishReason === "tool_calls") finishReason = "stop";
+  if (streamError && !content && !reasoning && toolCalls.length === 0) {
+    return new Response(JSON.stringify({ error: { message: streamError, type: "upstream_error" } }), {
+      status: 502,
+      headers: { "content-type": "application/json" },
+    });
+  }
   return new Response(
     JSON.stringify({
       id: `chatcmpl-${Math.random().toString(36).slice(2, 12)}`,
@@ -880,7 +1054,7 @@ export async function streamToChatResponse(
           message: {
             role: "assistant",
             content,
-            ...(reasoning ? { reasoning } : {}),
+            ...(reasoning ? { [toolCalls.length < calls.size ? "reasoning_content" : "reasoning"]: reasoning } : {}),
             ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
           },
           finish_reason: finishReason,
@@ -922,9 +1096,31 @@ async function runChatForward(
   let current: ModelDef = model;
   let currentUpstream = upstream;
   let transientError: ForwardError | null = null;
+  const callerTools = callerToolsFromBody(sanitizedBody);
+  const needsTools = declaredToolNames(sanitizedBody).size > 0;
+  const needsVision = hasImageInput(sanitizedBody);
+  const incapable = (m: ModelDef) =>
+    (needsTools && m.supportsTools === false) || (needsVision && !m.input.includes("image"));
+  for (const m of catalog.models) if (incapable(m)) tried.add(m.id);
+
+  if (failoverAllowed && incapable(current)) {
+    transientError = {
+      status: 400,
+      message: `model ${current.id} does not support ${needsVision && !current.input.includes("image") ? "image input" : "tool calls"}`,
+    };
+    const capable = selectFailover(
+      catalog, current, currentUpstream, tried, security, true,
+      400, requestStartedAt, log, transientError.message,
+    );
+    if (capable) {
+      tried.add(capable.id);
+      current = capable;
+      currentUpstream = catalog.upstreamBySource(current.source)!;
+    }
+  }
 
   // model is in 429 cooldown: start on a fallback instead of re-learning it
-  if (failoverAllowed && catalog.isCoolingDown(current.id)) {
+  if (failoverAllowed && catalog.isCoolingDown(current.id) && current.id === model.id) {
     transientError = { status: 429, message: "model is cooling down after a recent rate limit" };
     const warm = selectFailover(
       catalog, current, currentUpstream, tried, security, true,
@@ -1038,7 +1234,9 @@ async function runChatForward(
       }
 
       const refused = upstreamRes.status === 401 || upstreamRes.status === 403;
-      const transient = refused || upstreamRes.status === 429 || upstreamRes.status >= 500;
+      const capabilityRejected =
+        (needsTools && TOOLS_UNSUPPORTED_RE.test(errorMsg)) || (needsVision && VISION_UNSUPPORTED_RE.test(errorMsg));
+      const transient = refused || capabilityRejected || upstreamRes.status === 429 || upstreamRes.status >= 500;
       if (!transient) {
         log.warn("upstream rejected", {
           model: current.id,
@@ -1055,7 +1253,7 @@ async function runChatForward(
       } else if (upstreamRes.status === 429) {
         catalog.markRateLimited(
           current.id,
-          parseRetryAfterMs(upstreamRes.headers.get("retry-after")),
+          parseRetryAfterMs(upstreamRes.headers.get("retry-after")) ?? retryAfterFromMessage(errorMsg),
         );
       }
 
@@ -1096,8 +1294,22 @@ async function runChatForward(
       }
     }
 
+    const peeked = await peekStreamError(upstreamRes);
+    if (peeked.error) {
+      transientError = { status: 502, message: peeked.error };
+      const next = selectFailover(
+        catalog, current, currentUpstream, tried, security, failoverAllowed,
+        502, requestStartedAt, log, peeked.error,
+      );
+      if (!next) break;
+      tried.add(next.id);
+      current = next;
+      currentUpstream = catalog.upstreamBySource(current.source)!;
+      continue;
+    }
+    upstreamRes = peeked.response;
+
     const forcedStream = !sanitizedBody.stream && transformedBody.stream === true;
-    const callerTools = declaredToolNames(sanitizedBody);
     let finalResponse = upstreamRes;
     if (responsesWire) {
       finalResponse = await toChatResponse(
@@ -1161,6 +1373,7 @@ async function handleChat(
     sanitizedBody.stream_options = { include_usage: true };
   }
 
+  const callerTools = callerToolsFromBody(body);
   const result = await runChatForward(
     req,
     catalog,
@@ -1207,7 +1420,7 @@ async function handleChat(
     try {
       const json = JSON.parse(text);
       const msg = json?.choices?.[0]?.message;
-      if (msg && typeof msg.content === "string" && msg.content.length === 0) {
+      if (msg && typeof msg.content === "string" && msg.content.length === 0 && !msg.tool_calls?.length) {
         const rt = extractReasoningText(msg);
         if (rt) {
           // patch only the message object, passing every other field through byte-exact
@@ -1274,9 +1487,9 @@ async function handleChat(
     usageTx.on("error", failStream);
     res.on("error", () => src.destroy());
     signal.addEventListener("abort", () => src.destroy());
-    const filterTx = filterInjectedToolCallsTransform(declaredToolNames(body));
+    const filterTx = filterInjectedToolCallsTransform(callerTools);
     filterTx.on("error", failStream);
-    src.pipe(filterTx).pipe(reasoningToContentTransform()).pipe(usageTx).pipe(res);
+    src.pipe(reasoningToContentTransform()).pipe(filterTx).pipe(usageTx).pipe(res);
   } else {
     res.end();
   }
@@ -1324,7 +1537,9 @@ async function handleResponses(
   for (const m of parsed.value.messages) {
     chatMessages.push({
       role: m.role,
-      content: m.content,
+      content: typeof m.content === "string"
+        ? m.content
+        : m.content.map((b) => (b.type === "text" ? b : { type: "image_url", image_url: { url: b.url } })),
       ...(m.toolCallId ? { tool_call_id: m.toolCallId } : {}),
       ...(m.toolCalls
         ? { tool_calls: m.toolCalls.map((tc) => ({
@@ -1358,6 +1573,7 @@ async function handleResponses(
     sanitizedBody.stream_options = { include_usage: true };
   }
 
+  const callerTools = callerToolsFromBody(sanitizedBody);
   const result = await runChatForward(
     req,
     catalog,
@@ -1437,8 +1653,9 @@ async function handleResponses(
     "connection": "keep-alive",
     ...corsFor(res),
   });
-  const encoder = new ResponsesStreamEncoder();
+  const encoder = new ResponsesStreamEncoder(callerTools);
   let first = true;
+  let failed = false;
   let streamUsage: TokenUsage | null = null;
   try {
     if (upstreamRes.body) {
@@ -1452,6 +1669,13 @@ async function handleResponses(
         if (first) {
           first = false;
           for (const ev of encoder.open(current.id)) res.write(ev);
+        }
+        const streamError = sseErrorMessage(json);
+        if (streamError) {
+          failed = true;
+          log.warn("upstream stream error", { model: current.id, upstream: currentUpstream.id, upstreamError: streamError });
+          for (const ev of encoder.fail(streamError)) res.write(ev);
+          break;
         }
         const usage = extractUsage(json);
         if (usage) streamUsage = usage;
@@ -1467,8 +1691,7 @@ async function handleResponses(
       });
     }
   }
-  // always emit the terminating events so clients never hang waiting
-  for (const ev of encoder.close()) res.write(ev);
+  if (!failed) for (const ev of encoder.close()) res.write(ev);
   if (streamUsage) {
     const fields: Record<string, unknown> = {
       model: current.id,
@@ -1544,6 +1767,7 @@ async function handleAnthropic(
     chatBody.max_tokens = model.maxTokens;
   }
 
+  const callerTools = callerToolsFromBody(chatBody);
   const result = await runChatForward(
     req,
     catalog,
@@ -1618,7 +1842,7 @@ async function handleAnthropic(
     "connection": "keep-alive",
     ...corsFor(res),
   });
-  const encoder = new AnthropicStreamEncoder();
+  const encoder = new AnthropicStreamEncoder(callerTools);
   let streamUsage: TokenUsage | null = null;
   let streamClosed = false;
   try {
@@ -1634,6 +1858,13 @@ async function handleAnthropic(
         }
         let json: any;
         try { json = JSON.parse(frame.data); } catch { continue; }
+        const streamError = sseErrorMessage(json);
+        if (streamError) {
+          streamClosed = true;
+          log.warn("upstream stream error", { model: current.id, upstream: currentUpstream.id, upstreamError: streamError });
+          for (const ev of encoder.fail(streamError)) res.write(ev);
+          break;
+        }
         const usage = extractUsage(json);
         if (usage) streamUsage = usage;
         for (const ev of encoder.push(json, current.id)) res.write(ev);
@@ -1676,6 +1907,17 @@ async function handleAnthropic(
   res.end();
 }
 
+export function anthropicErrorType(status: number): string {
+  if (status === 401) return "authentication_error";
+  if (status === 403) return "permission_error";
+  if (status === 404) return "not_found_error";
+  if (status === 413) return "request_too_large";
+  if (status === 429) return "rate_limit_error";
+  if (status === 503 || status === 529) return "overloaded_error";
+  if (status >= 500) return "api_error";
+  return "invalid_request_error";
+}
+
 function sendAnthropicError(
   res: http.ServerResponse,
   status: number,
@@ -1684,7 +1926,7 @@ function sendAnthropicError(
 ): void {
   sendJson(res, status, {
     type: "error",
-    error: { type: "invalid_request_error", message },
+    error: { type: anthropicErrorType(status), message },
     ...(secretTypes ? { secret_types: secretTypes } : {}),
   });
 }
@@ -1734,6 +1976,11 @@ export function createServer(opts: ServerOptions): http.Server {
       return;
     }
 
+    if (method === "POST" && !isOriginTrusted(req)) {
+      sendJson(res, 403, { error: { message: "cross-site request blocked" } });
+      return;
+    }
+
     const rawUrl = req.url ?? "/";
     if (!validatePath(rawUrl)) {
       sendJson(res, 403, { error: { message: "forbidden" } });
@@ -1758,6 +2005,7 @@ export function createServer(opts: ServerOptions): http.Server {
           maxTokens: m.maxTokens,
           reasoning: m.reasoning,
           input: m.input,
+          supports_tools: m.supportsTools !== false,
         })),
       });
       return;

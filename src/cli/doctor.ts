@@ -62,10 +62,19 @@ function hasKeys(content: string, keys: string[]): boolean {
     if (!first) return false;
     let cur: unknown = obj;
     for (const p of first.split(".")) {
+      const match = p.endsWith("*")
+        ? (k: unknown) => typeof k === "string" && k.startsWith(p.slice(0, -1))
+        : (k: unknown) => k === p;
       if (Array.isArray(cur)) {
-        cur = cur.find((item) => item && typeof item === "object" && (item as Record<string, unknown>).id === p);
+        cur = cur.find((item) => {
+          const rec = item as Record<string, unknown> | null;
+          return rec && typeof rec === "object" && match(rec.id ?? rec.title ?? rec.model);
+        });
+      } else if (cur && typeof cur === "object") {
+        const k = Object.keys(cur).find(match);
+        cur = k === undefined ? undefined : (cur as Record<string, unknown>)[k];
       } else {
-        cur = (cur as Record<string, unknown> | undefined)?.[p];
+        cur = undefined;
       }
       if (cur === undefined) return false;
     }

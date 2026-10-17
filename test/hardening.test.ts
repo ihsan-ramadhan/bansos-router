@@ -366,3 +366,36 @@ test("client disconnect aborts the upstream request instead of leaving it runnin
     await new Promise<void>((r) => upstream.close(() => r()));
   }
 });
+
+test("a cross-site POST cannot repoint the relay", async () => {
+  const originalState = loadRelayState();
+  const { baseUrl, close } = await createTestDaemon("http://127.0.0.1:1");
+  try {
+    saveRelayState({ enabled: false, url: "", relays: [] });
+    const res = await fetch(`${baseUrl}/bansos/relay`, {
+      method: "POST",
+      headers: { origin: "https://evil.example", "content-type": "text/plain" },
+      body: JSON.stringify({ enabled: true, url: "https://attacker.example/relay" }),
+    });
+    assert.equal(res.status, 403);
+    assert.equal(loadRelayState().url, "");
+
+    const chat = await fetch(`${baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { origin: "null", "content-type": "text/plain" },
+      body: "{}",
+    });
+    assert.equal(chat.status, 403);
+
+    const port = new URL(baseUrl).port;
+    const local = await fetch(`${baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { origin: `http://localhost:${port}`, "content-type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(local.status, 400, "loopback pages still reach the API");
+  } finally {
+    saveRelayState(originalState);
+    await close();
+  }
+});

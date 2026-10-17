@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
 import { findAdapter } from "../src/adapters";
-import { applyMergeWrite, applyTomlBlockWrite, applyYamlBlockWrite, expandHome, parseJsonc, removeBlock, removeKeys } from "../src/cli/write";
+import { applyMergeWrite, applyTomlBlockWrite, applyYamlBlockWrite, expandHome, parseJsonc, removeBlock, removeKeys, removeTomlBlock } from "../src/cli/write";
 import { SEEDED_MODELS } from "../src/upstreams";
 import { START_MARKER, END_MARKER } from "../src/adapters/types";
 
@@ -412,4 +412,83 @@ test("omp refuses a flow-style providers: instead of corrupting it", () => {
     () => applyYamlBlockWrite(`providers: { openai: {} }\n`, content, OMP_MARKERS, "providers"),
     /inline "providers:"/,
   );
+});
+
+function codexWrite(model = "mimo-v2.6-flash-free") {
+  return findAdapter("codex")!.render({
+    baseUrl: "http://127.0.0.1:17070/v1",
+    defaultModel: model,
+    models: SEEDED_MODELS,
+    specificModel: true,
+  })[0]!;
+}
+
+function rootValue(toml: string, key: string): string[] {
+  const lines = toml.split("\n");
+  const end = lines.findIndex((l) => /^\s*\[/.test(l));
+  return lines.slice(0, end === -1 ? undefined : end).filter((l) => new RegExp(`^\\s*${key}\\s*=`).test(l));
+}
+
+test("codex setup overrides a user's own root model once and undo restores it", () => {
+  const existing = ['model = "gpt-5"', 'approval_policy = "on-request"', "", "[mcp_servers.x]", 'command = "y"', ""].join("\n");
+  const w = codexWrite();
+  const once = applyTomlBlockWrite(existing, w.content, w.markers!, w.tomlTable!);
+  const twice = applyTomlBlockWrite(once, codexWrite("big-pickle").content, w.markers!, w.tomlTable!);
+  for (const out of [once, twice]) {
+    assert.equal(rootValue(out, "model").length, 1, out);
+    assert.equal(rootValue(out, "model_provider").length, 1, out);
+    assert.equal(out.split("\n").filter((l) => l.trim() === "[model_providers.bansos]").length, 1);
+  }
+  assert.match(rootValue(twice, "model")[0]!, /big-pickle/);
+  const undone = removeTomlBlock(twice, w.markers!);
+  assert.deepEqual(rootValue(undone, "model"), ['model = "gpt-5"']);
+  assert.equal(rootValue(undone, "model_provider").length, 0);
+  assert.doesNotMatch(undone, /bansos/);
+  assert.match(undone, /\[mcp_servers\.x\]/);
+});
+
+test("codex setup on a file whose first line is a table keeps root keys in root scope", () => {
+  const w = codexWrite();
+  const out = applyTomlBlockWrite('[profiles.a]\nmodel = "o3"\n', w.content, w.markers!, w.tomlTable!);
+  assert.ok(out.indexOf("model_provider") < out.indexOf("[profiles.a]"));
+  assert.equal(removeTomlBlock(out, w.markers!), '[profiles.a]\nmodel = "o3"\n');
+});
+
+test("jsonc trailing-comma cleanup never rewrites string contents", () => {
+  const obj = parseJsonc('{ "cmd": "python -c \'print([1, 2, ])\'", "s": "a,}", "list": [1, 2,], }');
+  assert.equal(obj.cmd, "python -c 'print([1, 2, ])'");
+  assert.equal(obj.s, "a,}");
+  assert.deepEqual(obj.list, [1, 2]);
+});
+
+function renderAll(id: string, models: Array<{ id: string; name?: string; contextWindow?: number }>) {
+  return findAdapter(id)!.render({
+    baseUrl: "http://127.0.0.1:17070/v1",
+    defaultModel: models[0]!.id,
+    models: models as any,
+    specificModel: false,
+  })[0]!;
+}
+
+test("rerunning setup drops models that left the catalog instead of piling them up", () => {
+  const before = [{ id: "old-a", name: "old-a" }, { id: "keep", name: "keep" }];
+  const after = [{ id: "keep", name: "keep" }, { id: "new-b", name: "new-b" }];
+  for (const id of ["opencode", "goose", "openclaw", "continue"]) {
+    const w1 = renderAll(id, before);
+    const user = id === "continue" ? '{"models":[{"title":"Mine","model":"x"}]}' : id === "opencode" ? '{"theme":"dark"}' : null;
+    const once = applyMergeWrite(user, w1.content, w1.replace);
+    const w2 = renderAll(id, after);
+    const twice = applyMergeWrite(once, w2.content, w2.replace);
+    assert.doesNotMatch(twice, /old-a/, id);
+    assert.match(twice, /new-b/, id);
+    assert.equal(twice.match(/"keep"/g)?.length, 1, `${id} keeps one copy`);
+    if (user) assert.match(twice, id === "continue" ? /"Mine"/ : /"dark"/, `${id} keeps the user's own entries`);
+  }
+});
+
+test("continue undo removes every bansos entry and keeps the user's", () => {
+  const w = renderAll("continue", [{ id: "a", name: "A" }, { id: "b", name: "B" }]);
+  const merged = JSON.parse(applyMergeWrite('{"models":[{"title":"Mine","model":"x"}]}', w.content, w.replace));
+  removeKeys(merged, findAdapter("continue")!.undoKeys!);
+  assert.deepEqual(merged.models.map((m: any) => m.title), ["Mine"]);
 });

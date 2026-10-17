@@ -1,5 +1,6 @@
 // translate chat <-> responses here (muse spark answers only on /v1/responses)
 import { Readable, Transform, pipeline } from "node:stream";
+import { createSseFrameSplitter } from "./stream";
 
 function randomId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
@@ -201,7 +202,7 @@ export function responsesToChatJson(resp: any, modelId: string): unknown {
 export function responsesToChatStream(modelId: string): Transform {
   const id = randomId("chatcmpl");
   const created = Math.floor(Date.now() / 1000);
-  let buffer = "";
+  const splitter = createSseFrameSplitter();
   let roleSent = false;
   let sawToolCall = false;
   let closed = false;
@@ -305,11 +306,7 @@ export function responsesToChatStream(modelId: string): Transform {
 
   return new Transform({
     transform(input, _enc, cb) {
-      buffer += input.toString("utf8");
-      let end = buffer.indexOf("\n\n");
-      while (end !== -1) {
-        const frame = buffer.slice(0, end);
-        buffer = buffer.slice(end + 2);
+      for (const frame of splitter.push(input)) {
         for (const line of frame.split("\n")) {
           if (!line.startsWith("data:")) continue;
           const payload = line.slice(5).trim();
@@ -320,7 +317,6 @@ export function responsesToChatStream(modelId: string): Transform {
             // a malformed frame is not worth killing the stream over
           }
         }
-        end = buffer.indexOf("\n\n");
       }
       cb();
     },
