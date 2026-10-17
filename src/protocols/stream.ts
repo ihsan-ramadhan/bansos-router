@@ -1,5 +1,4 @@
-// use node's web stream type: the DOM global ReadableStream type does not
-// declare [Symbol.asyncIterator], but the node runtime (fetch response body) does.
+// node's web ReadableStream type: the DOM global lacks [Symbol.asyncIterator], node has it
 import type { ReadableStream } from "node:stream/web";
 import type http from "node:http";
 
@@ -27,9 +26,7 @@ export interface SseChunk {
   data: string;
 }
 
-// parse an sse byte stream into chunks. accumulate multi-line data,
-// pair with the last event line. "[DONE]" surfaces as { data: "[DONE]" };
-// event is undefined for event-less frames.
+// parse an sse byte stream into chunks; "[DONE]" surfaces as { data: "[DONE]" }
 export async function* readSseStream(
   stream: ReadableStream<Uint8Array>,
 ): AsyncGenerator<SseChunk> {

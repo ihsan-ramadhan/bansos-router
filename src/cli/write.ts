@@ -95,9 +95,7 @@ export function applyBlockWrite(
   return base ? `${base}\n\n${block}` : block;
 }
 
-// unlike applyBlockWrite this inserts before the first [table] header so bare
-// root keys keep root scope, and patches an existing table in place rather than
-// appending a duplicate one, which would be invalid TOML.
+// insert before the first [table] so root keys keep scope, and patch an existing table in place
 export function applyTomlBlockWrite(
   existing: string,
   content: string,
@@ -118,8 +116,7 @@ export function applyTomlBlockWrite(
   const tableBody = tblIdx === -1 ? [] : contentLines.slice(tblIdx + 1);
 
   if (headerIdx === -1) {
-    // no existing table: place root keys before the first section header so
-    // they stay in root scope, then the marked table block after everything
+    // no table yet: root keys before the first section header, then the marked block
     const block = markerBlock(content, markers);
     const firstSection = lines.findIndex((l) => /^\s*\[/.test(l));
     if (firstSection === -1) {
@@ -172,12 +169,7 @@ export function applyTomlBlockWrite(
   return `${lines.join("\n").replace(/\s+$/, "")}\n`;
 }
 
-// insert or replace a child mapping under a top-level YAML key (e.g. providers:),
-// keyed by a marker block. Unlike applyBlockWrite (which appends at root) this
-// nests under parentKey at the sibling indent, creating parentKey if absent, so
-// the child lands where the schema expects it rather than at the document root.
-// content is the child at column 0 (e.g. "bansos:\n  baseUrl: ..."). Refuses a
-// flow-style parent rather than corrupt it.
+// nest a child mapping (content at column 0) under a top-level YAML key, keyed by a marker block
 export function applyYamlBlockWrite(
   existing: string,
   content: string,
@@ -198,8 +190,7 @@ export function applyYamlBlockWrite(
   const parentIdx = lines.findIndex((l) => parentRe.test(l));
 
   if (parentIdx === -1) {
-    // no parent key: create it and nest the child, markers wrapping both so
-    // --undo removes the whole thing and leaves no empty "providers:" behind
+    // no parent: create it with the child, markers wrapping both so undo is clean
     const inner = body.map((l) => (l ? `  ${l}` : l));
     const block = [markers[0], `${parentKey}:`, ...inner, markers[1]].join("\n");
     return stripped ? `${stripped}\n\n${block}\n` : `${block}\n`;

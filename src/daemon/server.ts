@@ -70,8 +70,7 @@ const ALLOWED_METHODS = new Set(["GET", "POST", "OPTIONS"]);
 
 export { pickSmartDefaultModel };
 
-// a stored relay url is fetched on every egress request, so reject malformed
-// ones here rather than at use time
+// reject a malformed relay url here, not at use time (it is fetched on every egress)
 function applyRelayMutation(
   initialState: RelayState,
   body: Record<string, unknown>,
@@ -173,13 +172,10 @@ function isAllowedInboundPath(pathname: string): boolean {
   return pathname.startsWith("/assets/") && /^[\w.-]+$/.test(pathname.slice(8));
 }
 
-// how many fallback models to try after the primary is rejected (401/403/429/5xx).
-// total attempts = 1 + MAX_FAILOVER_RETRIES.
+// fallback models to try after the primary is rejected; total attempts = 1 + this
 const MAX_FAILOVER_RETRIES = 2;
 
-// a wildcard allow-origin on a localhost daemon lets any website read from and
-// write to it, so only loopback origins (bundled UI, vite dev server) get CORS
-// headers. requests with no Origin (CLI, harnesses) never needed them.
+// only loopback origins get CORS; a wildcard would let any website drive the daemon
 function corsHeadersForOrigin(originHeader: string | undefined): Record<string, string> {
   if (!originHeader) return {};
   let hostname = "";
@@ -207,10 +203,7 @@ function corsFor(res: http.ServerResponse): Record<string, string> {
   return (res as CorsAwareResponse).bansosCors ?? {};
 }
 
-// DNS-rebinding guard: a page that rebinds attacker.example to 127.0.0.1 still
-// sends Host: attacker.example, so loopback clients must present a loopback
-// Host. LAN and Docker peers are unaffected, as are this machine's own
-// interface addresses when bound to 0.0.0.0.
+// DNS-rebinding guard: loopback clients must present a loopback Host
 let ownAddresses: Set<string> | null = null;
 
 function isOwnAddress(hostname: string): boolean {
@@ -287,8 +280,7 @@ function getUiDistDir(): string {
   return path.resolve(process.cwd(), "dist/ui");
 }
 
-// the SPA is fully self-contained (no inline scripts, no external origins),
-// so a strict CSP costs nothing here (C4)
+// the SPA is self-contained, so a strict CSP costs nothing here (C4)
 function securityHeaders(): Record<string, string> {
   return {
     "x-content-type-options": "nosniff",
@@ -391,9 +383,7 @@ function validatePath(rawUrl: string): boolean {
   return true;
 }
 
-// without this an unauthenticated caller could probe arbitrary internal
-// addresses through the daemon, so limit targets to the active relay, a saved
-// one, or a public address outside the sensitive literal-IP ranges
+// limit relay targets to the active/saved relay or a public address, to block SSRF probing
 function probeTargetAllowed(
   targetUrl: string,
   state: RelayState,
@@ -420,9 +410,7 @@ function probeTargetAllowed(
   return { allowed: true };
 }
 
-// node kills the process on an unhandled rejection or stream 'error', so one
-// bad request would take the whole daemon down. send a 502 if nothing has been
-// written yet, otherwise just close.
+// guard the daemon from an unhandled rejection/stream error: send 502 if unwritten, else close
 function runRequest(
   promise: Promise<void>,
   res: http.ServerResponse,
@@ -484,8 +472,7 @@ async function readBody(
   return Buffer.concat(chunks).toString("utf8");
 }
 
-// openai chat in -> resolve model -> forward raw body to its upstream
-// stream the response back unchanged (keyless upstreams speak openai chat)
+// openai chat in -> resolve model -> forward raw body -> stream the reply back unchanged
 
 interface TokenUsage {
   inputTokens: number;
@@ -499,8 +486,7 @@ export function extractUsage(json: unknown): TokenUsage | null {
   return { inputTokens: usage.prompt_tokens, outputTokens: usage.completion_tokens };
 }
 
-// finds the first complete `"usage": {...}` object in a tail of SSE bytes,
-// tolerating nested braces (e.g. completion_tokens_details).
+// find the first complete `"usage": {...}` in a tail of SSE bytes, tolerating nested braces
 function findUsageObject(tail: string): Record<string, unknown> | null {
   const open = tail.search(/"usage"\s*:\s*\{/);
   if (open < 0) return null;
@@ -523,12 +509,7 @@ function findUsageObject(tail: string): Record<string, unknown> | null {
   return null;
 }
 
-// some upstreams (stepfun, mimo on a small budget) stream `reasoning_content`
-// but never `content`, which plain OpenAI clients render as an empty reply.
-// fold reasoning into content so there is always visible text; frames that
-// already carry content pass through byte-identical (C5).
-// inspect a frame without touching it: note whether the model ever produced
-// real content, and keep any reasoning aside in case it never does
+// fold reasoning into content when a model streams reasoning_content but no content (C5)
 function inspectChatFrame(
   frame: string,
   state: { sawContent: boolean; reasoning: string; envelope: Record<string, unknown> },
@@ -572,8 +553,7 @@ function foldedContentFrame(state: { reasoning: string; envelope: Record<string,
   })}\n\n`;
 }
 
-// stream transform: reassemble SSE frames split across chunks, fold
-// reasoning-only deltas, and pass everything else through untouched.
+// stream transform: reassemble split SSE frames, fold reasoning-only deltas, pass the rest
 export function declaredToolNames(body: unknown): Set<string> {
   const tools = (body as Record<string, unknown> | null)?.tools;
   return new Set(
@@ -652,10 +632,7 @@ export function reasoningToContentTransform(): Transform {
   let folded = false;
   const state = { sawContent: false, reasoning: "", envelope: {} as Record<string, unknown> };
 
-  // `reasoning_content` is passed through untouched so clients that render it
-  // keep it out of the answer. Only a model that never produced content at all
-  // gets its reasoning promoted, and only once the stream is ending, because
-  // until then a real answer may still arrive.
+  // pass reasoning_content through; promote it to the answer only at stream end if no content came
   const foldIfNothingElse = (push: (frame: string) => void) => {
     if (folded) return;
     folded = true;
@@ -690,8 +667,7 @@ export function reasoningToContentTransform(): Transform {
   });
 }
 
-// pass-through that watches the tail of the SSE bytes for a usage object and
-// logs it once, ensuring a terminating `data: [DONE]` frame is emitted if missing.
+// pass-through that logs the usage object once and emits a terminating [DONE] if missing
 export function logUsageTransform(
   model: string,
   upstream: string,
@@ -785,8 +761,7 @@ export function pickFailover(
   }
   return best;
 }
-// shared by /v1/chat/completions and /v1/responses: resolve, sanitize, then
-// retry on 429/5xx against a different upstream.
+// shared by chat and responses: resolve, sanitize, then retry on 429/5xx against another upstream
 type ForwardResult = { response: Response; model: ModelDef; upstream: Upstream };
 type ForwardError = {
   status: number;
@@ -948,8 +923,7 @@ async function runChatForward(
   let currentUpstream = upstream;
   let transientError: ForwardError | null = null;
 
-  // the model answered 429 recently, so start on a fallback instead of spending
-  // a round trip to learn the same thing again
+  // model is in 429 cooldown: start on a fallback instead of re-learning it
   if (failoverAllowed && catalog.isCoolingDown(current.id)) {
     transientError = { status: 429, message: "model is cooling down after a recent rate limit" };
     const warm = selectFailover(
@@ -968,9 +942,7 @@ async function runChatForward(
       log.warn("upstream rejected - fallback used", {
         from: model.id,
         to: current.id,
-        // pairs with `from`, so it names the originally requested model's
-        // upstream. currentUpstream has already advanced to the fallback by the
-        // time this runs, which made the log read as if zen models came from kilo.
+        // name the originally requested model's upstream (currentUpstream has moved to the fallback)
         fromUpstream: upstream.id,
         status: transientError?.status,
         durationMs: Date.now() - requestStartedAt,
@@ -999,8 +971,7 @@ async function runChatForward(
       "content-type": "application/json",
       ...currentUpstream.requestHeaders(current),
     });
-    // a responses-wire model gets its body translated on the way out and its
-    // reply translated back, so the rest of the pipeline only ever sees chat
+    // responses-wire model: body/reply translated at the edges so the pipeline only sees chat
     const responsesWire = current.wireApi === "responses" && !!currentUpstream.responsesUrl;
     const outboundUrl = responsesWire ? currentUpstream.responsesUrl! : currentUpstream.chatUrl;
     const transformedBody = currentUpstream.transformRequestBody
@@ -1098,6 +1069,31 @@ async function runChatForward(
       current = next;
       currentUpstream = catalog.upstreamBySource(current.source)!;
       continue;
+    }
+
+    // some upstreams answer 200 with an error envelope and no choices; fail over on it
+    if ((upstreamRes.headers.get("content-type") ?? "").includes("json")) {
+      let envelopeError: string | null = null;
+      try {
+        const peek = (await upstreamRes.clone().json()) as { error?: { message?: string }; choices?: unknown };
+        if (peek && typeof peek === "object" && peek.error && !peek.choices) {
+          envelopeError = peek.error.message ?? "upstream returned an error under HTTP 200";
+        }
+      } catch {
+        // unreadable or not json: let the normal path handle the original
+      }
+      if (envelopeError) {
+        transientError = { status: 502, message: envelopeError };
+        const next = selectFailover(
+          catalog, current, currentUpstream, tried, security, failoverAllowed,
+          502, requestStartedAt, log, envelopeError,
+        );
+        if (!next) break;
+        tried.add(next.id);
+        current = next;
+        currentUpstream = catalog.upstreamBySource(current.source)!;
+        continue;
+      }
     }
 
     const forcedStream = !sanitizedBody.stream && transformedBody.stream === true;
@@ -1214,8 +1210,7 @@ async function handleChat(
       if (msg && typeof msg.content === "string" && msg.content.length === 0) {
         const rt = extractReasoningText(msg);
         if (rt) {
-          // patch only the message object, preserving byte-exact passthrough
-          // of every other field (usage, system_fingerprint, etc.)
+          // patch only the message object, passing every other field through byte-exact
           json.choices[0].message = { ...msg, content: rt };
           outText = JSON.stringify(json);
         }
@@ -1254,9 +1249,7 @@ async function handleChat(
       upstreamRes.body as import("node:stream/web").ReadableStream,
     );
     const usageTx = logUsageTransform(current.id, currentUpstream.id, log, requestStartedAt, model.id, activity, "chat");
-    // a mid-stream upstream failure must not crash the daemon: log it and end
-    // the client response instead. If the client goes away, stop reading the
-    // upstream so its connection is released.
+    // a mid-stream upstream failure ends the client response, not the daemon; client abort releases the upstream
     const failStream = () => {
       if (signal.aborted) {
         try {
@@ -1289,8 +1282,7 @@ async function handleChat(
   }
 }
 
-// codex CLI (wire_api = "responses") -> translate to openai chat -> forward ->
-// translate back into responses-shaped output.
+// codex responses wire -> openai chat -> forward -> translate back to responses output
 async function handleResponses(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -1547,8 +1539,7 @@ async function handleAnthropic(
   const requestStartedAt = Date.now();
   const chatBody = parsed.value.chatBody as Record<string, unknown>;
   chatBody.model = model.id;
-  // defensive cap: pin max_tokens to the model's actual limit so a stale
-  // client value (or wrong metadata) never reaches the upstream
+  // cap max_tokens to the model's limit so a stale client value never reaches the upstream
   if (typeof chatBody.max_tokens === "number" && chatBody.max_tokens > model.maxTokens) {
     chatBody.max_tokens = model.maxTokens;
   }
@@ -1657,9 +1648,7 @@ async function handleAnthropic(
       });
     }
   }
-  // some upstreams end the SSE body without a [DONE] frame, and a mid-stream
-  // failure also lands here. Clients still need the closing Anthropic events
-  // or they wait forever.
+  // always emit the closing Anthropic events (some upstreams omit [DONE]) so clients do not hang
   if (!streamClosed) {
     for (const ev of encoder.close()) res.write(ev);
   }
@@ -1739,8 +1728,7 @@ export function createServer(opts: ServerOptions): http.Server {
       return;
     }
 
-    // DNS-rebinding / drive-by guard: loopback clients must use a loopback
-    // (or own-interface) Host header. Blocked requests never touch the API.
+    // DNS-rebinding guard: loopback clients must present a loopback (or own-interface) Host
     if (!isHostTrusted(req)) {
       sendJson(res, 403, { error: { message: "forbidden host" } });
       return;

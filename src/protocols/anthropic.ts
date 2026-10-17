@@ -10,8 +10,7 @@ export interface AnthropicParsedRequest {
 
 type Json = Record<string, any>;
 
-// parse an inbound /v1/messages body and translate it into an openai chat
-// body. model resolution (catalog) happens later in the daemon.
+// parse a /v1/messages body into an openai chat body; model resolution happens later
 export function parseAnthropicRequest(body: unknown): ParseResult<AnthropicParsedRequest> {
   if (typeof body !== "object" || body === null) {
     return { ok: false, error: "request body must be a json object" };
@@ -206,10 +205,7 @@ export function openAiCompletionToAnthropicMessage(resp: any, model: string): Js
   const message = choice.message ?? {};
   const content: any[] = [];
 
-  // some free upstreams (e.g. stepfun) drop the answer into `reasoning`
-  // instead of `content`. Fall back so Anthropic clients still get it. To keep
-  // the stream/non-stream representations consistent, surface the fallback as a
-  // `thinking` block (the streaming encoder does the same).
+  // some upstreams put the answer in `reasoning`; surface it as a thinking block
   const text = typeof message.content === "string" && message.content.length > 0
     ? message.content
     : "";
@@ -375,9 +371,7 @@ export class AnthropicStreamEncoder {
 
   close(): string[] {
     const out: string[] = [];
-    // a reasoning-only model produced a thinking block and nothing else, which
-    // renders as an empty reply. Promote the reasoning to the answer, matching
-    // what the chat and responses encoders do (C5).
+    // reasoning-only reply: promote the reasoning to the answer (C5)
     if (!this.textStarted && this.toolBlocks.size === 0 && this.thinkingBuffer.length > 0) {
       if (this.thinkingStarted && !this.thinkingStopped && this.thinkingIndex !== null) {
         out.push(sseEvent("content_block_stop", { type: "content_block_stop", index: this.thinkingIndex }));

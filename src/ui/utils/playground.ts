@@ -179,8 +179,7 @@ export function extractReasoningFromThinkTags(
   };
 }
 
-// an Anthropic or Responses frame leads with an `event:` line, so a frame is not
-// always `data:` first. Per SSE, several data lines in one frame join with \n.
+// a frame may lead with `event:`, not `data:`; several data lines join with \n
 export function dataFromSseFrame(frame: string): string | null {
   const parts: string[] = [];
   for (const line of frame.split("\n")) {

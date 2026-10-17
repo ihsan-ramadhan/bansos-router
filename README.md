@@ -39,6 +39,13 @@ pi install npm:pi-bansos-router
 
 Supported harnesses for `bansos setup`: `claude-code`, `aider`, `opencode`, `codex`, `hermes`, `goose`, `openclaw`, `antigravity`, `jcode`, `9router`, `continue`, `cline`, `roo`, and `omp`. See [docs/harnesses.md](docs/harnesses.md) for harness-specific details.
 
+**OMP ([Oh My Pi](https://github.com/can1357/oh-my-pi))** can connect two ways, pick one:
+
+- `bansos setup omp` writes a `bansos` provider into `~/.omp/agent/models.yml` (start the daemon yourself with `bansos start`).
+- The pi extension loads in OMP too (it is a pi fork): drop its built file into `~/.omp/agent/extensions/`, which registers a `bansosr` provider and auto-manages the daemon.
+
+Using both is harmless but redundant: the IDs differ (`bansos` vs `bansosr`), so you get two providers listing the same models. Prefer one.
+
 Open `http://127.0.0.1:17070` in your browser for the Web UI dashboard (model catalog, live latency ping, 1-click config generator, relay manager, playground).
 
 ### Always-on local protections

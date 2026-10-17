@@ -30,3 +30,32 @@ test("sanitizeChatBody leaves messages intact when developer role is supported",
   const output = sanitizeChatBody(input, true);
   assert.equal(output, input);
 });
+
+test("sanitizeChatBody strips vLLM/OMP thinking controls that strict upstreams reject", () => {
+  const input = {
+    model: "ovh/Qwen3.5-397B-A17B",
+    messages: [{ role: "user", content: "hello" }],
+    max_tokens: 16,
+    preserve_thinking: true,
+    chat_template_kwargs: { preserve_thinking: true },
+    enable_thinking: true,
+  };
+
+  const output = sanitizeChatBody(input, true);
+  assert.equal("preserve_thinking" in output, false);
+  assert.equal("chat_template_kwargs" in output, false);
+  assert.equal("enable_thinking" in output, false);
+  assert.deepEqual(output.messages, input.messages, "messages untouched");
+  assert.equal(output.max_tokens, 16, "standard fields survive");
+  assert.deepEqual(input.messages, [{ role: "user", content: "hello" }], "input not mutated");
+  assert.equal("preserve_thinking" in input, true, "input not mutated");
+});
+
+test("sanitizeChatBody is a no-op passthrough for a clean body", () => {
+  const input = {
+    model: "ovh/Qwen3.5-397B-A17B",
+    messages: [{ role: "user", content: "hello" }],
+    max_tokens: 16,
+  };
+  assert.equal(sanitizeChatBody(input, true), input, "same reference when nothing to strip");
+});

@@ -89,10 +89,7 @@ export function isRelayAllowed(security: SecurityConfig): boolean {
   return !isStrictSecurity(security);
 }
 
-// reaching these on behalf of an unauthenticated caller turns the daemon into
-// an internal-network scanner (169.254.169.254, LAN services, and so on).
-// hostnames are deliberately not resolved: a saved relay or an explicit public
-// target is the caller's own intent.
+// block these so the daemon is not an SSRF scanner; hostnames are not resolved (caller intent)
 const SENSITIVE_IPV4 = new BlockList();
 SENSITIVE_IPV4.addSubnet("0.0.0.0", 8, "ipv4");
 SENSITIVE_IPV4.addSubnet("10.0.0.0", 8, "ipv4");

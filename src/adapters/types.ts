@@ -11,9 +11,7 @@ export interface SetupContext {
 export interface ConfigWrite {
   path: string;
   content: string;
-  // overwrite-block = wrapped in markers so --undo can remove it
-  // toml-block = same markers, but table-aware (patches existing [table])
-  // yaml-block = markers, but nested under a top-level key (patches under it)
+  // marker variants: overwrite-block (root append), toml-block (table-aware), yaml-block (nested under a key)
   mode: "merge" | "overwrite-block" | "toml-block" | "yaml-block";
   markers?: [string, string];
   // for toml-block: the table name the block defines (e.g. "providers.bansos")

@@ -531,8 +531,7 @@ function ompAdapter(): HarnessAdapter {
     wire: "chat",
     configPaths: ["~/.omp/agent/models.yml"],
     render(ctx: SetupContext): ConfigWrite[] {
-      // child at column 0; applyYamlBlockWrite nests it under providers: at the
-      // right indent, creating providers: when the file does not have it yet
+      // column 0; applyYamlBlockWrite nests it under providers: at the right indent
       const child = [
         `bansos:`,
         `  baseUrl: "${ctx.baseUrl}"`,

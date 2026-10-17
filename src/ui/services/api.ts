@@ -75,8 +75,7 @@ export async function pingModel(
   maxTokens?: number,
 ): Promise<{ latencyMs: number; status: number }> {
   const start = performance.now();
-  // some upstreams reject requests with max_tokens below a minimum (e.g. 16),
-  // so clamp the probe to at least 16 while never exceeding the model cap
+  // clamp the probe to at least 16 tokens (some upstreams reject less), never above the cap
   const probeTokens = maxTokens && maxTokens >= 16 ? maxTokens : 16;
   try {
     const res = await fetch(`${BASE_URL}/v1/chat/completions`, {

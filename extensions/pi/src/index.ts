@@ -27,8 +27,7 @@ function readDaemonState(): DaemonState | null {
   }
 }
 
-// the daemon auto-bumps its port when the configured one is taken, so the live
-// port comes from state.json rather than a constant
+// live port comes from state.json (the daemon auto-bumps a taken port)
 function readEndpoint(): DaemonEndpoint {
   const state = readDaemonState();
   if (typeof state?.port !== "number") return { host: "127.0.0.1", port: DEFAULT_PORT };
@@ -43,7 +42,7 @@ let endpoint: DaemonEndpoint = { host: "127.0.0.1", port: DEFAULT_PORT };
 const baseUrl = (e: DaemonEndpoint = endpoint) => `http://${e.host}:${e.port}/v1`;
 const healthzUrl = (e: DaemonEndpoint = endpoint) => `http://${e.host}:${e.port}/healthz`;
 const modelsUrl = (e: DaemonEndpoint = endpoint) => `http://${e.host}:${e.port}/v1/models`;
-const EXTENSION_VERSION = "0.3.2";
+const EXTENSION_VERSION = "0.3.3";
 
 function isNewer(current: string, latest: string): boolean {
   const parse = (v: string) => v.replace(/^v/, "").split(".").map((n) => parseInt(n, 10) || 0);
@@ -79,8 +78,7 @@ interface ModelItem {
   reasoning?: boolean;
 }
 
-// pid of the daemon this extension started, so shutdown can stop that one
-// instead of every daemon on the machine
+// pid of the daemon this extension started, so shutdown stops only that one
 let spawnedDaemonPid: number | null = null;
 
 async function isDaemonAlive(e: DaemonEndpoint = endpoint): Promise<boolean> {
@@ -110,8 +108,7 @@ async function ensureDaemonRunning(): Promise<boolean> {
     const start = Date.now();
     while (Date.now() - start < 5000) {
       await new Promise((r) => setTimeout(r, 200));
-      // re-read every tick: the daemon we just spawned may land on a bumped
-      // port, and it publishes state.json as soon as it is listening
+      // re-read each tick: the spawned daemon may land on a bumped port, published in state.json
       endpoint = readEndpoint();
       if (await isDaemonAlive()) {
         spawnedDaemonPid = readDaemonState()?.pid ?? null;
@@ -177,8 +174,7 @@ export default async function (pi: ExtensionAPI) {
     ];
   }
 
-  // pi resolves the provider baseUrl once, so remember what we handed it: a
-  // daemon that later moves ports leaves the provider pointing at nothing
+  // pi resolves the baseUrl once; remember it so a port move does not strand the provider
   const registeredEndpoint = endpoint;
 
   pi.registerProvider("bansosr", {
@@ -239,10 +235,7 @@ export default async function (pi: ExtensionAPI) {
   // auto kill daemon only when pi completely quits, not on session switch (/resume /new)
   pi.on("session_shutdown", async (event) => {
     if (spawnedDaemonPid === null || event.reason !== "quit") return;
-    // `bansos stop` scans every process on the machine and would take daemons
-    // this extension never started, so signal the one pid instead. re-check
-    // state.json first in case the pid was recycled or someone restarted the
-    // daemon in the meantime.
+    // signal only our pid (not `bansos stop`, which scans all); re-check state.json for recycling
     if (readDaemonState()?.pid !== spawnedDaemonPid) return;
     try {
       process.kill(spawnedDaemonPid, "SIGTERM");

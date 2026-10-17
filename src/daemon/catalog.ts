@@ -8,9 +8,7 @@ import type { ModelDef, Upstream, UpstreamSource } from "../upstreams/types";
 
 const DEFAULT_COOLDOWN_MS = 60_000;
 const MAX_COOLDOWN_MS = 15 * 60_000;
-// 401/403 is a policy refusal rather than a burst limit, so back off much
-// longer. Not forever: an upstream can refuse because of where the request
-// happened to egress from, and that changes under us.
+// 401/403 is a policy refusal, not a burst limit: back off longer, but not forever
 const REFUSED_COOLDOWN_MS = 30 * 60_000;
 
 export interface RefreshReport {
@@ -53,16 +51,13 @@ export class RuntimeCatalog {
     return [...this.byId.values()];
   }
 
-  // a model that just answered 429 is parked so the next request does not burn
-  // another round trip on it. Retry-After decides how long when the upstream
-  // sends one, otherwise a flat minute.
+  // park a 429'd model so the next request skips it; Retry-After sets the time, else a minute
   markRateLimited(id: string, retryAfterMs?: number): void {
     const ms = Math.min(Math.max(retryAfterMs ?? DEFAULT_COOLDOWN_MS, 1_000), MAX_COOLDOWN_MS);
     this.coolUntil.set(id, Date.now() + ms);
   }
 
-  // the upstream refused to serve this model at all (401/403), usually because
-  // of where we are egressing from rather than anything about the request
+  // upstream refused this model (401/403), usually about egress location, not the request
   markRefused(id: string): void {
     this.coolUntil.set(id, Date.now() + REFUSED_COOLDOWN_MS);
   }
@@ -80,18 +75,14 @@ export class RuntimeCatalog {
   resolve(id: string): ModelDef | undefined {
     const direct = this.byId.get(id);
     if (direct) return direct;
-    // tolerant fallback: e.g. "laguna-xs-2.1:free" matches
-    // "poolside/laguna-xs-2.1:free"
+    // tolerant fallback: "laguna-xs-2.1:free" matches "poolside/laguna-xs-2.1:free"
     for (const [k, m] of this.byId) {
       if (k.endsWith(`/${id}`)) return m;
     }
     return undefined;
   }
 
-  // an unreachable upstream keeps its last-known models; a reachable one has
-  // its seeded entries replaced by the live list. concurrent callers share the
-  // in-flight pass so an interval tick landing on a manual refresh cannot stack
-  // two passes against a slow gateway.
+  // unreachable upstream keeps last-known models; concurrent callers share the in-flight pass
   async refresh(): Promise<RefreshReport> {
     if (this.refreshInFlight) return this.refreshInFlight;
     this.refreshInFlight = this.runRefresh();
@@ -112,8 +103,7 @@ export class RuntimeCatalog {
       return false;
     });
 
-    // the upstreams are independent and each carries its own timeout, so one
-    // slow gateway should cost the pass its own latency, not the sum of all
+    // upstreams run independently so one slow gateway costs its own latency, not the sum
     const fetched = await Promise.all(
       allowed.map(async (upstream) => ({
         upstream,

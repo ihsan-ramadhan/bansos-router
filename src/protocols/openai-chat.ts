@@ -1,43 +1,56 @@
 import type { InternalTurn, ParseResult } from "./internal";
 
-// sanitize inbound messages based on model compatibility
-// (e.g. rewrite role "developer" to "system" when upstream does not support it,
-// and strip reasoning echoes from prior turns that upstreams reject on input)
+// strict upstreams (e.g. OVHcloud) 400 on these vLLM/OMP thinking controls
+const UNSUPPORTED_TOP_LEVEL_FIELDS = ["preserve_thinking", "chat_template_kwargs", "enable_thinking"];
+
 export function sanitizeChatBody(
   body: Record<string, unknown>,
   supportsDeveloperRole: boolean,
 ): Record<string, unknown> {
-  if (!Array.isArray(body.messages)) {
-    return body;
+  let out = body;
+  let modified = false;
+  for (const field of UNSUPPORTED_TOP_LEVEL_FIELDS) {
+    if (field in out) {
+      if (out === body) out = { ...body };
+      delete out[field];
+      modified = true;
+    }
   }
 
-  let modified = false;
-  const messages = body.messages.map((m) => {
+  if (!Array.isArray(out.messages)) {
+    return modified ? out : body;
+  }
+
+  let messagesModified = false;
+  const messages = out.messages.map((m) => {
     if (!m || typeof m !== "object") return m;
     const msg = m as Record<string, unknown>;
     const next: Record<string, unknown> = { ...msg };
-    // upstreams (Zen/DeepSeek) reject reasoning echoes carried from prior
-    // assistant turns: "reasoning_content field is only supported in output"
+    // upstreams reject reasoning echoes from prior turns on input
     if ("reasoning_content" in next) {
       delete next.reasoning_content;
-      modified = true;
+      messagesModified = true;
     }
     if ("thought" in next) {
       delete next.thought;
-      modified = true;
+      messagesModified = true;
     }
     if (!supportsDeveloperRole && msg.role === "developer") {
       next.role = "system";
-      modified = true;
+      messagesModified = true;
     }
     return next;
   });
 
-  return modified ? { ...body, messages } : body;
+  if (messagesModified) {
+    out = out === body ? { ...body, messages } : { ...out, messages };
+    modified = true;
+  }
+
+  return modified ? out : body;
 }
 
-// parse a /v1/chat/completions body into an InternalTurn.
-// validation + model extraction; the forwarder passes the raw body through
+// parse a /v1/chat/completions body into an InternalTurn; forwarder passes the raw body through
 export function parseChatTurn(body: unknown): ParseResult<InternalTurn> {
   if (typeof body !== "object" || body === null) {
     return { ok: false, error: "request body must be a JSON object" };

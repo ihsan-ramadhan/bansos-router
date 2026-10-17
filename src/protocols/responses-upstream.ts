@@ -1,7 +1,4 @@
-// the daemon normalizes every client protocol to openai chat before
-// forwarding, but zen's muse spark answers only on /v1/responses and returns
-// 500 on /chat/completions. translating both directions here keeps the second
-// wire format out of the rest of the pipeline.
+// translate chat <-> responses here (muse spark answers only on /v1/responses)
 import { Readable, Transform, pipeline } from "node:stream";
 
 function randomId(prefix: string): string {
@@ -16,8 +13,7 @@ function textOf(content: unknown): string {
     .join("");
 }
 
-// the responses API types model output and user input separately, so `role`
-// decides which part type the text becomes
+// responses types output and input separately, so `role` picks the part type
 function inputParts(content: unknown, role: string): unknown[] {
   const textType = role === "assistant" ? "output_text" : "input_text";
   if (typeof content === "string") return [{ type: textType, text: content }];
@@ -45,9 +41,7 @@ function inputParts(content: unknown, role: string): unknown[] {
   return parts;
 }
 
-// re-shape a responses-wire upstream reply into the openai chat response the
-// rest of the daemon expects, so chat, responses and anthropic handlers all
-// keep working unchanged.
+// re-shape a responses-wire reply into the openai chat response the daemon expects
 export async function toChatResponse(
   upstreamRes: Response,
   modelId: string,
@@ -56,8 +50,7 @@ export async function toChatResponse(
   if (!upstreamRes.body) return upstreamRes;
 
   if (!streaming) {
-    // read once: reaching for .json() and falling back to the original Response
-    // would hand back a body that has already been consumed
+    // read once: a consumed body cannot be handed back via a fallback
     const text = await upstreamRes.text();
     try {
       return new Response(JSON.stringify(responsesToChatJson(JSON.parse(text), modelId)), {
@@ -77,9 +70,7 @@ export async function toChatResponse(
 
   const src = Readable.fromWeb(upstreamRes.body as import("node:stream/web").ReadableStream);
   const out = responsesToChatStream(modelId);
-  // pipe() forwards neither errors nor destroy, so an upstream reset would be an
-  // unhandled 'error' that kills the daemon, and a client abort would leave the
-  // upstream socket open. pipeline() wires both directions.
+  // pipeline() wires errors and destroy both ways; pipe() would crash on an upstream reset
   pipeline(src, out, () => {
     // the error already reached the consumer through `out`
   });
@@ -135,8 +126,7 @@ export function chatToResponsesBody(chatBody: any, modelId: string): unknown {
   if (typeof chatBody?.top_p === "number") body.top_p = chatBody.top_p;
   if (chatBody?.stream === true) body.stream = true;
 
-  // no `reasoning` block is ever set: muse rejects `reasoning.effort: "none"`,
-  // and the daemon already strips effort for supportsReasoningEffort: false
+  // never set a `reasoning` block: muse rejects effort "none" and the daemon already strips it
 
   // chat nests the schema under `function`; responses flattens it
   if (Array.isArray(chatBody?.tools) && chatBody.tools.length > 0) {
@@ -207,9 +197,7 @@ export function responsesToChatJson(resp: any, modelId: string): unknown {
   };
 }
 
-// stateful because chat needs a tool-call ordinal and a role marker on the
-// first delta, neither of which the responses events carry. frames arrive split
-// across chunks, so buffer until "\n\n".
+// stateful: chat needs a tool-call ordinal and first-delta role marker; buffer until "\n\n"
 export function responsesToChatStream(modelId: string): Transform {
   const id = randomId("chatcmpl");
   const created = Math.floor(Date.now() / 1000);
@@ -217,11 +205,9 @@ export function responsesToChatStream(modelId: string): Transform {
   let roleSent = false;
   let sawToolCall = false;
   let closed = false;
-  // responses numbers every output item, including reasoning; chat numbers only
-  // tool calls
+  // responses numbers every output item; chat numbers only tool calls
   const toolIndexByOutput = new Map<number, number>();
-  // upstreams may stream arguments as deltas or hand them over whole on a done
-  // event; this keeps the second path from repeating what the first already sent
+  // args may arrive as deltas or whole on done; avoid repeating what deltas already sent
   const argsSent = new Set<number>();
 
   const chunk = (delta: Record<string, unknown>, finish: string | null = null) =>
@@ -311,8 +297,7 @@ export function responsesToChatStream(modelId: string): Transform {
         push("data: [DONE]\n\n");
         break;
       }
-      // response.created / in_progress / content_part.* / ping carry no
-      // information chat can express
+      // response.created / in_progress / content_part.* / ping carry nothing chat expresses
       default:
         break;
     }
@@ -340,8 +325,7 @@ export function responsesToChatStream(modelId: string): Transform {
       cb();
     },
     flush(cb) {
-      // upstream hung up before response.completed: still terminate the chat
-      // stream so the client is not left waiting
+      // upstream hung up before response.completed: still close the chat stream
       if (!closed) {
         this.push(`data: ${JSON.stringify({
           id,

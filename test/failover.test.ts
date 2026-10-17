@@ -111,8 +111,7 @@ async function testDaemon(
 }
 
 test("pickFailover prefers the smallest contextWindow match from a different upstream", () => {
-  // kilo has two matches: 262k and 1M. Since origin is 200k, the closer match
-  // (262k) should win over 1M.
+  // origin 200k, kilo matches 262k and 1M: the closer 262k should win
   const upstreams = [fakeUpstream("kilo"), fakeUpstream("zen")];
   const cat = new RuntimeCatalog(upstreams, logger());
   const compat = { supportsReasoningEffort: true, supportsDeveloperRole: false };
@@ -246,9 +245,7 @@ test("pickFailover returns undefined when no equivalent model exists", () => {
   assert.equal(pickFailover(cat, onlyZen), undefined);
 });
 
-// the log's `from`/`fromUpstream` pair must describe the model that was asked
-// for. currentUpstream advances to the fallback before the warn fires, so a
-// naive read reported zen models as coming from kilo.
+// `from`/`fromUpstream` must name the requested model, not the fallback currentUpstream moved to
 test("the failover warning names the origin upstream, not the fallback", async () => {
   const rejecting = await mockProvider(429, { error: { message: "rate limited" } });
   const accepting = await mockProvider(200, {
@@ -447,4 +444,42 @@ test("a candidate far below the origin context is still refused", () => {
   cat.seed([big, small]);
 
   assert.equal(pickFailover(cat, big), undefined);
+});
+
+test("a 200 carrying an error envelope fails over instead of returning empty", async () => {
+  // Kilo -> Nvidia overloaded answers HTTP 200 with {error, no choices}
+  const overloaded = await mockProvider(200, {
+    id: "gen-x",
+    error: { message: "Upstream error from Nvidia: Service temporarily overloaded", code: 503 },
+  });
+  const healthy = await mockProvider(200, {
+    id: "ok",
+    choices: [{ index: 0, message: { role: "assistant", content: "hi" }, finish_reason: "stop" }],
+  });
+  const origin = md({ id: "zen-origin", source: "zen", reasoning: true, contextWindow: 128_000 });
+  const fallback = md({ id: "kilo-fallback", source: "kilo", reasoning: true, contextWindow: 128_000 });
+
+  const entries: Array<Record<string, unknown>> = [];
+  const daemon = await testDaemon(
+    [httpUpstream("zen", overloaded.url), httpUpstream("kilo", healthy.url)],
+    [origin, fallback],
+    entries,
+  );
+
+  try {
+    const res = await fetch(`${daemon.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: origin.id, messages: [{ role: "user", content: "hi" }] }),
+    });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+    assert.equal(body.choices?.[0]?.message?.content, "hi", "client gets the healthy response");
+    assert.equal(overloaded.hits, 1, "the error-200 upstream was tried once");
+    assert.equal(healthy.hits, 1, "then failed over to the healthy one");
+  } finally {
+    await daemon.close();
+    await overloaded.close();
+    await healthy.close();
+  }
 });

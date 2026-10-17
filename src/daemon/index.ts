@@ -26,8 +26,7 @@ export const MAX_PORT = 17090;
 const LOG_DIR = path.join(BANSOS_DIR, "logs");
 const LOG_FILE = path.join(LOG_DIR, "bansosd.log");
 
-// C1: rotate the log when it outgrows MAX_LOG_BYTES, keeping MAX_LOG_BACKUPS
-// old files. Best-effort: a failed rename never blocks the daemon.
+// C1: rotate the log past MAX_LOG_BYTES, keeping MAX_LOG_BACKUPS; best-effort
 const MAX_LOG_BYTES = 5 * 1024 * 1024;
 const MAX_LOG_BACKUPS = 2;
 
@@ -45,8 +44,7 @@ function rotateLogFile(): void {
   }
 }
 
-// the file destination is held in a mutable ref so rotation can swap the
-// underlying write stream without the tee or the logger noticing.
+// mutable ref so rotation can swap the write stream without the tee or logger noticing
 function createTeeStream(
   a: NodeJS.WritableStream,
   bRef: { current: NodeJS.WritableStream },
@@ -137,8 +135,7 @@ function startServer(
     activity,
   });
 
-  // refresh on the configured interval (the first refresh runs in main()
-  // after the server is listening, so the startup banner reflects live state)
+  // refresh on the interval; the first refresh runs in main() after the server listens
   if (config.refreshIntervalMs > 0) {
     setInterval(() => void catalog.refresh(), config.refreshIntervalMs);
   }
@@ -163,15 +160,12 @@ async function main(argv: string[]): Promise<void> {
   const port = args.port ?? config.port ?? DEFAULT_PORT;
   const bind = args.bind ?? config.bind;
 
-  // always log to a file so `bansos logs` works in every mode, and tee to
-  // stdout for an interactive run. built before the bind check so a refusal in
-  // a bg child still reaches the log file the parent points the user at.
+  // always log to file (for `bansos logs`) and tee to stdout; built before the bind check
   fs.mkdirSync(LOG_DIR, { recursive: true });
   const fileRef: { current: NodeJS.WritableStream } = {
     current: fs.createWriteStream(LOG_FILE, { flags: "a" }),
   };
-  // rotate an oversized log before writing more, and periodically so a
-  // long-lived daemon never grows one file forever (C1).
+  // rotate an oversized log before writing, and periodically (C1)
   try {
     if (fs.statSync(LOG_FILE).size > MAX_LOG_BYTES) rotateLogFile();
   } catch {
@@ -195,18 +189,14 @@ async function main(argv: string[]): Promise<void> {
   try {
     assertBindAllowed(bind, config.security, args.unsafeAllowNonLoopback);
   } catch (err) {
-    // a bg child has stdout/stderr on /dev/null, so the tee's file half is the
-    // only place this surfaces; exit non-zero so `bansos start` does not report
-    // a phantom listener.
+    // a bg child's output only reaches the log file; exit non-zero so start sees the failure
     log.error(String((err as Error)?.message ?? err));
     process.exitCode = 1;
     return;
   }
 
   if (args.bg) {
-    // stdout/stderr go to /dev/null: the child writes the log file itself
-    // through its own rotating stream, so rotation keeps working in --bg mode
-    // (C1). The child is the only writer to the file.
+    // in --bg the child writes the log file itself through its rotating stream (C1)
     const child = spawn(
       process.execPath,
       [
@@ -233,10 +223,7 @@ async function main(argv: string[]): Promise<void> {
   const { server, port: actualPort, catalog } = await startServer(port, bind, config, log);
   log.info(`bansosd listening on http://${bind}:${actualPort}`);
 
-  // publish the real bound port before the first catalog refresh: the parent of
-  // a --bg start polls state.json for 5s, and a cold refresh can take longer
-  // (upstream probes run serially with timeouts up to 15s each), which would
-  // make it print the configured port instead of the auto-bumped one.
+  // publish the bound port before the first refresh; the --bg parent polls state.json for only 5s
   writeJsonAtomic(STATE_FILE, {
     pid: process.pid,
     port: actualPort,
@@ -244,8 +231,7 @@ async function main(argv: string[]): Promise<void> {
     startedAt: Date.now(),
   });
 
-  // the banner goes through the tee, not process.stdout: a bg child's stdout is
-  // /dev/null, and writing it straight there would keep it out of `bansos logs`.
+  // banner goes through the tee, not stdout, so a bg child's banner still reaches `bansos logs`
   if (process.env.BANSOS_LOG !== "json") {
     out.write(
       `\n● bansosd online (port ${actualPort})\n` +

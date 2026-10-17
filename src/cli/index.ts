@@ -227,8 +227,7 @@ async function main(): Promise<number> {
     return 0;
   }
   if (wantsHelp || args[0] === "help") {
-    // asked for help on something unknown to the help table: fall through to
-    // command dispatch so e.g. "bansos bogus --help" still errors normally
+    // unknown help target: fall through to dispatch so "bansos bogus --help" still errors
     if (args.length <= 1) {
       help();
       return 0;
@@ -274,8 +273,7 @@ async function main(): Promise<number> {
   }
 }
 
-// the daemon reports a startup refusal by setting process.exitCode after
-// logging it; returning a literal 0 from the calling command would erase it.
+// preserve the daemon's startup-refusal exitCode instead of returning a literal 0
 function daemonExitCode(): number {
   return typeof process.exitCode === "number" ? process.exitCode : 0;
 }
@@ -322,15 +320,12 @@ async function runStart(args: string[]): Promise<number> {
     },
   );
   child.unref();
-  // a spawn failure emits "error", which would crash the parent with no
-  // listener attached; fold it into the same "child is gone" check below.
+  // handle spawn "error" in the "child is gone" check below so it never crashes the parent
   let spawnFailed = false;
   child.on("error", () => {
     spawnFailed = true;
   });
-  // the child may auto-bump the port (e.g. 17070 -> 17071) if it is taken;
-  // read the actual bound port back from state.json once the child has written
-  // it (it writes pid: child.pid after listening), so the printed URLs match reality.
+  // read the actual bound port from state.json (the child may auto-bump a taken port)
   const config = await import("../daemon/state").then((m) => m.loadConfig());
   let effectivePort = port ?? config.port ?? DEFAULT_PORT;
   let effectiveBind = bind ?? config.bind ?? "127.0.0.1";
@@ -341,9 +336,7 @@ async function runStart(args: string[]): Promise<number> {
       if (typeof st.bind === "string") effectiveBind = st.bind;
       break;
     }
-    // the child exited without writing state (e.g. bind refused on strict
-    // security), so do not report a phantom listener. exitCode is the reliable
-    // signal: kill(pid, 0) still succeeds for a not-yet-reaped zombie.
+    // child exited without writing state (e.g. bind refused); trust exitCode, not kill(pid,0)
     if (spawnFailed || child.exitCode !== null || child.signalCode !== null) {
       console.error(`bansos start --bg: daemon exited before binding (port ${effectivePort} busy or bind refused)`);
       console.error(`  check the log: ${logFile}`);
@@ -361,9 +354,7 @@ async function runStart(args: string[]): Promise<number> {
   return 0;
 }
 
-// tail ~/.bansos/logs/bansosd.log in real time: same output the foreground
-// daemon prints, for a background (--bg) daemon. Polls the file size (500ms)
-// and prints appends; Ctrl+C (or SIGTERM) stops the watch.
+// tail the daemon log in real time for a --bg daemon (polls file size every 500ms)
 async function runLogs(args: string[]): Promise<number> {
   const activity = args.includes("--activity");
   const base = `http://${effectiveBind()}:${effectivePort()}`;
@@ -418,9 +409,7 @@ async function runLogs(args: string[]): Promise<number> {
     return 1;
   }
 
-  // show the last 50 lines as context before following. Read a tail window
-  // from EOF instead of loading the whole file, so a multi-MB log stays cheap
-  // (C1).
+  // tail the last 50 lines from EOF before following, so a multi-MB log stays cheap (C1)
   const TAIL_WINDOW = 64 * 1024;
   const fd = fs.openSync(logFile, "r");
   let tail = "";
@@ -486,9 +475,7 @@ function findDaemonPids(statePid: number | null): number[] {
   const pids = new Set<number>();
   if (statePid && isAlive(statePid)) pids.add(statePid);
 
-  // /proc only exists on Linux. macOS and Windows get a process-list scan so
-  // `bansos stop` (and the pi extension's auto-stop) still finds daemons
-  // instead of crashing on the missing directory.
+  // /proc is Linux-only; macOS/Windows fall back to a process-list scan
   if (process.platform === "linux" && fs.existsSync("/proc")) {
     for (const entry of fs.readdirSync("/proc")) {
       if (!/^\d+$/.test(entry)) continue;
@@ -509,8 +496,7 @@ function findDaemonPids(statePid: number | null): number[] {
   return [...pids];
 }
 
-// cross-platform process list (ps on POSIX, wmic on Windows). Never throws:
-// an unavailable process table just means no extra matches beyond state.json.
+// cross-platform process list (ps on POSIX, wmic on Windows); never throws
 function scanProcessList(): Array<{ pid: number; cmdline: string }> {
   try {
     if (process.platform === "win32") {
@@ -523,8 +509,7 @@ function scanProcessList(): Array<{ pid: number; cmdline: string }> {
       for (const line of out.split(/\r?\n/).slice(1)) {
         const trimmed = line.trim();
         if (!trimmed) continue;
-        // wmic prints "CommandLine  ProcessId": the cmdline may contain
-        // spaces, so take the trailing number as the pid
+        // wmic prints "CommandLine  ProcessId"; the pid is the trailing number
         const m = trimmed.match(/\s(\d+)\s*$/);
         if (!m) continue;
         rows.push({ pid: Number(m[1]), cmdline: trimmed.slice(0, m.index).trim() });
@@ -547,9 +532,7 @@ function scanProcessList(): Array<{ pid: number; cmdline: string }> {
   }
 }
 
-// a process is one of our daemons if it runs the bansos binary in daemon mode.
-// the binary may be the npm bin (.../bansos, .../bansosd) or the repo build
-// (dist/cli/index.js); the hidden "daemon" subcommand marks spawned children.
+// one of our daemons = the bansos binary (npm bin or dist/cli/index.js) in daemon mode
 function isDaemonCmdline(args: string[]): boolean {
   const script = path.basename(args[1] ?? "");
   const cmd = args[2];
@@ -568,8 +551,7 @@ async function runStop(args: string[] = []): Promise<number> {
   const all = args.includes("--all");
   const state = readJson<{ pid?: number }>(STATE_FILE);
 
-  // scoped by default: the scan matches every bansos daemon on the machine, so
-  // an unscoped stop used to take down daemons this shell never started
+  // scoped by default so an unscoped stop does not kill daemons this shell never started
   let pids: number[];
   if (all) {
     pids = findDaemonPids(state?.pid ?? null);
@@ -621,9 +603,7 @@ interface DaemonStatus {
   relay?: { enabled: boolean; url: string };
 }
 
-// find every running daemon: the configured port, the last known port in
-// state.json, and the full auto-bump range the daemon binds on. A daemon
-// that landed on a bumped port (17070 busy) is still reported.
+// find daemons across the configured port, state.json's port, and the auto-bump range
 async function probeDaemonPorts(): Promise<DaemonStatus[]> {
   const config = await import("../daemon/state").then((m) => m.loadConfig());
   const state = readJson<{ port?: number }>(STATE_FILE);

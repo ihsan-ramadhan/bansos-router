@@ -1,9 +1,6 @@
 import type { InternalTurn, ParseResult } from "./internal";
 
-// parse an inbound /v1/responses body into an InternalTurn.
-// The Responses API uses `input` (a string or array of typed items) plus
-// `instructions` for the system prompt, `tools` for function tools, and
-// `reasoning`/`max_output_tokens` for reasoning + length control.
+// parse a /v1/responses body (input + instructions + tools + reasoning/max_output_tokens) into an InternalTurn
 export function parseResponsesTurn(body: unknown): ParseResult<InternalTurn> {
   if (typeof body !== "object" || body === null) {
     return { ok: false, error: "request body must be a JSON object" };
@@ -62,13 +59,7 @@ function responsesToolsToInternal(tools: unknown): InternalTurn["tools"] {
   return out.length ? out : undefined;
 }
 
-// convert a responses `input` into openai chat messages.
-// accepts: a bare string, or an array of items:
-//   { role: "user"|"system"|"assistant"|"developer", content: string | [{type, ...}] }
-//   { type: "message", role, content: [...] }
-//   function_call items -> assistant tool_calls
-//   function_call_output items -> tool-role messages
-// returns an Error if the shape can't be mapped (caller reports 400).
+// convert a responses `input` (string or typed items) into chat messages; Error on unmappable shapes
 function responsesInputToMessages(input: unknown, _previousId: unknown): InternalTurn["messages"] | Error {
   const items: unknown[] = typeof input === "string"
     ? [{ role: "user", content: input }]
@@ -130,9 +121,7 @@ function responsesInputToMessages(input: unknown, _previousId: unknown): Interna
   return messages;
 }
 
-// responses content can be a string, or an array of typed parts:
-//   [{type:"input_text", text}, {type:"input_image", image_url|image_base64},
-//    {type:"output_text", text}, {type:"text", text}]
+// responses content: a string or typed parts (input_text / input_image / output_text / text)
 function responsesContentToText(content: unknown): string | Error {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
@@ -241,8 +230,7 @@ export function renderResponsesEvent(type: string, data: unknown): string {
   return `event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`;
 }
 
-// stream translator: upstream openai chat sse -> responses sse events.
-// stateful so we can emit output_item.added / content_part / output_text.delta.
+// stream translator: openai chat sse -> responses sse events (stateful)
 export class ResponsesStreamEncoder {
   private started = false;
   private itemId = `msg_${Math.random().toString(36).slice(2, 12)}`;
@@ -311,8 +299,7 @@ export class ResponsesStreamEncoder {
       (typeof delta.reasoning_content === "string" ? delta.reasoning_content : "");
     if (reasoningDelta.length > 0) {
       this.reasoningBuffer += reasoningDelta;
-      // kept out of the output_text block: close() promotes it to the answer
-      // only when the model never produced content of its own
+      // kept out of output_text; close() promotes it to the answer only if no content came
       out.push(renderResponsesEvent("response.reasoning_summary_text.delta", {
         item_id: this.itemId,
         output_index: 0,
@@ -331,8 +318,7 @@ export class ResponsesStreamEncoder {
     }
     // prefer streamed content; fall back to accumulated reasoning text
     const finalText = this.textBuffer.length > 0 ? this.textBuffer : this.reasoningBuffer;
-    // a reasoning-only model never opened the text block, but its reasoning is
-    // about to become the answer, so emit it as one delta before closing
+    // reasoning-only: emit the reasoning as one delta before closing
     if (!this.textStarted && finalText.length > 0) {
       this.textStarted = true;
       out.push(renderResponsesEvent("response.output_text.delta", {

@@ -38,8 +38,7 @@ function ensureRelay(state: RelayState, url: string, label?: string): void {
   state.relays.push({ url: clean, label, addedAt: new Date().toISOString() });
 }
 
-// relay-aware fetch. direct when disabled; otherwise POST to the relay with
-// the two relay headers. falls back to direct when the relay errors.
+// relay-aware fetch: direct when disabled, else POST via the relay, falling back to direct
 export async function relayFetch(
   state: RelayState,
   targetUrl: string,

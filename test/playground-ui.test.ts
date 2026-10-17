@@ -85,8 +85,7 @@ test("the playground renders a responses stream from the real encoder", () => {
 });
 
 test("extractResponsesDelta matches the event name the daemon actually emits", () => {
-  // it used to look for response.output_item.delta / response.text.delta, which
-  // the encoder never sends, so every delta was dropped
+  // it used to look for events the encoder never sends, so every delta was dropped
   assert.equal(
     extractResponsesDelta({ type: "response.output_text.delta", delta: "hi" }).delta,
     "hi",

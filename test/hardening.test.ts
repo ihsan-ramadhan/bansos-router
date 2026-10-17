@@ -69,8 +69,7 @@ function createTestDaemon(mockChatUrl: string): Promise<{
   });
 }
 
-// upstream that writes one valid SSE chunk and then kills the connection
-// mid-stream, emulating a real free-tier gateway reset
+// upstream that writes one SSE chunk then resets mid-stream (a real gateway reset)
 function createAbruptUpstream(): Promise<{
   close: () => Promise<void>;
   url: string;
@@ -312,8 +311,7 @@ test("relay mutation rejects malformed URLs without touching state", async () =>
 // B1: a client disconnect must abort the in-flight upstream request
 
 test("client disconnect aborts the upstream request instead of leaving it running", async () => {
-  // upstream that receives the request and then never responds: the only way
-  // its connection closes is the daemon aborting the fetch
+  // upstream that never responds; only the daemon aborting the fetch closes it
   let received: () => void;
   const receivedPromise = new Promise<void>((r) => {
     received = r;

@@ -233,8 +233,7 @@ test("strict mode rejects unauthorized upstreams on Chat, Responses, and Anthrop
 
 test("strict DLP blocks OpenAI, GitHub, and SSH secrets on all wire protocols without logging values", async () => {
   const provider = await createMockProvider();
-  // classification follows the configured destination, so the invalid host is
-  // never resolved: DLP blocks before the fetch, and the local server counts leaks.
+  // classification follows the configured destination; the invalid host is never resolved
   const externalUrl = "https://provider.invalid/v1/chat/completions";
   const model = testModel("strict-origin", "zen");
   const entries: Array<Record<string, unknown>> = [];

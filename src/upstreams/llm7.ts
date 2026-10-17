@@ -67,6 +67,12 @@ interface LLM7ApiModel {
   modalities?: { input?: string[] };
 }
 
+// tier "pro" needs balance or a subscription (402) even when usage_based_only is false
+export function isFreeLlm7Model(m: Pick<LLM7ApiModel, "usage_based_only" | "tier">): boolean {
+  if (m.tier === "pro") return false;
+  return m.usage_based_only === false || (m.tier === "turbo" && m.usage_based_only !== true);
+}
+
 export const llm7Upstream: Upstream = {
   id: "llm7",
   kind: "remote-keyless",
@@ -84,10 +90,7 @@ export const llm7Upstream: Upstream = {
       const body = (await res.json()) as { data?: LLM7ApiModel[] };
       if (!Array.isArray(body.data) || body.data.length === 0) return null;
 
-      // filter models accessible anonymously without per-token charge
-      const freeModels = body.data.filter(
-        (m) => m.usage_based_only === false || (m.tier === "turbo" && m.usage_based_only !== true),
-      );
+      const freeModels = body.data.filter(isFreeLlm7Model);
 
       const dynamic = freeModels.map((m) => {
         const seeded = LLM7_MODELS.find((s) => s.id === m.id);
