@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { displayName } from "../extensions/pi/src/index";
+import { displayName } from "../extensions/pi/src/models";
 
 test("pi model names carry their upstream so /model shows where each one runs", () => {
   assert.equal(displayName({ id: "big-pickle", name: "Big Pickle", source: "zen" }), "Big Pickle (Zen)");
@@ -11,7 +11,7 @@ test("pi model names carry their upstream so /model shows where each one runs", 
 });
 
 test("pi model list prefers live, then the last cached catalog, then the bundled snapshot", async () => {
-  const { chooseModels, readCachedModels, writeCachedModels, toProviderModel } = await import("../extensions/pi/src/index");
+  const { chooseModels, readCachedModels, writeCachedModels, toProviderModel } = await import("../extensions/pi/src/models");
   const fs = await import("node:fs");
   const os = await import("node:os");
   const path = await import("node:path");
