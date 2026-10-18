@@ -530,6 +530,22 @@ test("redaction never breaks JSON nested in tool arguments and never leaks a tru
   assert.equal(JSON.parse(backslash.body).messages[0].content, "TOKEN=[REDACTED:credential_assignment]\\ end");
 });
 
+test("an escaped newline cannot glue a redacted marker to the next line into a phantom credential", () => {
+  const args = (v: unknown) => JSON.stringify({ tool_calls: [{ function: { arguments: JSON.stringify(v) } }] });
+  // tool_result payload as it lands on the wire: nested JSON keeps \n escaped
+  const command = "apiKey: [REDACTED:private_key]\npassword: [REDACTED:credential_assignment]";
+  const body = args({ command });
+  const out = redactRequestBody(body);
+  assert.ok(out, "redaction must converge instead of 422-ing the session");
+  assert.equal(out!.count, 0, "already-masked markers are not re-redacted");
+  assert.equal(scanRequestBody(out!.body).blocked, false);
+  assert.equal(JSON.parse(JSON.parse(out!.body).tool_calls[0].function.arguments).command, command, "escaped newlines survive untouched");
+  // and a real secret sharing the line still gets masked
+  const live = args({ command: "apiKey: [REDACTED:private_key]\npassword: sk-" + "a".repeat(24) });
+  const masked = redactRequestBody(live)!;
+  assert.equal(JSON.parse(JSON.parse(masked.body).tool_calls[0].function.arguments).command, "apiKey: [REDACTED:private_key]\npassword: [REDACTED:openai_api_key]");
+});
+
 test("security warnings cover a non-object block and ignore dlp outside strict mode", () => {
   assert.match(securityConfigWarnings("strict")[0] ?? "", /security must be an object/);
   assert.match(securityConfigWarnings(["strict"])[0] ?? "", /security must be an object/);
