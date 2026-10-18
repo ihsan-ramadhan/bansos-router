@@ -15,7 +15,7 @@ import {
   isUpstreamAllowed,
   type SecurityConfig,
 } from "../security/policy";
-import { scanRequestBody, type SecretType } from "../security/secret-guard";
+import { redactRequestBody, scanRequestBody, type SecretType } from "../security/secret-guard";
 import { ActivityStore, type ActivityKind } from "./activity";
 import type { ModelDef, Upstream } from "../upstreams/types";
 import { pickSmartDefaultModel } from "../upstreams/types";
@@ -1173,15 +1173,25 @@ async function runChatForward(
     const transformedBody = currentUpstream.transformRequestBody
       ? currentUpstream.transformRequestBody({ ...sanitizedBody, model: current.id }, current)
       : { ...sanitizedBody, model: current.id };
-    const outboundBody = JSON.stringify(
+    let outboundBody = JSON.stringify(
       responsesWire
         ? chatToResponsesBody(transformedBody, current.id)
         : transformedBody,
     );
 
-    if (isExternalUpstream(currentUpstream)) {
+    if (isStrictSecurity(security) && isExternalUpstream(currentUpstream)) {
       const secretScan = scanRequestBody(outboundBody);
-      if (secretScan.blocked) {
+      const redaction = secretScan.blocked && security.dlp === "redact" ? redactRequestBody(outboundBody) : null;
+      if (redaction) {
+        outboundBody = redaction.body;
+        log.warn("secret guard redacted request", {
+          model: current.id,
+          upstream: currentUpstream.id,
+          dlpRedacted: true,
+          redactions: redaction.count,
+          secretTypes: redaction.secretTypes,
+        });
+      } else if (secretScan.blocked) {
         log.warn("request blocked by secret guard", {
           model: current.id,
           upstream: currentUpstream.id,

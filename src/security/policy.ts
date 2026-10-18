@@ -1,12 +1,14 @@
 import { BlockList, isIP } from "node:net";
 
 export type SecurityMode = "normal" | "strict";
+export type DlpAction = "redact" | "block";
 
 export interface SecurityConfig {
   mode: SecurityMode;
   allowedUpstreams: string[];
   allowCrossProviderFailover: boolean;
   unsafeAllowNonLoopbackBind: boolean;
+  dlp: DlpAction;
 }
 
 export const DEFAULT_SECURITY_CONFIG: SecurityConfig = {
@@ -14,6 +16,7 @@ export const DEFAULT_SECURITY_CONFIG: SecurityConfig = {
   allowedUpstreams: [],
   allowCrossProviderFailover: true,
   unsafeAllowNonLoopbackBind: false,
+  dlp: "redact",
 };
 
 const IPV6_LOOPBACK = new BlockList();
@@ -22,7 +25,7 @@ IPV6_LOOPBACK.addAddress("::1", "ipv6");
 export function normalizeSecurityConfig(
   raw: Partial<SecurityConfig> | null | undefined,
 ): SecurityConfig {
-  const mode: SecurityMode = raw?.mode === "strict" ? "strict" : "normal";
+  const mode: SecurityMode = normalizedMode(raw?.mode) === "strict" ? "strict" : "normal";
   const allowedUpstreams = Array.isArray(raw?.allowedUpstreams)
     ? [...new Set(raw.allowedUpstreams
         .filter((value): value is string => typeof value === "string")
@@ -37,7 +40,33 @@ export function normalizeSecurityConfig(
     allowCrossProviderFailover:
       mode === "strict" ? false : raw?.allowCrossProviderFailover !== false,
     unsafeAllowNonLoopbackBind: raw?.unsafeAllowNonLoopbackBind === true,
+    dlp: normalizedMode(raw?.dlp) === "block" ? "block" : "redact",
   };
+}
+
+function normalizedMode(value: unknown): string | undefined {
+  return typeof value === "string" ? value.trim().toLowerCase() : undefined;
+}
+
+// an unrecognised mode silently means "normal", which is the opposite of what someone typing it wanted
+export function securityConfigWarnings(raw: unknown): string[] {
+  if (raw === undefined || raw === null) return [];
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    return [`security must be an object such as {"mode": "strict"}, got ${JSON.stringify(raw)}; running in normal mode (secret guard and strict protections are OFF).`];
+  }
+  const { mode: rawMode, dlp: rawDlp } = raw as { mode?: unknown; dlp?: unknown };
+  const warnings: string[] = [];
+  const mode = normalizedMode(rawMode);
+  if (rawMode !== undefined && mode !== "strict" && mode !== "normal") {
+    warnings.push(
+      `security.mode ${JSON.stringify(rawMode)} is not recognized; running in normal mode (secret guard and strict protections are OFF). Use "strict" or "normal".`,
+    );
+  }
+  const dlp = normalizedMode(rawDlp);
+  if (mode === "strict" && rawDlp !== undefined && dlp !== "redact" && dlp !== "block") {
+    warnings.push(`security.dlp ${JSON.stringify(rawDlp)} is not recognized; using "redact". Use "redact" or "block".`);
+  }
+  return warnings;
 }
 
 export function isStrictSecurity(config: SecurityConfig): boolean {

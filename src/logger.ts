@@ -33,6 +33,8 @@ const SAFE_FIELD_NAMES = new Set([
   "outputTokens",
   "failoverBlocked",
   "dlpBlocked",
+  "dlpRedacted",
+  "redactions",
   "secretType",
   "secretTypes",
   "attempt",

@@ -6,6 +6,7 @@ import stream from "node:stream";
 import { spawn } from "node:child_process";
 import {
   loadConfig,
+  loadConfigWarnings,
   writeJsonAtomic,
   STATE_FILE,
   BANSOS_DIR,
@@ -220,6 +221,7 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
 
+  for (const warning of loadConfigWarnings()) log.warn(warning);
   const { server, port: actualPort, catalog } = await startServer(port, bind, config, log);
   log.info(`bansosd listening on http://${bind}:${actualPort}`);
 

@@ -120,11 +120,15 @@ requests:
   "bind": "127.0.0.1",
   "security": {
     "mode": "strict",
+    "dlp": "redact",
     "allowedUpstreams": ["zen"],
     "allowCrossProviderFailover": false
   }
 }
 ```
+
+`mode` is case-insensitive. Any value other than `"strict"` or `"normal"` runs
+in normal mode, and the daemon log and `bansos doctor` flag it.
 
 With `mode: "strict"`:
 
@@ -133,11 +137,14 @@ With `mode: "strict"`:
 - Only exact upstreams in `allowedUpstreams` receive requests (empty list blocks all).
 - Cross-provider failover disabled.
 - Sensitive values and raw upstream errors suppressed from logs.
-- **DLP blocks pasted credentials**: API keys, PATs, private keys, and
-  credential assignments pasted into a request are blocked with HTTP 422
-  before they leave for an external upstream (zen/kilo/llm7). Loopback
-  (self-hosted) gateways are exempt, since their own keys are legitimately
-  part of the request body.
+- **DLP keeps pasted credentials from leaving**: API keys, PATs, private keys,
+  and credential assignments in a request bound for an external upstream
+  (zen/kilo/llm7/ovh) are replaced with `[REDACTED:<type>]` before it is sent,
+  so the rest of the message still goes through and the session keeps
+  working. Set `"dlp": "block"` to reject such requests with HTTP 422 instead
+  (note that a blocked secret stays in the session history, so every later
+  request in that session is blocked too). Loopback (self-hosted) gateways are
+  exempt, since their own keys are legitimately part of the request body.
 
 ## What it does
 

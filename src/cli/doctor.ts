@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { ADAPTERS } from "../adapters";
-import { effectiveBind, effectivePort } from "../daemon/state";
+import { effectiveBind, effectivePort, loadConfig, loadConfigWarnings } from "../daemon/state";
 import { START_MARKER } from "../adapters/types";
 import { expandHome, parseJsonc } from "./write";
 import { checkUpdate } from "../update";
@@ -23,6 +23,15 @@ export async function runDoctor(_argv: string[]): Promise<number> {
     console.error(`✗ daemon      not reachable at ${base}`);
     console.error(`  fix: run "bansos start" (or "bansosd") in another terminal`);
     failures++;
+  }
+
+  const warnings = loadConfigWarnings();
+  if (warnings.length > 0) {
+    for (const w of warnings) console.error(`✗ security    ${w}`);
+    failures++;
+  } else {
+    const { mode, dlp } = loadConfig().security;
+    console.log(`✓ security    ${mode} mode${mode === "strict" ? ` (dlp: ${dlp})` : ""}`);
   }
 
   // 2. per-harness config files.

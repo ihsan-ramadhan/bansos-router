@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   DEFAULT_SECURITY_CONFIG,
   normalizeSecurityConfig,
+  securityConfigWarnings,
   type SecurityConfig,
 } from "../security/policy";
 
@@ -45,18 +46,39 @@ export function effectiveBind(): string {
   return typeof state?.bind === "string" ? state.bind : loadConfig().bind;
 }
 
-export function loadConfig(): BansosConfig {
+function readRawConfig(): { raw: Partial<BansosConfig> | null; invalid: boolean } {
+  let text: string;
   try {
-    const raw = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")) as Partial<BansosConfig>;
-    return {
-      ...DEFAULT_CONFIG,
-      ...raw,
-      security: normalizeSecurityConfig(raw.security),
-      localUpstreams: raw.localUpstreams ?? [],
-    };
+    text = fs.readFileSync(CONFIG_FILE, "utf8");
   } catch {
-    return { ...DEFAULT_CONFIG };
+    return { raw: null, invalid: false };
   }
+  try {
+    const raw = JSON.parse(text) as unknown;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { raw: null, invalid: true };
+    return { raw: raw as Partial<BansosConfig>, invalid: false };
+  } catch {
+    return { raw: null, invalid: true };
+  }
+}
+
+export function loadConfigWarnings(): string[] {
+  const { raw, invalid } = readRawConfig();
+  if (invalid) {
+    return [`${CONFIG_FILE} is not a valid JSON object; using defaults (normal mode, strict protections OFF).`];
+  }
+  return securityConfigWarnings(raw?.security);
+}
+
+export function loadConfig(): BansosConfig {
+  const { raw } = readRawConfig();
+  if (!raw) return { ...DEFAULT_CONFIG };
+  return {
+    ...DEFAULT_CONFIG,
+    ...raw,
+    security: normalizeSecurityConfig(raw.security),
+    localUpstreams: raw.localUpstreams ?? [],
+  };
 }
 
   // atomic write: temp file in the same dir, then rename over target

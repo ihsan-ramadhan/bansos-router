@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
+import { Writable } from "node:stream";
 import { createServer } from "../src/daemon/server";
 import { RuntimeCatalog } from "../src/daemon/catalog";
 import { RateLimiter } from "../src/daemon/rate-limit";
@@ -11,9 +12,10 @@ import {
   assertBindAllowed,
   isLoopbackBind,
   normalizeSecurityConfig,
+  securityConfigWarnings,
   type SecurityConfig,
 } from "../src/security/policy";
-import { scanRequestBody } from "../src/security/secret-guard";
+import { redactRequestBody, scanRequestBody } from "../src/security/secret-guard";
 import { DEFAULT_CONFIG } from "../src/daemon/state";
 
 interface MockProvider {
@@ -153,6 +155,22 @@ function wireRequests(model: string, content: string): Array<{
   ];
 }
 
+// answers for the never-resolving external host and records what the daemon sent there
+function stubExternalFetch(sent: string[]): () => void {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: any, init?: RequestInit) => {
+    if (!String(input).startsWith("https://provider.invalid")) return realFetch(input, init);
+    sent.push(String(init?.body ?? ""));
+    return new Response(JSON.stringify({ id: "x", choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+  return () => {
+    globalThis.fetch = realFetch;
+  };
+}
+
 async function postJson(baseUrl: string, path: string, body: unknown): Promise<Response> {
   return fetch(`${baseUrl}${path}`, {
     method: "POST",
@@ -231,14 +249,14 @@ test("strict mode rejects unauthorized upstreams on Chat, Responses, and Anthrop
   }
 });
 
-test("strict DLP blocks OpenAI, GitHub, and SSH secrets on all wire protocols without logging values", async () => {
+test("strict DLP with dlp: block rejects OpenAI, GitHub, and SSH secrets on all wire protocols without logging values", async () => {
   const provider = await createMockProvider();
   // classification follows the configured destination; the invalid host is never resolved
   const externalUrl = "https://provider.invalid/v1/chat/completions";
   const model = testModel("strict-origin", "zen");
   const entries: Array<Record<string, unknown>> = [];
   const daemon = await createTestDaemon(
-    strictSecurity(["zen"]),
+    normalizeSecurityConfig({ mode: "strict", allowedUpstreams: ["zen"], dlp: "block" }),
     [testUpstream("zen", externalUrl)],
     [model],
     recordingLogger(entries),
@@ -272,13 +290,14 @@ test("strict DLP blocks OpenAI, GitHub, and SSH secrets on all wire protocols wi
   }
 });
 
-test("normal mode forwards pasted secrets to external upstreams as-is", async () => {
-  const provider = await createMockProvider();
+test("normal mode forwards pasted secrets to external upstreams unchanged", async () => {
+  const sent: string[] = [];
+  const restore = stubExternalFetch(sent);
   const model = testModel("normal-origin", "zen");
   const entries: Array<Record<string, unknown>> = [];
   const daemon = await createTestDaemon(
     normalizeSecurityConfig({ mode: "normal" }),
-    [testUpstream("zen", provider.url)],
+    [testUpstream("zen", "https://provider.invalid/v1/chat/completions")],
     [model],
     recordingLogger(entries),
   );
@@ -288,11 +307,13 @@ test("normal mode forwards pasted secrets to external upstreams as-is", async ()
       const response = await postJson(daemon.baseUrl, wire.path, wire.body);
       assert.equal(response.status, 200, wire.name);
     }
-    assert.equal(provider.hits, 3);
+    assert.equal(sent.length, 3, "every wire reached the external upstream");
+    for (const body of sent) assert.ok(body.includes(secret), "normal mode does not touch the body");
     assert.equal(JSON.stringify(entries).includes("dlpBlocked"), false);
+    assert.equal(JSON.stringify(entries).includes("dlpRedacted"), false);
   } finally {
+    restore();
     await daemon.close();
-    await provider.close();
   }
 });
 
@@ -415,4 +436,110 @@ test("logger drops sensitive fields and strict upstream raw errors", async () =>
     await daemon.close();
     await provider.close();
   }
+});
+
+test("security mode tolerates case and whitespace, and an unknown mode is flagged instead of passing silently", () => {
+  for (const mode of ["strict", "Strict", " STRICT "]) {
+    assert.equal(normalizeSecurityConfig({ mode } as any).mode, "strict", mode);
+    assert.deepEqual(securityConfigWarnings({ mode }), [], mode);
+  }
+  assert.deepEqual(securityConfigWarnings(undefined), []);
+  assert.deepEqual(securityConfigWarnings({}), []);
+  assert.deepEqual(securityConfigWarnings({ mode: "Normal" }), []);
+  assert.equal(normalizeSecurityConfig({ mode: "strict" }).dlp, "redact", "redact is the default");
+  assert.equal(normalizeSecurityConfig({ mode: "strict", dlp: " Block " } as any).dlp, "block");
+  assert.deepEqual(securityConfigWarnings({ mode: "strict", dlp: "block" }), []);
+  assert.match(securityConfigWarnings({ mode: "strict", dlp: "mask" })[0] ?? "", /security\.dlp "mask" is not recognized; using "redact"/);
+  for (const mode of ["strcit", "paranoid", 1, ""]) {
+    assert.equal(normalizeSecurityConfig({ mode } as any).mode, "normal");
+    const [warning] = securityConfigWarnings({ mode });
+    assert.match(warning ?? "", /not recognized; running in normal mode/, String(mode));
+  }
+});
+
+test("strict DLP redacts by default: the external upstream gets markers, never the secrets, and the session keeps working", async () => {
+  const externalUrl = "https://provider.invalid/v1/chat/completions";
+  const sent: string[] = [];
+  const restore = stubExternalFetch(sent);
+
+  const model = testModel("strict-origin", "zen");
+  const entries: Array<Record<string, unknown>> = [];
+  const daemon = await createTestDaemon(strictSecurity(["zen"]), [testUpstream("zen", externalUrl)], [model], recordingLogger(entries));
+  const secrets = [
+    ["sk", "proj", "E".repeat(24)].join("-"),
+    `github_pat_${"F".repeat(24)}`,
+    "-----BEGIN OPENSSH PRIVATE KEY-----\nsynthetic\n-----END OPENSSH PRIVATE KEY-----",
+  ];
+  try {
+    const requests = wireRequests(model.id, "unused");
+    for (let i = 0; i < requests.length; i++) {
+      const response = await postJson(daemon.baseUrl, requests[i]!.path, wireRequests(model.id, `here: ${secrets[i]} done`)[i]!.body);
+      assert.equal(response.status, 200, requests[i]!.name);
+    }
+    assert.equal(sent.length, 3);
+    for (const body of sent) {
+      for (const secret of secrets) assert.equal(body.includes(secret), false);
+      assert.match(body, /\[REDACTED:(openai_api_key|github_pat|ssh_private_key)\]/);
+      assert.match(body, /here: .* done/, "the rest of the message is kept");
+    }
+    const logText = JSON.stringify(entries);
+    assert.match(logText, /dlpRedacted/);
+    for (const secret of secrets) assert.equal(logText.includes(secret), false);
+  } finally {
+    restore();
+    await daemon.close();
+  }
+});
+
+test("redactRequestBody keeps JSON valid, masks credential assignments by value, and leaves clean bodies alone", () => {
+  const body = JSON.stringify({
+    messages: [
+      { role: "user", content: 'config: password = "hunter2hunter2" and api_key: sk-ant-api03-' + "A".repeat(20) },
+      { role: "tool", content: "-----BEGIN RSA PRIVATE KEY-----\nMIIabc\n-----END RSA PRIVATE KEY-----\nafter" },
+      { role: "assistant", tool_calls: [{ function: { name: "write", arguments: JSON.stringify({ command: "export TOKEN=abcd1234efgh5678 && deploy" }) } }] },
+    ],
+  });
+  const out = redactRequestBody(body)!;
+  const parsed = JSON.parse(out.body);
+  assert.equal(parsed.messages[0].content, 'config: password = "[REDACTED:credential_assignment]" and api_key: [REDACTED:anthropic_api_key]');
+  assert.equal(parsed.messages[1].content, "[REDACTED:private_key]\nafter");
+  assert.deepEqual(JSON.parse(parsed.messages[2].tool_calls[0].function.arguments), { command: "export TOKEN=[REDACTED:credential_assignment] && deploy" });
+  assert.deepEqual(out.secretTypes, ["anthropic_api_key", "credential_assignment", "private_key"]);
+  assert.equal(scanRequestBody(out.body).blocked, false);
+  assert.equal(redactRequestBody(JSON.stringify({ messages: [{ role: "user", content: "hi" }] }))!.count, 0);
+  assert.equal(redactRequestBody("not json"), null, "unparseable bodies fall back to blocking");
+});
+
+test("redaction never breaks JSON nested in tool arguments and never leaks a truncated key", () => {
+  const args = (v: unknown) => JSON.stringify({ tool_calls: [{ function: { arguments: JSON.stringify(v) } }] });
+  const nested = (body: string) => JSON.parse(JSON.parse(body).tool_calls[0].function.arguments);
+
+  const quoted = redactRequestBody(args({ command: 'echo "TOKEN=abcd1234efgh5678" > f' }))!;
+  assert.deepEqual(nested(quoted.body), { command: 'echo "TOKEN=[REDACTED:credential_assignment]" > f' });
+
+  const truncated = redactRequestBody(args({ content: "-----BEGIN PRIVATE KEY-----\nMIIabcDEF123+/=\nQQQ" }))!;
+  assert.deepEqual(nested(truncated.body), { content: "[REDACTED:private_key]" });
+
+  const prose = redactRequestBody(JSON.stringify({ messages: [{ role: "user", content: "-----BEGIN PRIVATE KEY-----\nMIIabc\nQQQ\n\nplease review the parser below" }] }))!;
+  assert.equal(JSON.parse(prose.body).messages[0].content, "[REDACTED:private_key]\n\nplease review the parser below");
+
+  const escaped = redactRequestBody(JSON.stringify({ messages: [{ role: "user", content: "key: -----BEGIN OPENSSH PRIVATE KEY-----\\nb3BlbnNzaC1rZXk\\nAAAA==\\n and more" }] }))!;
+  assert.ok(!escaped.body.includes("b3BlbnNzaC1rZXk") && !escaped.body.includes("AAAA=="), "escaped newlines do not let the key body through");
+
+  const backslash = redactRequestBody(JSON.stringify({ messages: [{ role: "user", content: "TOKEN=abcd1234efgh5678\\ end" }] }))!;
+  assert.equal(JSON.parse(backslash.body).messages[0].content, "TOKEN=[REDACTED:credential_assignment]\\ end");
+});
+
+test("security warnings cover a non-object block and ignore dlp outside strict mode", () => {
+  assert.match(securityConfigWarnings("strict")[0] ?? "", /security must be an object/);
+  assert.match(securityConfigWarnings(["strict"])[0] ?? "", /security must be an object/);
+  assert.deepEqual(securityConfigWarnings({ mode: "normal", dlp: "mask" }), [], "dlp has no effect in normal mode");
+});
+
+test("the real logger keeps the redaction fields", () => {
+  const lines: string[] = [];
+  const out = new Writable({ write(chunk: Buffer, _e, cb) { lines.push(chunk.toString()); cb(); } });
+  createLogger({ out }).warn("secret guard redacted request", { dlpRedacted: true, redactions: 2, secretTypes: ["openai_api_key"] });
+  assert.match(lines.join(""), /dlpRedacted=true/);
+  assert.match(lines.join(""), /redactions=2/);
 });
