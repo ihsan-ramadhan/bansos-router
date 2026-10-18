@@ -6,12 +6,14 @@ export interface DaemonStatus {
   port: number;
   modelCount: number;
   models: string[];
+  providers?: Array<{ id: string; models: number; allowed: boolean }>;
   relay: {
     enabled: boolean;
     url: string;
   };
   security?: {
     mode: "normal" | "strict";
+    dlp?: "redact" | "block";
     allowedUpstreams: string[];
     allowCrossProviderFailover: boolean;
   };

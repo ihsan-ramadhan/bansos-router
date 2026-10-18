@@ -2,6 +2,19 @@ import type { ModelItem, PingResult } from "../../types";
 import { Loader2, CheckCircle2, AlertTriangle, XCircle, Sparkles, Check, Copy, Zap, Eye } from "lucide-preact";
 import { formatTokens, getProviderBadgeColor } from "../../utils/models";
 
+const BLOCKED_TITLE = "Strict mode refuses this provider. Allow it under Settings > Allowed providers.";
+
+function BlockedBadge() {
+  return (
+    <span
+      className="text-[9px] sm:text-[10px] px-1.5 py-0.2 sm:py-0.5 rounded-full border font-medium uppercase tracking-wider shrink-0 bg-amber-950/60 text-amber-300 border-amber-800/60"
+      title={BLOCKED_TITLE}
+    >
+      blocked
+    </span>
+  );
+}
+
 export function ModelPingStatusCell({ ping }: { ping?: PingResult }) {
   if (!ping || ping.status === "idle") {
     return <span className="text-[11px] text-[#52525b] font-mono">Untested</span>;
@@ -43,13 +56,14 @@ export function ModelPingStatusCell({ ping }: { ping?: PingResult }) {
 
 export interface ModelCatalogRowProps {
   model: ModelItem;
+  blocked?: boolean;
   ping?: PingResult;
   copiedId: string | null;
   onCopy: (id: string) => void;
   onPingModel: (model: ModelItem) => Promise<void>;
 }
 
-export function ModelCatalogRow({ model, ping, copiedId, onCopy, onPingModel }: ModelCatalogRowProps) {
+export function ModelCatalogRow({ model, blocked, ping, copiedId, onCopy, onPingModel }: ModelCatalogRowProps) {
   const contextLimit = model.context_window || model.context_length;
   const outputLimit = model.max_tokens || model.maxTokens;
   const provider = model.source || model.owned_by;
@@ -87,6 +101,7 @@ export function ModelCatalogRow({ model, ping, copiedId, onCopy, onPingModel }: 
                 {provider}
               </span>
             )}
+            {blocked && <BlockedBadge />}
           </div>
           {model.name && model.name !== model.id && (
             <span className="text-[10px] sm:text-[11px] text-[#71717a] truncate">{model.name}</span>
@@ -133,9 +148,9 @@ export function ModelCatalogRow({ model, ping, copiedId, onCopy, onPingModel }: 
         <button
           type="button"
           onClick={() => onPingModel(model)}
-          disabled={isPinging}
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#202026] hover:bg-[#282832] active:bg-[#1a1a20] border border-[#2a2a34] hover:border-[#383846] text-[11px] font-medium text-[#d4d4d8] hover:text-white transition cursor-pointer disabled:opacity-50"
-          title={`Ping live response from ${model.id}`}
+          disabled={isPinging || blocked}
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#202026] hover:bg-[#282832] active:bg-[#1a1a20] border border-[#2a2a34] hover:border-[#383846] text-[11px] font-medium text-[#d4d4d8] hover:text-white transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          title={blocked ? BLOCKED_TITLE : `Ping live response from ${model.id}`}
         >
           {isPinging ? (
             <Loader2 className="h-3 w-3 animate-spin text-[#3b82f6] shrink-0" />
@@ -151,13 +166,14 @@ export function ModelCatalogRow({ model, ping, copiedId, onCopy, onPingModel }: 
 
 export interface ModelCardProps {
   model: ModelItem;
+  blocked?: boolean;
   ping?: PingResult;
   copiedId: string | null;
   onCopy: (id: string) => void;
   onPingModel: (model: ModelItem) => Promise<void>;
 }
 
-export function ModelCard({ model, ping, copiedId, onCopy, onPingModel }: ModelCardProps) {
+export function ModelCard({ model, blocked, ping, copiedId, onCopy, onPingModel }: ModelCardProps) {
   const contextLimit = model.context_window || model.context_length;
   const outputLimit = model.max_tokens || model.maxTokens;
   const provider = model.source || model.owned_by;
@@ -197,6 +213,7 @@ export function ModelCard({ model, ping, copiedId, onCopy, onPingModel }: ModelC
               {provider}
             </span>
           )}
+          {blocked && <BlockedBadge />}
           {model.reasoning && (
             <span className="inline-flex items-center gap-0.5 text-[9px] font-medium text-emerald-400 bg-emerald-950/60 border border-emerald-800/50 px-1.5 py-0.2 rounded-md shrink-0">
               <Sparkles className="h-2.5 w-2.5 shrink-0" /> Think
@@ -230,9 +247,9 @@ export function ModelCard({ model, ping, copiedId, onCopy, onPingModel }: ModelC
           <button
             type="button"
             onClick={() => onPingModel(model)}
-            disabled={isPinging}
-            className="min-h-7 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-[#202026] hover:bg-[#282832] active:bg-[#1a1a20] border border-[#2a2a34] text-[11px] font-medium text-[#d4d4d8] hover:text-white transition cursor-pointer disabled:opacity-50 shrink-0"
-            title={`Ping live response from ${model.id}`}
+            disabled={isPinging || blocked}
+            className="min-h-7 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-[#202026] hover:bg-[#282832] active:bg-[#1a1a20] border border-[#2a2a34] text-[11px] font-medium text-[#d4d4d8] hover:text-white transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            title={blocked ? BLOCKED_TITLE : `Ping live response from ${model.id}`}
           >
             {isPinging ? (
               <Loader2 className="h-3 w-3 animate-spin text-[#3b82f6] shrink-0" />

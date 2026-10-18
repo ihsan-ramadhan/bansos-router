@@ -28,6 +28,11 @@ export function formatProviderLabel(provider: string): string {
   }
 }
 
+export function formatProviderShort(provider: string): string {
+  const short: Record<string, string> = { zen: "Zen", kilo: "Kilo", llm7: "LLM7", ovh: "OVH", local: "Local" };
+  return short[provider.toLowerCase()] ?? provider;
+}
+
 export function getProviderBadgeColor(provider: string): string {
   switch (provider.toLowerCase()) {
     case "opencode":

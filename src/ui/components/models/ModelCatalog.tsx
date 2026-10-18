@@ -23,6 +23,7 @@ function getSortIcon(currentField: string, activeField: string, asc: boolean) {
 
 export interface ModelCatalogProps {
   models: ModelItem[];
+  blockedSources?: ReadonlySet<string>;
   loading: boolean;
   onRefreshCatalog: () => void;
   refreshing: boolean;
@@ -37,6 +38,7 @@ export interface ModelCatalogProps {
 
 export function ModelCatalog({
   models,
+  blockedSources,
   loading,
   onRefreshCatalog,
   refreshing,
@@ -48,6 +50,7 @@ export function ModelCatalog({
   onCancelPing,
   onClearPings,
 }: ModelCatalogProps) {
+  const isBlocked = (m: ModelItem) => Boolean(blockedSources?.has(m.source || m.owned_by || ""));
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedProvider, setSelectedProvider] = useState<string>("all");
   const [activeHealthChip, setActiveHealthChip] = useState<HealthFilter>("all");
@@ -81,7 +84,7 @@ export function ModelCatalog({
   }, [models]);
 
   const filteredModels = useMemo(() => {
-    return filterAndSortModels({
+    const list = filterAndSortModels({
       models,
       searchQuery,
       selectedProvider,
@@ -91,7 +94,9 @@ export function ModelCatalog({
       sortAsc,
       pingResults,
     });
-  }, [models, searchQuery, selectedProvider, activeHealthChip, capabilityFilter, sortField, sortAsc, pingResults]);
+    if (sortField !== "default" || !blockedSources?.size) return list;
+    return [...list.filter((m) => !isBlocked(m)), ...list.filter(isBlocked)];
+  }, [models, blockedSources, searchQuery, selectedProvider, activeHealthChip, capabilityFilter, sortField, sortAsc, pingResults]);
 
   function handleSort(field: "model" | "reasoning" | "context" | "maxOutput" | "latency") {
     if (sortField === field) {
@@ -168,6 +173,7 @@ export function ModelCatalog({
       <ModelCatalogRow
         key={model.id}
         model={model}
+        blocked={isBlocked(model)}
         ping={pingResults[model.id]}
         copiedId={copiedId}
         onCopy={handleCopy}
@@ -198,6 +204,7 @@ export function ModelCatalog({
           <ModelCard
             key={model.id}
             model={model}
+            blocked={isBlocked(model)}
             ping={pingResults[model.id]}
             copiedId={copiedId}
             onCopy={handleCopy}
@@ -228,7 +235,7 @@ export function ModelCatalog({
         isPingingAll={isPingingAll}
         pingProgress={pingProgress}
         onCancelPing={onCancelPing}
-        onPingAll={() => onPingAll(filteredModels)}
+        onPingAll={() => onPingAll(filteredModels.filter((m) => !isBlocked(m)))}
         filteredCount={filteredModels.length}
         refreshing={refreshing}
         onRefreshCatalog={onRefreshCatalog}

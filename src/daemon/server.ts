@@ -36,6 +36,8 @@ import {
   type RelayState,
 } from "../relay/egress";
 import { ADAPTERS, findAdapter } from "../adapters";
+import { harnessStatuses } from "../cli/doctor";
+import { ADMIN_PATHS, handleAdmin, type AdminOptions } from "./admin";
 import { createSseFrameSplitter, readSseStream } from "../protocols/stream";
 import { callerToolsFromBody, type CallerTools, type Translator } from "../protocols/tool-bridge";
 import type { RuntimeCatalog } from "./catalog";
@@ -49,12 +51,23 @@ export interface StatusPayload {
   port: number;
   modelCount: number;
   models: string[];
+  providers: Array<{ id: string; models: number; allowed: boolean }>;
   relay?: { enabled: boolean; url: string };
   security?: {
     mode: "normal" | "strict";
+    dlp: "redact" | "block";
     allowedUpstreams: string[];
     allowCrossProviderFailover: boolean;
   };
+}
+
+export function providerCounts(
+  catalog: RuntimeCatalog,
+  security: SecurityConfig,
+): Array<{ id: string; models: number; allowed: boolean }> {
+  const counts = new Map<string, number>();
+  for (const m of catalog.models) counts.set(m.source, (counts.get(m.source) ?? 0) + 1);
+  return [...counts].map(([id, models]) => ({ id, models, allowed: isUpstreamAllowed(security, id) }));
 }
 
 export interface ServerOptions {
@@ -65,6 +78,7 @@ export interface ServerOptions {
   startedAt: number;
   security?: SecurityConfig;
   activity?: ActivityStore;
+  admin?: Partial<Omit<AdminOptions, "security" | "catalog" | "port">>;
 }
 
 const ALLOWED_METHODS = new Set(["GET", "POST", "OPTIONS"]);
@@ -148,6 +162,7 @@ const API_EXACT_PATHS = new Set([
   "/bansos/usage/",
   "/bansos/events",
   "/bansos/events/",
+  ...[...ADMIN_PATHS].flatMap((p) => [p, `${p}/`]),
   "/chat/completions",
   "/chat/completions/",
   "/messages",
@@ -1945,6 +1960,14 @@ export function createServer(opts: ServerOptions): http.Server {
   const { catalog, rateLimiter, port, log, startedAt } = opts;
   const security = opts.security ?? DEFAULT_SECURITY_CONFIG;
   activity = opts.activity ?? new ActivityStore();
+  const adminOptions: AdminOptions = {
+    bind: "127.0.0.1",
+    refreshIntervalMs: 0,
+    ...opts.admin,
+    security,
+    catalog,
+    port,
+  };
 
   const visibleRelayState = () => {
     const relay = loadRelayState();
@@ -2045,9 +2068,11 @@ export function createServer(opts: ServerOptions): http.Server {
         port,
         modelCount: catalog.models.length,
         models: catalog.models.map((m) => m.id),
+        providers: providerCounts(catalog, security),
         relay: { enabled: relay.enabled, url: relay.url },
         security: {
           mode: security.mode,
+          dlp: security.dlp,
           allowedUpstreams: security.allowedUpstreams,
           allowCrossProviderFailover: security.allowCrossProviderFailover,
         },
@@ -2074,6 +2099,7 @@ export function createServer(opts: ServerOptions): http.Server {
 
 
     if (method === "GET" && (url === "/bansos/adapters")) {
+      const statuses = harnessStatuses();
       sendJson(
         res,
         200,
@@ -2082,6 +2108,7 @@ export function createServer(opts: ServerOptions): http.Server {
           name: a.name,
           wire: a.wire,
           configPaths: a.configPaths,
+          status: statuses.find((h) => h.id === a.id)?.status ?? "missing",
         })),
       );
       return;
@@ -2205,6 +2232,23 @@ export function createServer(opts: ServerOptions): http.Server {
         res,
         log,
         "relay probe",
+      );
+      return;
+    }
+
+    if (ADMIN_PATHS.has(url)) {
+      void runRequest(
+        handleAdmin(req, method, url, rawUrl, () => readBody(req, 1024 * 1024), adminOptions).then((result) => {
+          sendJson(res, result.status, result.body);
+          const after = result.after;
+          if (after) {
+            if (res.writableFinished) setImmediate(after);
+            else res.once("finish", after);
+          }
+        }),
+        res,
+        log,
+        "settings",
       );
       return;
     }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "preact/hooks";
 import type { DaemonStatus } from "../../types";
 import { Server, Cpu, Clock, ShieldCheck, ShieldAlert } from "lucide-preact";
+import { formatProviderLabel, formatProviderShort } from "../../utils/models";
 
 interface MetricCardsProps {
   status: DaemonStatus | null;
@@ -10,6 +11,11 @@ interface MetricCardsProps {
 
 export function MetricCards({ status, loading, daemonAddress }: MetricCardsProps) {
   const isOnline = Boolean(status);
+  const providers = status?.providers ?? [];
+  const usable = providers.filter((p) => p.allowed);
+  const blocked = providers.filter((p) => !p.allowed);
+  const usableCount = status?.providers ? usable.reduce((n, p) => n + p.models, 0) : (status?.modelCount ?? 0);
+  const strict = status?.security?.mode === "strict";
 
   const [liveUptime, setLiveUptime] = useState<number>(status?.uptimeSeconds ?? 0);
 
@@ -85,14 +91,26 @@ export function MetricCards({ status, loading, daemonAddress }: MetricCardsProps
             </div>
           </div>
           <div className="text-base sm:text-lg font-bold text-white tracking-tight flex items-baseline gap-1.5">
-            <span>{status?.modelCount ?? 0}</span>
+            <span>{usableCount}</span>
             <span className="text-xs font-normal text-[#a1a1aa]">Available</span>
           </div>
         </div>
-        <div className="text-[11px] sm:text-xs text-[#71717a] mt-1.5 truncate">
-          {status?.models && status.models.length > 0
-            ? "Zen, Kilo, LLM7, OVH, Local ready"
-            : "Keyless coding models ready"}
+        <div
+          className="text-[11px] sm:text-xs text-[#71717a] mt-1.5 truncate"
+          title={providers
+            .map((p) => `${formatProviderLabel(p.id)}: ${p.models}${p.allowed ? "" : " (blocked by strict mode)"}`)
+            .join("\n") || undefined}
+        >
+          {usable.length > 0
+            ? usable.map((p) => `${formatProviderShort(p.id)} ${p.models}`).join(" · ")
+            : isOnline
+              ? blocked.length > 0
+                ? "No allowed provider in strict mode"
+                : "No models yet. Refresh the catalog."
+              : "Start bansos to load models"}
+          {usable.length > 0 && blocked.length > 0 && (
+            <span className="text-amber-300/80"> · {blocked.map((p) => formatProviderShort(p.id)).join(", ")} blocked</span>
+          )}
         </div>
       </div>
 
@@ -111,13 +129,22 @@ export function MetricCards({ status, loading, daemonAddress }: MetricCardsProps
             {uptimeText}
           </div>
         </div>
-        {isOnline ? (
+        {isOnline && strict ? (
+          <div
+            className="text-[11px] sm:text-xs text-[#9393a0] mt-1.5 truncate"
+            title="Strict mode: only allowed providers get requests and cross-provider failover is off"
+          >
+            Strict · {status?.security?.dlp === "block" ? "blocks" : "redacts"} secrets · no failover
+          </div>
+        ) : isOnline && status?.security?.allowCrossProviderFailover !== false ? (
           <div
             className="text-[11px] sm:text-xs text-emerald-400 mt-1.5 flex items-center gap-1 font-medium truncate"
-            title="Automatic fallback to backup models when encountering rate limits (429) or upstream errors"
+            title="When a model answers 429 or 5xx, bansos retries on a similar model from another provider"
           >
-            <span className="text-[10px]">●</span> Auto-failover active
+            <span className="text-[10px]">●</span> Auto-failover on
           </div>
+        ) : isOnline ? (
+          <div className="text-[11px] sm:text-xs text-[#9393a0] mt-1.5 truncate">Failover off</div>
         ) : (
           <div className="text-[11px] sm:text-xs text-[#71717a] mt-1.5 truncate">
             Daemon stopped

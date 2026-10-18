@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "preact/hooks";
-import type { AdapterSummary, AdapterRenderResponse, ModelItem } from "../../types";
-import { fetchAdapters, renderAdapter } from "../../services/api";
+import type { AdapterSummary, AdapterRenderResponse, ModelItem, SetupResult } from "../../types";
+import { applyHarness, fetchAdapters, renderAdapter } from "../../services/api";
 import {
   Wrench,
   Copy,
@@ -9,6 +9,9 @@ import {
   ChevronDown,
   Code2,
   Cpu,
+  Loader2,
+  Undo2,
+  TriangleAlert,
 } from "lucide-preact";
 import { getWireBadge } from "../../utils/agent";
 import { AgentAdapterSelector } from "./AgentSelector";
@@ -32,6 +35,35 @@ export function AgentSetup({ models, daemonPort }: AgentSetupProps) {
   const [adapterSearchQuery, setAdapterSearchQuery] = useState<string>("");
   const [modelDropdownOpen, setModelDropdownOpen] = useState<boolean>(false);
   const [modelSearchQuery, setModelSearchQuery] = useState<string>("");
+  const [applying, setApplying] = useState<"apply" | "undo" | null>(null);
+  const [confirmUndo, setConfirmUndo] = useState(false);
+  const [setupResult, setSetupResult] = useState<SetupResult | null>(null);
+  const [setupError, setSetupError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSetupResult(null);
+    setSetupError(null);
+    setConfirmUndo(false);
+  }, [selectedAdapterId]);
+
+  async function handleSetup(undo: boolean) {
+    setConfirmUndo(false);
+    setApplying(undo ? "undo" : "apply");
+    setSetupError(null);
+    try {
+      const res = await applyHarness(selectedAdapterId, { model: undo ? undefined : selectedModel || undefined, undo });
+      setSetupResult(res);
+      if (res.harness) {
+        const status = res.harness.status;
+        setAdapters((list) => list.map((a) => (a.id === selectedAdapterId ? { ...a, status } : a)));
+      }
+    } catch (err) {
+      setSetupResult(null);
+      setSetupError(err instanceof Error ? err.message : "Setup failed");
+    } finally {
+      setApplying(null);
+    }
+  }
 
   useEffect(() => {
     async function loadAdapters() {
@@ -302,6 +334,88 @@ export function AgentSetup({ models, daemonPort }: AgentSetupProps) {
               )}
             </button>
           </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-[#23232a]">
+            <div className="text-[11px] text-[#9393a0] min-w-0">
+              {activeAdapter?.status === "configured" ? (
+                <span className="text-emerald-400">{activeAdapter.name} already points at bansos.</span>
+              ) : activeAdapter?.status === "unconfigured" ? (
+                <span className="text-amber-300">{activeAdapter.name} has a config file, but bansos is not in it yet.</span>
+              ) : (
+                <span>Or let bansos write the config for you on the machine it runs on.</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {confirmUndo ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmUndo(false)}
+                    className="px-3 min-h-9 rounded-md bg-[#202026] border border-[#2e2e38] text-xs text-[#d4d4d8] hover:text-white cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSetup(true)}
+                    className="px-3 min-h-9 rounded-md bg-rose-600 hover:bg-rose-500 text-xs font-semibold text-white cursor-pointer"
+                  >
+                    Remove bansos config
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmUndo(true)}
+                    disabled={applying !== null || activeAdapter?.status === "missing"}
+                    className="inline-flex items-center gap-1.5 px-3 min-h-9 rounded-md bg-[#202026] hover:bg-[#282832] border border-[#2e2e38] text-xs font-medium text-[#d4d4d8] hover:text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {applying === "undo" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />}
+                    <span>Undo</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSetup(false)}
+                    disabled={applying !== null || !activeAdapter}
+                    className="inline-flex items-center gap-1.5 px-3 min-h-9 rounded-md bg-[#2b64e0] hover:bg-[#3a72ec] text-xs font-semibold text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {applying === "apply" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                    <span>{activeAdapter?.status === "configured" ? "Apply again" : "Apply"}</span>
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {setupError && (
+            <p className="text-xs text-rose-300 flex items-center gap-1.5">
+              <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+              {setupError}
+            </p>
+          )}
+
+          {setupResult && (
+            <ul className="rounded-lg bg-[#111113] border border-[#23232a] p-3 space-y-1 text-[11px] font-mono">
+              {setupResult.lines.length === 0 && <li className="text-[#71717a]">Nothing to change.</li>}
+              {setupResult.lines.map((line, i) => (
+                <li
+                  key={i}
+                  className={`break-all ${
+                    line.kind === "ok"
+                      ? "text-emerald-400"
+                      : line.kind === "error"
+                        ? "text-rose-300"
+                        : line.kind === "removed"
+                          ? "text-amber-200"
+                          : "text-[#9393a0]"
+                  }`}
+                >
+                  {line.kind === "ok" ? "✓" : line.kind === "skip" ? "·" : "✗"} {line.text}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         {/* Generated config files */}

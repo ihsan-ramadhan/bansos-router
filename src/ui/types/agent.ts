@@ -3,6 +3,7 @@ export interface AdapterSummary {
   name: string;
   wire: "chat" | "anthropic" | "responses";
   configPaths: string[];
+  status?: "configured" | "unconfigured" | "missing";
 }
 
 export interface ConfigWriteResult {

@@ -13,6 +13,8 @@ export const BANSOS_DIR = path.join(os.homedir(), ".bansos");
 export const CONFIG_FILE = path.join(BANSOS_DIR, "config.json");
 export const STATE_FILE = path.join(BANSOS_DIR, "state.json");
 export const RELAY_STATE_FILE = path.join(BANSOS_DIR, "relay-state.json");
+export const LOG_DIR = path.join(BANSOS_DIR, "logs");
+export const LOG_FILE = path.join(LOG_DIR, "bansosd.log");
 
 export interface BansosConfig {
   port: number;
@@ -46,10 +48,10 @@ export function effectiveBind(): string {
   return typeof state?.bind === "string" ? state.bind : loadConfig().bind;
 }
 
-function readRawConfig(): { raw: Partial<BansosConfig> | null; invalid: boolean } {
+export function readRawConfig(file = CONFIG_FILE): { raw: Partial<BansosConfig> | null; invalid: boolean } {
   let text: string;
   try {
-    text = fs.readFileSync(CONFIG_FILE, "utf8");
+    text = fs.readFileSync(file, "utf8");
   } catch {
     return { raw: null, invalid: false };
   }
@@ -62,16 +64,16 @@ function readRawConfig(): { raw: Partial<BansosConfig> | null; invalid: boolean 
   }
 }
 
-export function loadConfigWarnings(): string[] {
-  const { raw, invalid } = readRawConfig();
+export function loadConfigWarnings(file = CONFIG_FILE): string[] {
+  const { raw, invalid } = readRawConfig(file);
   if (invalid) {
-    return [`${CONFIG_FILE} is not a valid JSON object; using defaults (normal mode, strict protections OFF).`];
+    return [`${file} is not a valid JSON object; using defaults (normal mode, strict protections OFF).`];
   }
   return securityConfigWarnings(raw?.security);
 }
 
-export function loadConfig(): BansosConfig {
-  const { raw } = readRawConfig();
+export function loadConfig(file = CONFIG_FILE): BansosConfig {
+  const { raw } = readRawConfig(file);
   if (!raw) return { ...DEFAULT_CONFIG };
   return {
     ...DEFAULT_CONFIG,

@@ -4,3 +4,4 @@ export * from "./agent";
 export * from "./relay";
 export * from "./playground";
 export * from "./activity";
+export * from "./settings";

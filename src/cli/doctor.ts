@@ -35,23 +35,13 @@ export async function runDoctor(_argv: string[]): Promise<number> {
   }
 
   // 2. per-harness config files.
-  for (const adapter of ADAPTERS) {
-    const found = adapter.configPaths
-      .map(expandHome)
-      .find((p) => fs.existsSync(p));
-
-    if (!found) {
-      console.log(`· ${adapter.id.padEnd(12)} not configured (bansos setup ${adapter.id})`);
-      continue;
-    }
-    const content = fs.readFileSync(found, "utf8");
-    const configured = adapter.undoKeys
-      ? hasKeys(content, adapter.undoKeys)
-      : content.includes(START_MARKER);
-    if (configured) {
-      console.log(`✓ ${adapter.id.padEnd(12)} configured (${found})`);
+  for (const h of harnessStatuses()) {
+    if (h.status === "missing") {
+      console.log(`· ${h.id.padEnd(12)} not configured (bansos setup ${h.id})`);
+    } else if (h.status === "configured") {
+      console.log(`✓ ${h.id.padEnd(12)} configured (${h.path})`);
     } else {
-      console.log(`· ${adapter.id.padEnd(12)} file exists but no bansos config (${found})`);
+      console.log(`· ${h.id.padEnd(12)} file exists but no bansos config (${h.path})`);
     }
   }
 
@@ -62,6 +52,23 @@ export async function runDoctor(_argv: string[]): Promise<number> {
   }
 
   return failures > 0 ? 1 : 0;
+}
+
+export type HarnessStatus = { id: string; status: "configured" | "unconfigured" | "missing"; path?: string };
+
+export function harnessStatuses(): HarnessStatus[] {
+  return ADAPTERS.map((adapter) => {
+    const found = adapter.configPaths.map(expandHome).find((p) => fs.existsSync(p));
+    if (!found) return { id: adapter.id, status: "missing" };
+    let content = "";
+    try {
+      content = fs.readFileSync(found, "utf8");
+    } catch {
+      return { id: adapter.id, status: "unconfigured", path: found };
+    }
+    const configured = adapter.undoKeys ? hasKeys(content, adapter.undoKeys) : content.includes(START_MARKER);
+    return { id: adapter.id, status: configured ? "configured" : "unconfigured", path: found };
+  });
 }
 
 function hasKeys(content: string, keys: string[]): boolean {

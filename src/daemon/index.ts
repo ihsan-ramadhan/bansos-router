@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import http from "node:http";
 import fs from "node:fs";
-import path from "node:path";
 import stream from "node:stream";
 import { spawn } from "node:child_process";
 import {
@@ -9,7 +8,8 @@ import {
   loadConfigWarnings,
   writeJsonAtomic,
   STATE_FILE,
-  BANSOS_DIR,
+  LOG_DIR,
+  LOG_FILE,
   type BansosConfig,
 } from "./state";
 import { createLogger } from "../logger";
@@ -23,9 +23,6 @@ import { createServer } from "./server";
 
 export const DEFAULT_PORT = 17070;
 export const MAX_PORT = 17090;
-
-const LOG_DIR = path.join(BANSOS_DIR, "logs");
-const LOG_FILE = path.join(LOG_DIR, "bansosd.log");
 
 // C1: rotate the log past MAX_LOG_BYTES, keeping MAX_LOG_BACKUPS; best-effort
 const MAX_LOG_BYTES = 5 * 1024 * 1024;
@@ -107,12 +104,28 @@ Options:
   return args;
 }
 
+interface Running {
+  server: http.Server;
+  port: number;
+  catalog: RuntimeCatalog;
+  refreshTimer?: NodeJS.Timeout;
+}
+
+interface DaemonFlags {
+  port: boolean;
+  bind: boolean;
+  unsafeAllowNonLoopback: boolean;
+}
+
 function startServer(
   port: number,
   bind: string,
   config: BansosConfig,
   log: ReturnType<typeof createLogger>,
-): Promise<{ server: http.Server; port: number; catalog: RuntimeCatalog }> {
+  activity: ActivityStore,
+  flags: DaemonFlags,
+  restart: () => void,
+): Promise<Running> {
   const upstreams = buildUpstreams(config.localUpstreams);
   const catalog = new RuntimeCatalog(upstreams, log, config.security);
 
@@ -124,7 +137,6 @@ function startServer(
     limit: Number(process.env.BANSOS_RATE_LIMIT) || 300,
     windowMs: 60_000,
   });
-  const activity = new ActivityStore();
 
   const server = createServer({
     catalog,
@@ -134,23 +146,25 @@ function startServer(
     startedAt,
     security: config.security,
     activity,
+    admin: { bind, refreshIntervalMs: config.refreshIntervalMs, flags, restart },
   });
-
-  // refresh on the interval; the first refresh runs in main() after the server listens
-  if (config.refreshIntervalMs > 0) {
-    setInterval(() => void catalog.refresh(), config.refreshIntervalMs);
-  }
 
   return new Promise((resolve, reject) => {
     server.once("error", (err: NodeJS.ErrnoException) => {
       if (err.code === "EADDRINUSE" && port < MAX_PORT) {
         log.warn(`port ${port} busy - trying ${port + 1}`);
-        resolve(startServer(port + 1, bind, config, log));
+        resolve(startServer(port + 1, bind, config, log, activity, flags, restart));
         return;
       }
       reject(err);
     });
-    server.listen(port, bind, () => resolve({ server, port, catalog }));
+    server.listen(port, bind, () => {
+      // the first refresh runs in boot() after the server listens
+      const refreshTimer = config.refreshIntervalMs > 0
+        ? setInterval(() => void catalog.refresh(), config.refreshIntervalMs)
+        : undefined;
+      resolve({ server, port, catalog, refreshTimer });
+    });
   });
 }
 
@@ -221,38 +235,87 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
 
+  const activity = new ActivityStore();
+  const flags: DaemonFlags = {
+    port: args.port !== undefined,
+    bind: args.bind !== undefined,
+    unsafeAllowNonLoopback: args.unsafeAllowNonLoopback,
+  };
+  let current: (Running & { config: BansosConfig }) | null = null;
+  let restarting = false;
+
+  const boot = async (cfg: BansosConfig): Promise<void> => {
+    const wantPort = args.port ?? cfg.port ?? DEFAULT_PORT;
+    const wantBind = args.bind ?? cfg.bind;
+    assertBindAllowed(wantBind, cfg.security, args.unsafeAllowNonLoopback);
+    const running = await startServer(wantPort, wantBind, cfg, log, activity, flags, () => void restart());
+    current = { ...running, config: cfg };
+    const actualPort = running.port;
+    log.info(`bansosd listening on http://${wantBind}:${actualPort}`);
+
+    // publish the bound port before the first refresh; the --bg parent polls state.json for only 5s
+    writeJsonAtomic(STATE_FILE, {
+      pid: process.pid,
+      port: actualPort,
+      bind: wantBind,
+      startedAt: Date.now(),
+    });
+
+    // banner goes through the tee, not stdout, so a bg child's banner still reaches `bansos logs`
+    if (process.env.BANSOS_LOG !== "json") {
+      out.write(
+        `\n● bansosd online (port ${actualPort})\n` +
+        `  ├── Web UI   : http://${wantBind}:${actualPort}\n` +
+        `  └── API Base : http://${wantBind}:${actualPort}/v1\n\n`
+      );
+    }
+
+    await running.catalog.refresh();
+
+    if (process.env.BANSOS_LOG !== "json") {
+      out.write(
+        `  └── Models   : ${running.catalog.models.length} alive (${[...new Set(running.catalog.models.map((m) => m.source))].join(", ")})\n\n`
+      );
+    }
+  };
+
+  const stop = (running: Running): Promise<void> => {
+    clearInterval(running.refreshTimer);
+    return new Promise((resolve) => {
+      running.server.close(() => resolve());
+      running.server.closeAllConnections();
+    });
+  };
+
+  const restart = async (): Promise<void> => {
+    if (restarting || !current) return;
+    restarting = true;
+    const previous = current;
+    log.info("restarting with the saved config");
+    try {
+      await stop(previous);
+      for (const warning of loadConfigWarnings()) log.warn(warning);
+      await boot(loadConfig());
+    } catch (err) {
+      log.error(`restart failed: ${String((err as Error)?.message ?? err)}; starting again with the previous settings`);
+      try {
+        await boot(previous.config);
+      } catch (fallbackErr) {
+        log.error(`could not start again: ${String((fallbackErr as Error)?.message ?? fallbackErr)}`);
+        process.exit(1);
+      }
+    } finally {
+      restarting = false;
+    }
+  };
+
   for (const warning of loadConfigWarnings()) log.warn(warning);
-  const { server, port: actualPort, catalog } = await startServer(port, bind, config, log);
-  log.info(`bansosd listening on http://${bind}:${actualPort}`);
-
-  // publish the bound port before the first refresh; the --bg parent polls state.json for only 5s
-  writeJsonAtomic(STATE_FILE, {
-    pid: process.pid,
-    port: actualPort,
-    bind,
-    startedAt: Date.now(),
-  });
-
-  // banner goes through the tee, not stdout, so a bg child's banner still reaches `bansos logs`
-  if (process.env.BANSOS_LOG !== "json") {
-    out.write(
-      `\n● bansosd online (port ${actualPort})\n` +
-      `  ├── Web UI   : http://${bind}:${actualPort}\n` +
-      `  └── API Base : http://${bind}:${actualPort}/v1\n\n`
-    );
-  }
-
-  await catalog.refresh();
-
-  if (process.env.BANSOS_LOG !== "json") {
-    out.write(
-      `  └── Models   : ${catalog.models.length} alive (${[...new Set(catalog.models.map((m) => m.source))].join(", ")})\n\n`
-    );
-  }
+  await boot(config);
 
   const shutdown = () => {
     log.info("shutting down");
-    server.close(() => process.exit(0));
+    if (!current) process.exit(0);
+    current.server.close(() => process.exit(0));
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);

@@ -162,7 +162,18 @@ function undo9RouterSqlite(dbPath: string): boolean {
   }
 }
 
-function applyAdapter(adapter: HarnessAdapter, ctx: SetupContext): number {
+export type SetupLine = { kind: "ok" | "removed" | "skip" | "error"; text: string };
+export type SetupReport = (line: SetupLine) => void;
+
+const SETUP_SYMBOL: Record<SetupLine["kind"], string> = { ok: "✓", removed: "✗", skip: "·", error: "✗" };
+
+function printSetupLine(line: SetupLine): void {
+  const out = `  ${SETUP_SYMBOL[line.kind]} ${line.text}`;
+  if (line.kind === "error") console.error(out);
+  else console.log(out);
+}
+
+export function applyAdapter(adapter: HarnessAdapter, ctx: SetupContext, report: SetupReport = printSetupLine): number {
   let failed = 0;
   for (const write of adapter.render(ctx)) {
     const targetPath = resolveTargetFile(adapter, write.path);
@@ -175,7 +186,7 @@ function applyAdapter(adapter: HarnessAdapter, ctx: SetupContext): number {
       try {
         content = applyMergeWrite(existing, write.content, write.replace);
       } catch {
-        console.error(`  ✗ ${targetPath}: existing file is not valid JSON, skipping`);
+        report({ kind: "error", text: `${targetPath}: existing file is not valid JSON, skipping` });
         failed++;
         continue;
       }
@@ -185,7 +196,7 @@ function applyAdapter(adapter: HarnessAdapter, ctx: SetupContext): number {
       try {
         content = applyYamlBlockWrite(existing ?? "", write.content, write.markers!, write.yamlParent!);
       } catch (err) {
-        console.error(`  ✗ ${targetPath}: ${(err as Error).message}`);
+        report({ kind: "error", text: `${targetPath}: ${(err as Error).message}` });
         failed++;
         continue;
       }
@@ -193,20 +204,20 @@ function applyAdapter(adapter: HarnessAdapter, ctx: SetupContext): number {
       content = applyBlockWrite(existing ?? "", write.content, write.markers!);
     }
     writeConfig(targetPath, content);
-    console.log(`  ✓ wrote ${targetPath}`);
+    report({ kind: "ok", text: `wrote ${targetPath}` });
   }
 
   if (adapter.id === "9router") {
     const sqlitePath = expandHome("~/.9router/db/data.sqlite");
     if (fs.existsSync(sqlitePath) && update9RouterSqlite(sqlitePath, ctx)) {
-      console.log("  ✓ updated ~/.9router/db/data.sqlite");
+      report({ kind: "ok", text: "updated ~/.9router/db/data.sqlite" });
     }
   }
 
   return failed;
 }
 
-function undoAdapter(adapter: HarnessAdapter, ctx: SetupContext): void {
+export function undoAdapter(adapter: HarnessAdapter, ctx: SetupContext, report: SetupReport = printSetupLine): void {
   const candidatePaths = Array.from(new Set([...adapter.configPaths, ...adapter.undo(ctx)]));
   for (const writePath of candidatePaths) {
     const full = expandHome(writePath);
@@ -225,16 +236,16 @@ function undoAdapter(adapter: HarnessAdapter, ctx: SetupContext): void {
       try {
         obj = parseJsonc(existing);
       } catch {
-        console.log(`  · ${writePath} not valid JSON, skipping`);
+        report({ kind: "skip", text: `${writePath} not valid JSON, skipping` });
         continue;
       }
       removeKeys(obj, adapter.undoKeys);
       if (Object.keys(obj).length === 0) {
         fs.rmSync(full);
-        console.log(`  ✗ removed ${writePath}`);
+        report({ kind: "removed", text: `removed ${writePath}` });
       } else {
         writeConfig(writePath, `${JSON.stringify(obj, null, 2)}\n`);
-        console.log(`  ✗ ${writePath}: bansos keys removed`);
+        report({ kind: "removed", text: `${writePath}: bansos keys removed` });
       }
     } else {
       const first = adapter.render(ctx)[0];
@@ -244,10 +255,10 @@ function undoAdapter(adapter: HarnessAdapter, ctx: SetupContext): void {
           ? removeTomlBlock(existing, markers)
           : removeBlock(existing, markers);
         if (out === existing) {
-          console.log(`  · ${writePath}: no bansos block found`);
+          report({ kind: "skip", text: `${writePath}: no bansos block found` });
         } else {
           writeConfig(writePath, out);
-          console.log(`  ✗ ${writePath}: bansos block removed`);
+          report({ kind: "removed", text: `${writePath}: bansos block removed` });
         }
       }
     }
@@ -256,7 +267,7 @@ function undoAdapter(adapter: HarnessAdapter, ctx: SetupContext): void {
   if (adapter.id === "9router") {
     const sqlitePath = expandHome("~/.9router/db/data.sqlite");
     if (fs.existsSync(sqlitePath) && undo9RouterSqlite(sqlitePath)) {
-      console.log("  ✗ ~/.9router/db/data.sqlite: bansos keys removed");
+      report({ kind: "removed", text: "~/.9router/db/data.sqlite: bansos keys removed" });
     }
   }
 }

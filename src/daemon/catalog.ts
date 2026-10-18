@@ -51,6 +51,10 @@ export class RuntimeCatalog {
     return [...this.byId.values()];
   }
 
+  get upstreamIds(): string[] {
+    return this.upstreams.map((u) => u.id);
+  }
+
   // park a 429'd model so the next request skips it; Retry-After sets the time, else a minute
   markRateLimited(id: string, retryAfterMs?: number): void {
     const ms = Math.min(Math.max(retryAfterMs ?? DEFAULT_COOLDOWN_MS, 1_000), MAX_COOLDOWN_MS);

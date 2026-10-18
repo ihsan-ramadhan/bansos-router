@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useMemo, useState } from "preact/hooks";
 import type { NavTab } from "./components/common/AppHeader";
 import { AppHeader } from "./components/common/AppHeader";
 import { OfflineBanner } from "./components/common/OfflineBanner";
@@ -8,6 +8,8 @@ import { AgentSetup } from "./components/agent/AgentSetup";
 import { RelayManager } from "./components/relay/RelayManager";
 import { Playground } from "./components/playground/Playground";
 import { ActivityView } from "./components/activity/ActivityView";
+import { LogsView } from "./components/logs/LogsView";
+import { SettingsView } from "./components/settings/SettingsView";
 import { useDaemonStatus } from "./hooks/useDaemonStatus";
 import { usePing } from "./hooks/usePing";
 import { ExternalLink } from "lucide-preact";
@@ -39,6 +41,11 @@ export function App() {
     clearPingResults,
   } = usePing();
 
+  const blockedSources = useMemo(
+    () => new Set((status?.providers ?? []).filter((p) => !p.allowed).map((p) => p.id)),
+    [status?.providers],
+  );
+
   return (
     <div className="min-h-screen flex flex-col bg-[#111113] text-[#f4f4f6]">
       {/* Top Navbar */}
@@ -69,6 +76,7 @@ export function App() {
         <div className={activeTab === "models" ? "block" : "hidden"}>
           <ModelCatalog
             models={models}
+            blockedSources={blockedSources}
             loading={loadingModels}
             onRefreshCatalog={handleRefreshCatalog}
             refreshing={refreshingCatalog}
@@ -109,6 +117,14 @@ export function App() {
         {/* Tab 5: Activity & Usage */}
         <div className={activeTab === "activity" ? "block" : "hidden"}>
           <ActivityView />
+        </div>
+
+        <div className={activeTab === "logs" ? "block" : "hidden"}>
+          <LogsView active={activeTab === "logs"} />
+        </div>
+
+        <div className={activeTab === "settings" ? "block" : "hidden"}>
+          <SettingsView active={activeTab === "settings"} onApplied={() => void loadStatus()} />
         </div>
       </main>
 
