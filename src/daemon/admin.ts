@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import type http from "node:http";
 import net, { isIP } from "node:net";
-import { findAdapter } from "../adapters";
+import { buildSetupContext, findAdapter } from "../adapters";
+import { autostartStatus, disableAutostart, enableAutostart, type AutostartEnv } from "../cli/autostart";
 import { harnessStatuses } from "../cli/doctor";
 import { applyAdapter, undoAdapter, type SetupLine } from "../cli/setup";
 import {
@@ -11,7 +12,6 @@ import {
   type SecurityConfig,
 } from "../security/policy";
 import { checkUpdate, VERSION } from "../update";
-import { pickSmartDefaultModel } from "../upstreams/types";
 import type { RuntimeCatalog } from "./catalog";
 import { CONFIG_FILE, LOG_FILE, loadConfig, loadConfigWarnings, readRawConfig, writeJsonAtomic } from "./state";
 
@@ -26,6 +26,7 @@ export interface AdminOptions {
   restart?: () => void;
   configFile?: string;
   logFile?: string;
+  autostartEnv?: AutostartEnv;
 }
 
 export interface AdminResult {
@@ -40,6 +41,7 @@ export const ADMIN_PATHS = new Set([
   "/bansos/logs",
   "/bansos/doctor",
   "/bansos/adapters/apply",
+  "/bansos/autostart",
 ]);
 
 const MIN_REFRESH_MS = 60_000;
@@ -235,13 +237,12 @@ function applySetup(opts: AdminOptions, body: unknown): AdminResult {
     }
     model = body.model as string;
   }
-  const models = opts.catalog.servableModels;
-  const ctx = {
-    baseUrl: setupBaseUrl(opts.bind, opts.port),
-    defaultModel: model ?? pickSmartDefaultModel(models),
-    models,
-    specificModel: Boolean(model),
-  };
+  const list = (v: unknown) => (Array.isArray(v) && v.every((x) => typeof x === "string") ? v : v === undefined ? [] : null);
+  const ids = list(body.models);
+  const upstreams = list(body.upstreams);
+  if (!ids || !upstreams) return { status: 400, body: { error: { message: "models and upstreams must be lists of ids" } } };
+  const ctx = buildSetupContext(setupBaseUrl(opts.bind, opts.port), opts.catalog.servableModels, { model, models: ids, upstreams });
+  if ("error" in ctx) return { status: 400, body: { error: { message: ctx.error } } };
   const lines: SetupLine[] = [];
   const report = (line: SetupLine) => lines.push(line);
   let failed = 0;
@@ -324,6 +325,19 @@ export async function handleAdmin(
         harnesses: harnessStatuses(),
       },
     };
+  }
+
+  if (url === "/bansos/autostart" && method === "GET") return { status: 200, body: autostartStatus(opts.autostartEnv) };
+  if (url === "/bansos/autostart" && method === "POST") {
+    const parsed = await readJson();
+    if (!parsed.ok) return badJson;
+    const enabled = isRecord(parsed.value) ? parsed.value.enabled : undefined;
+    if (typeof enabled !== "boolean") return { status: 400, body: { error: { message: "enabled must be true or false" } } };
+    try {
+      return { status: 200, body: enabled ? enableAutostart(false, opts.autostartEnv) : disableAutostart(opts.autostartEnv) };
+    } catch (err) {
+      return { status: 409, body: { error: { message: (err as Error).message } } };
+    }
   }
 
   if (url === "/bansos/adapters/apply" && method === "POST") {

@@ -44,3 +44,59 @@ jobs:
 
       - name: Build (pi extension)
         run: cd extensions/pi && npm run build
+
+  windows:
+    name: Windows smoke (autostart, stop)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install and build
+        run: npm ci
+
+      - name: Start at login writes the Startup script
+        run: |
+          node dist/cli/index.js autostart on
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $script = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup\bansos-router.cmd"
+          if (-not (Test-Path $script)) { throw "missing $script" }
+          Get-Content $script
+
+      - name: The Startup script brings the daemon up and stop finds it without wmic
+        run: |
+          $script = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup\bansos-router.cmd"
+          & $script
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $up = $false
+          foreach ($i in 1..40) {
+            try { Invoke-WebRequest http://127.0.0.1:17070/healthz -UseBasicParsing -TimeoutSec 2 | Out-Null; $up = $true; break } catch { Start-Sleep -Milliseconds 500 }
+          }
+          if (-not $up) { throw "daemon did not come up" }
+          $status = node dist/cli/index.js autostart status --json | ConvertFrom-Json
+          if (-not $status.enabled -or $status.broken) { throw "unexpected status: $($status | ConvertTo-Json)" }
+
+          Remove-Item (Join-Path $HOME ".bansos\state.json")
+          $out = node dist/cli/index.js stop | Out-String
+          Write-Output $out
+          if ($out -notmatch "1 other daemon") { throw "the process scan did not find the daemon" }
+          node dist/cli/index.js stop --all
+          Start-Sleep -Seconds 1
+          $still = $true
+          try { Invoke-WebRequest http://127.0.0.1:17070/healthz -UseBasicParsing -TimeoutSec 2 | Out-Null } catch { $still = $false }
+          if ($still) { throw "daemon still up after stop --all" }
+
+      - name: Turning it off removes the Startup script
+        run: |
+          node dist/cli/index.js autostart off
+          $script = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup\bansos-router.cmd"
+          if (Test-Path $script) { throw "still there: $script" }

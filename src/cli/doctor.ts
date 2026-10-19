@@ -4,6 +4,7 @@ import { effectiveBind, effectivePort, loadConfig, loadConfigWarnings } from "..
 import { START_MARKER } from "../adapters/types";
 import { expandHome, parseJsonc } from "./write";
 import { checkUpdate } from "../update";
+import { autostartStatus } from "./autostart";
 
 export async function runDoctor(_argv: string[]): Promise<number> {
   const base = `http://${effectiveBind()}:${effectivePort()}`;
@@ -32,6 +33,16 @@ export async function runDoctor(_argv: string[]): Promise<number> {
   } else {
     const { mode, dlp } = loadConfig().security;
     console.log(`✓ security    ${mode} mode${mode === "strict" ? ` (dlp: ${dlp})` : ""}`);
+  }
+
+  const autostart = autostartStatus();
+  if (autostart.broken) {
+    console.error(`✗ autostart   points at a path that no longer exists (run: bansos autostart on)`);
+    failures++;
+  } else if (autostart.enabled) {
+    console.log(`✓ autostart   on (${autostart.manager})`);
+  } else {
+    console.log(`· autostart   off${autostart.supported ? " (bansos autostart on)" : ""}`);
   }
 
   // 2. per-harness config files.

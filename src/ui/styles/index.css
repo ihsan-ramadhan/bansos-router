@@ -52,14 +52,16 @@
   input[type="number"]::-webkit-outer-spin-button,
   input[type="number"]::-webkit-inner-spin-button {
     -webkit-appearance: none;
+    appearance: none;
     margin: 0;
   }
   input[type="number"] {
     -moz-appearance: textfield;
+    appearance: textfield;
   }
 
   /* Reset appearance on forms */
-  input:not([type="range"]), select, textarea, button {
+  input:not([type="range"]):not([type="checkbox"]), select, textarea, button {
     font-family: inherit;
     appearance: none;
     -webkit-appearance: none;

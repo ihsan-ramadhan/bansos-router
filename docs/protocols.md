@@ -28,6 +28,7 @@
 | `POST /bansos/restart` | bansos JSON | restart with the saved config (admin) |
 | `GET /bansos/logs` | bansos JSON | tail of the daemon log (admin) |
 | `GET /bansos/doctor` | bansos JSON | doctor report for the Web UI (admin) |
+| `GET/POST /bansos/autostart` | bansos JSON | start-at-login status and toggle (admin) |
 
 Admin routes answer loopback peers only (see `architecture.md` §3.1).
 

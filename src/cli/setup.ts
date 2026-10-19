@@ -1,11 +1,11 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { ADAPTERS, findAdapter } from "../adapters";
+import { ADAPTERS, buildSetupContext, findAdapter } from "../adapters";
 import type { HarnessAdapter, SetupContext } from "../adapters/types";
 import { effectiveBind, effectivePort } from "../daemon/state";
 import { SEEDED_MODELS } from "../upstreams";
-import { modelDef, pickSmartDefaultModel, type ModelDef } from "../upstreams/types";
+import { modelDef, type ModelDef } from "../upstreams/types";
 import {
   applyBlockWrite,
   applyMergeWrite,
@@ -22,16 +22,22 @@ import {
 interface SetupArgs {
   harnesses: string[];
   model?: string;
+  models: string[];
+  upstreams: string[];
   dryRun: boolean;
   undo: boolean;
 }
 
+const splitList = (v: string | undefined) => (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+
 function parseArgs(argv: string[]): SetupArgs {
-  const args: SetupArgs = { harnesses: [], dryRun: false, undo: false };
+  const args: SetupArgs = { harnesses: [], models: [], upstreams: [], dryRun: false, undo: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === undefined) continue;
     if (a === "--model") args.model = argv[++i];
+    else if (a === "--models") args.models.push(...splitList(argv[++i]));
+    else if (a === "--upstream") args.upstreams.push(...splitList(argv[++i]));
     else if (a === "--dry-run") args.dryRun = true;
     else if (a === "--undo") args.undo = true;
     else args.harnesses.push(a);
@@ -58,7 +64,7 @@ async function getSetupModels(baseUrl: string): Promise<{ models: ModelDef[]; fr
     const res = await fetch(`${baseUrl}/models`, { signal: AbortSignal.timeout(800) });
     if (res.ok) {
       const json = (await res.json()) as {
-        data?: Array<{ id: string; context_window?: number; max_tokens?: number; reasoning?: boolean; name?: string }>;
+        data?: Array<{ id: string; source?: string; context_window?: number; max_tokens?: number; reasoning?: boolean; name?: string }>;
       };
       if (Array.isArray(json.data) && json.data.length > 0) {
         return { fromDaemon: true, models: json.data.map((m) => {
@@ -67,7 +73,7 @@ async function getSetupModels(baseUrl: string): Promise<{ models: ModelDef[]; fr
           return modelDef({
             id: m.id,
             name: m.name ?? m.id,
-            source: "zen",
+            source: (m.source ?? "zen") as ModelDef["source"],
             reasoning: m.reasoning ?? false,
             contextWindow: m.context_window ?? 256_000,
             maxTokens: m.max_tokens ?? 32_000,
@@ -285,13 +291,11 @@ export async function runSetup(argv: string[]): Promise<number> {
   if (pinned && fromDaemon && !models.some((m) => m.id === pinned || m.id.endsWith(`/${pinned}`))) {
     console.warn(`bansos setup: "${pinned}" is not served by the daemon right now (not alive, or blocked by strict mode); writing it anyway`);
   }
-  const defaultModel = pinned ?? pickSmartDefaultModel(models);
-  const ctx: SetupContext = {
-    baseUrl,
-    defaultModel,
-    models,
-    specificModel: Boolean(args.model),
-  };
+  const ctx = buildSetupContext(baseUrl, models, { model: pinned, models: args.models, upstreams: args.upstreams });
+  if ("error" in ctx) {
+    console.error(`bansos setup: ${ctx.error}`);
+    return 1;
+  }
 
   let failed = 0;
   for (const id of args.harnesses) {

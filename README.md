@@ -47,6 +47,14 @@ Using both is harmless but redundant: the IDs differ (`bansos` vs `bansosr`), so
 
 Open `http://127.0.0.1:17070` in your browser for the Web UI dashboard: model catalog with live latency ping, harness setup (preview or apply in one click), relay manager, playground, activity and usage, daemon logs, and settings (security mode, catalog refresh, port and bind, restart, health check).
 
+### Start at login
+
+```bash
+bansos autostart on       # also: off, status
+```
+
+The daemon then starts whenever you log in, through the system's own service manager: a systemd user service on Linux, a LaunchAgent on macOS, a script in the Startup folder on Windows. On Linux and macOS it is also restarted if it crashes, while `bansos stop` still stops it for good. A daemon you are already running is left alone and the service takes over at the next login. The same switch is in the dashboard's Settings tab. On Linux, `loginctl enable-linger $USER` starts it at boot, before you log in.
+
 ### Always-on local protections
 
 These hold in every mode (not just strict):
@@ -89,8 +97,9 @@ docker compose up -d
 | `bansos ping [model] [--json]` | Probe live latency and rate-limit status of all models (or a specific model) |
 | `bansos refresh` | Ask the daemon to re-run health checks now |
 | `bansos usage [--json]` | Request counts and token totals per model and upstream (last 60 days) |
-| `bansos setup <harness...> [--model <id>] [--dry-run] [--undo]` | Write, update, or undo harness configs |
+| `bansos setup <harness...> [--model <id> \| --models <id,...> --upstream <id,...>] [--dry-run] [--undo]` | Write, update, or undo harness configs |
 | `bansos relay <on\|off\|status\|url\|use\|list\|remove>` | Manage relay egress |
+| `bansos autostart <on\|off\|status> [--json]` | Start the daemon when you log in (systemd / launchd / Startup folder) |
 | `bansos doctor` | Diagnose daemon reachability and harness config validity |
 | `bansos --version` | Print version |
 | `bansos <command> --help` / `bansos help <command>` | Per-command usage, defaults, exit codes, examples |
@@ -143,6 +152,8 @@ By default, `bansos setup` automatically configures intelligent defaults per har
 - **Multi-model harnesses** (`opencode`, `goose`, `openclaw`, `continue`): Registers all available models with the smart default (currently `muse-spark-1.3-contributor-free`) as primary.
 - **Discovery harnesses** (`9router`, `omp`): Register a provider that lists models from `/v1/models` itself.
 - **Single-model harnesses** (`aider`, `codex`, `hermes`, `antigravity`, `jcode`, `cline`, `roo`): Same smart default. Pass `--model <id>` to pin a specific model.
+
+To write only some models, pass `--models <id,...>` and/or `--upstream <id,...>` (every model of that upstream), for example `bansos setup opencode --upstream zen --models kilo-auto/free`. Claude Code then picks its Haiku, Sonnet and Opus tiers from that set. The dashboard's Agent Setup tab has the same picker, with a checkbox per model and per upstream.
 
 Context and max output are token counts. The seeded catalog is 40 models and the live one changes as upstreams rotate free tiers; run `bansos models` or `bansos ping` to see what is alive right now.
 

@@ -5,6 +5,7 @@ import type { ConfigState, DaemonSettings, NotificationType } from "../../types"
 import { fetchConfig, restartDaemon, saveConfig } from "../../services/api";
 import { getNotificationClasses } from "../../utils/relay";
 import { HealthCard } from "./HealthCard";
+import { AutostartCard } from "./AutostartCard";
 
 interface SettingsViewProps {
   active: boolean;
@@ -353,7 +354,7 @@ export function SettingsView({ active, onApplied }: SettingsViewProps) {
               label="Allowed providers"
               hint={security.allowedUpstreams.length === 0
                 ? <span className="text-rose-300">No provider is allowed, so every request will be refused.</span>
-                : "Models from other providers stay listed but are refused."}
+                : "Models from other providers are hidden from your coding agents and refused."}
             >
               <div className="flex flex-wrap gap-2">
                 {config.upstreams.map((id) => {
@@ -377,7 +378,7 @@ export function SettingsView({ active, onApplied }: SettingsViewProps) {
                     >
                       <span
                         className={`inline-flex h-4 w-4 items-center justify-center rounded border ${
-                          on ? "bg-[#2b64e0] border-[#2b64e0]" : "border-[#3a3a46]"
+                          on ? "bg-[#2b64e0] border-[#2b64e0]" : "border-[#71717a]"
                         }`}
                       >
                         {on && <Check className="h-3 w-3 text-white" />}
@@ -466,6 +467,8 @@ export function SettingsView({ active, onApplied }: SettingsViewProps) {
           <span>{saving ? "Saving..." : "Save changes"}</span>
         </button>
       </div>
+
+      <AutostartCard active={active} />
 
       <HealthCard active={active} />
     </div>

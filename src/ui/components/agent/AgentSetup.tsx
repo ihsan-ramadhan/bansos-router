@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from "preact/hooks";
-import type { AdapterSummary, AdapterRenderResponse, ModelItem, SetupResult } from "../../types";
+import { useState, useEffect, useMemo, useRef } from "preact/hooks";
+import type { AdapterSummary, AdapterRenderResponse, ModelItem, ModelPick, SetupResult } from "../../types";
 import { applyHarness, fetchAdapters, renderAdapter } from "../../services/api";
 import {
   Wrench,
@@ -13,20 +13,25 @@ import {
   Undo2,
   TriangleAlert,
 } from "lucide-preact";
-import { getWireBadge } from "../../utils/agent";
+import { getHarnessStrategy, getWireBadge, pickFromChecked, pickedModels, setupCommand } from "../../utils/agent";
 import { AgentAdapterSelector } from "./AgentSelector";
 import { AgentModelSelector } from "./AgentModelSelector";
+import { AgentModelChecklist } from "./AgentModelChecklist";
 import { AgentConfigViewer } from "./AgentConfigViewer";
 
 interface AgentSetupProps {
   models: ModelItem[];
   daemonPort: number;
+  onCatalogStale?: () => void;
 }
 
-export function AgentSetup({ models, daemonPort }: AgentSetupProps) {
+export function AgentSetup({ models, daemonPort, onCatalogStale }: AgentSetupProps) {
   const [adapters, setAdapters] = useState<AdapterSummary[]>([]);
   const [selectedAdapterId, setSelectedAdapterId] = useState<string>("opencode");
   const [selectedModel, setSelectedModel] = useState<string>("");
+  const [modelPick, setModelPick] = useState<ModelPick | null>(null);
+  const adapterTriggerRef = useRef<HTMLButtonElement>(null);
+  const modelTriggerRef = useRef<HTMLButtonElement>(null);
   const [renderData, setRenderData] = useState<AdapterRenderResponse | null>(null);
   const [rendering, setRendering] = useState<boolean>(false);
   const [copiedCli, setCopiedCli] = useState<boolean>(false);
@@ -39,6 +44,7 @@ export function AgentSetup({ models, daemonPort }: AgentSetupProps) {
   const [confirmUndo, setConfirmUndo] = useState(false);
   const [setupResult, setSetupResult] = useState<SetupResult | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
+  const [renderError, setRenderError] = useState<string | null>(null);
 
   useEffect(() => {
     setSetupResult(null);
@@ -46,12 +52,31 @@ export function AgentSetup({ models, daemonPort }: AgentSetupProps) {
     setConfirmUndo(false);
   }, [selectedAdapterId]);
 
+  const activeAdapter = useMemo(() => adapters.find((a) => a.id === selectedAdapterId), [adapters, selectedAdapterId]);
+  const mode = activeAdapter?.modelMode ?? "single";
+  const picksList = mode === "list" || mode === "tiered";
+  const picked = useMemo(() => (modelPick === null ? models : pickedModels(models, modelPick)), [models, modelPick]);
+  const checkedCount = picked.length;
+  const nothingChecked = picksList && checkedCount === 0;
+
+  const pick = useMemo<ModelPick>(() => {
+    if (mode === "discovery") return {};
+    if (mode === "single") return selectedModel ? { model: selectedModel } : {};
+    return modelPick === null ? {} : pickFromChecked(models, picked.map((m) => m.id));
+  }, [mode, selectedModel, modelPick, models, picked]);
+  const pickKey = JSON.stringify(pick);
+
+  function closeModelDropdown() {
+    setModelDropdownOpen(false);
+    modelTriggerRef.current?.focus();
+  }
+
   async function handleSetup(undo: boolean) {
     setConfirmUndo(false);
     setApplying(undo ? "undo" : "apply");
     setSetupError(null);
     try {
-      const res = await applyHarness(selectedAdapterId, { model: undo ? undefined : selectedModel || undefined, undo });
+      const res = await applyHarness(selectedAdapterId, undo ? { undo } : pick);
       setSetupResult(res);
       if (res.harness) {
         const status = res.harness.status;
@@ -81,18 +106,26 @@ export function AgentSetup({ models, daemonPort }: AgentSetupProps) {
   }, []);
 
   useEffect(() => {
-    if (!selectedAdapterId) return;
+    if (!selectedAdapterId || nothingChecked) return;
 
     let isMounted = true;
     async function fetchRender() {
       setRendering(true);
+      setRenderError(null);
       try {
-        const res = await renderAdapter(selectedAdapterId, selectedModel || undefined);
-        if (isMounted) {
-          setRenderData(res);
-        }
+        const res = await renderAdapter(selectedAdapterId, pick);
+        if (isMounted) setRenderData(res);
       } catch (err) {
-        console.error("Failed to render adapter:", err);
+        if (!isMounted) return;
+        setRenderData(null);
+        const message = err instanceof Error ? err.message : "Failed to render the config";
+        // the daemon refreshed its catalog after this page loaded; reload the list instead of waiting for the next poll
+        if (message.startsWith("unknown or unavailable model") && onCatalogStale) {
+          setRenderError("The model list just changed. Loading the new one...");
+          onCatalogStale();
+        } else {
+          setRenderError(message);
+        }
       } finally {
         if (isMounted) setRendering(false);
       }
@@ -102,17 +135,21 @@ export function AgentSetup({ models, daemonPort }: AgentSetupProps) {
     return () => {
       isMounted = false;
     };
-  }, [selectedAdapterId, selectedModel]);
+  }, [selectedAdapterId, pickKey, nothingChecked]);
 
-  const activeAdapter = useMemo(() => {
-    return adapters.find((a) => a.id === selectedAdapterId);
-  }, [adapters, selectedAdapterId]);
-
-  const cliCommand = selectedModel
-    ? `bansos setup ${selectedAdapterId} --model ${selectedModel}`
-    : `bansos setup ${selectedAdapterId}`;
+  const cliCommand = setupCommand(selectedAdapterId, pick);
+  const strategy = mode === "single" && selectedModel ? null : getHarnessStrategy(mode, checkedCount);
+  const modelFieldLabel = { list: "Models to add", tiered: "Models for Haiku, Sonnet and Opus", single: "Default model (optional)", discovery: "Models" }[mode];
+  const modelTriggerText = modelPick === null
+    ? `All models (${models.length})`
+    : checkedCount === 0
+      ? "No models selected"
+      : checkedCount === 1
+        ? picked[0]!.id
+        : `${checkedCount} of ${models.length} models`;
 
   async function handleCopyCli() {
+    if (nothingChecked) return;
     try {
       await navigator.clipboard.writeText(cliCommand);
       setCopiedCli(true);
@@ -171,7 +208,7 @@ export function AgentSetup({ models, daemonPort }: AgentSetupProps) {
               Agent & Model Configuration
             </span>
             <p className="text-[11px] text-[#71717a]">
-              Select your AI coding tool and choose an optional default model.
+              Pick your coding agent, then which models bansos writes into its config.
             </p>
           </div>
 
@@ -199,14 +236,24 @@ export function AgentSetup({ models, daemonPort }: AgentSetupProps) {
               </span>
             </div>
 
-            <div className="relative">
+            <div
+              className="relative"
+              onKeyDown={(e) => {
+                if (e.key === "Escape" && adapterDropdownOpen) {
+                  setAdapterDropdownOpen(false);
+                  adapterTriggerRef.current?.focus();
+                }
+              }}
+            >
               <button
+                ref={adapterTriggerRef}
                 type="button"
+                aria-expanded={adapterDropdownOpen}
                 onClick={() => {
                   setAdapterDropdownOpen(!adapterDropdownOpen);
                   setModelDropdownOpen(false);
                 }}
-                className="w-full min-h-[42px] flex items-center justify-between bg-[#121215] hover:bg-[#18181d] border border-[#262630] hover:border-[#383846] rounded-lg px-3 py-2 text-xs font-medium text-white transition cursor-pointer"
+                className="w-full min-h-10.5 flex items-center justify-between bg-[#121215] hover:bg-[#18181d] border border-[#262630] hover:border-[#383846] rounded-lg px-3 py-2 text-xs font-medium text-white transition cursor-pointer"
               >
                 <div className="flex items-center gap-2 truncate">
                   <Code2 className="h-4 w-4 text-[#60a5fa] shrink-0" />
@@ -235,47 +282,83 @@ export function AgentSetup({ models, daemonPort }: AgentSetupProps) {
             </div>
           </div>
 
-          {/* Model Pinning */}
+          {/* Models */}
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <span className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-[#8b8b96]">
-                Default Model (Optional)
+                {modelFieldLabel}
               </span>
-              <span className="text-[10px] sm:text-[11px] font-mono text-[#71717a]">
-                {models.length} available
-              </span>
-            </div>
-
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => {
-                  setModelDropdownOpen(!modelDropdownOpen);
-                  setAdapterDropdownOpen(false);
-                }}
-                className="w-full min-h-[42px] flex items-center justify-between bg-[#121215] hover:bg-[#18181d] border border-[#262630] hover:border-[#383846] rounded-lg px-3 py-2 text-xs font-medium text-white transition cursor-pointer"
-              >
-                <div className="flex items-center gap-2 truncate">
-                  <Cpu className="h-3.5 w-3.5 text-[#71717a] shrink-0" />
-                  <span className="truncate">
-                    {selectedModel || "Auto (Recommended Setup)"}
-                  </span>
-                </div>
-                <ChevronDown className={`h-3.5 w-3.5 text-[#71717a] shrink-0 transition-transform duration-150 ${modelDropdownOpen ? "rotate-180" : ""}`} />
-              </button>
-
-              {modelDropdownOpen && (
-                <AgentModelSelector
-                  models={models}
-                  selectedModel={selectedModel}
-                  selectedAdapterId={selectedAdapterId}
-                  onSelectModel={setSelectedModel}
-                  onClose={() => setModelDropdownOpen(false)}
-                  searchQuery={modelSearchQuery}
-                  onSearchChange={setModelSearchQuery}
-                />
+              {mode !== "discovery" && (
+                <span className="text-[10px] sm:text-[11px] font-mono text-[#9393a0]">
+                  {models.length} available
+                </span>
               )}
             </div>
+
+            {mode === "discovery" ? (
+              <p className="min-h-10.5 flex items-center rounded-lg border border-dashed border-[#2e2e38] px-3 py-2 text-xs text-[#9393a0]">
+                {activeAdapter?.name ?? "This agent"} lists the live models from /v1/models itself, so there is nothing to pick here.
+              </p>
+            ) : (
+              <div
+                className="relative"
+                onKeyDown={(e) => {
+                  if (e.key === "Escape" && modelDropdownOpen) closeModelDropdown();
+                }}
+              >
+                <button
+                  ref={modelTriggerRef}
+                  type="button"
+                  aria-expanded={modelDropdownOpen}
+                  aria-haspopup="dialog"
+                  onClick={() => {
+                    setModelDropdownOpen(!modelDropdownOpen);
+                    setAdapterDropdownOpen(false);
+                  }}
+                  className={`w-full min-h-10.5 flex items-center justify-between bg-[#121215] hover:bg-[#18181d] border rounded-lg px-3 py-2 text-xs font-medium text-white transition cursor-pointer ${
+                    nothingChecked ? "border-rose-500" : "border-[#262630] hover:border-[#383846]"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <Cpu className="h-3.5 w-3.5 text-[#9393a0] shrink-0" />
+                    <span className="truncate font-mono">
+                      {picksList ? modelTriggerText : selectedModel || "Auto (catalog default)"}
+                    </span>
+                  </div>
+                  <ChevronDown className={`h-3.5 w-3.5 text-[#9393a0] shrink-0 transition-transform duration-150 ${modelDropdownOpen ? "rotate-180" : ""}`} />
+                </button>
+
+                {modelDropdownOpen && picksList && (
+                  <AgentModelChecklist
+                    models={models}
+                    checked={modelPick}
+                    onChange={setModelPick}
+                    onClose={closeModelDropdown}
+                    searchQuery={modelSearchQuery}
+                    onSearchChange={setModelSearchQuery}
+                  />
+                )}
+                {modelDropdownOpen && !picksList && (
+                  <AgentModelSelector
+                    models={models}
+                    selectedModel={selectedModel}
+                    onSelectModel={setSelectedModel}
+                    onClose={closeModelDropdown}
+                    searchQuery={modelSearchQuery}
+                    onSearchChange={setModelSearchQuery}
+                  />
+                )}
+              </div>
+            )}
+            {nothingChecked && (
+              <p className="text-[11px] text-rose-300 flex items-center gap-1.5">
+                <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+                Pick at least one model, or check All models.
+              </p>
+            )}
+            {mode === "tiered" && !nothingChecked && (
+              <p className="text-[11px] text-[#9393a0]">Haiku gets the fastest model you check; Sonnet and Opus get reasoning models.</p>
+            )}
           </div>
         </div>
       </div>
@@ -309,8 +392,8 @@ export function AgentSetup({ models, daemonPort }: AgentSetupProps) {
             className="flex items-center justify-between gap-2.5 p-2.5 sm:p-3 rounded-lg bg-[#111113] border border-[#23232a] hover:border-[#383846] transition cursor-pointer group min-w-0 w-full"
             title="Click to copy terminal command"
           >
-            <code className="text-xs font-mono text-emerald-400 select-all truncate min-w-0 flex-1">
-              {cliCommand}
+            <code className={`text-xs font-mono truncate min-w-0 flex-1 ${nothingChecked ? "text-[#9393a0]" : "text-emerald-400 select-all"}`}>
+              {nothingChecked ? "Pick at least one model first" : cliCommand}
             </code>
             <button
               type="button"
@@ -377,7 +460,7 @@ export function AgentSetup({ models, daemonPort }: AgentSetupProps) {
                   <button
                     type="button"
                     onClick={() => void handleSetup(false)}
-                    disabled={applying !== null || !activeAdapter}
+                    disabled={applying !== null || !activeAdapter || nothingChecked}
                     className="inline-flex items-center gap-1.5 px-3 min-h-9 rounded-md bg-[#2b64e0] hover:bg-[#3a72ec] text-xs font-semibold text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {applying === "apply" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
@@ -420,11 +503,11 @@ export function AgentSetup({ models, daemonPort }: AgentSetupProps) {
 
         {/* Generated config files */}
         <AgentConfigViewer
-          renderData={renderData}
-          rendering={rendering}
+          renderData={nothingChecked ? null : renderData}
+          rendering={rendering && !nothingChecked}
+          error={nothingChecked ? "Pick at least one model to see the config bansos would write." : renderError}
           activeAdapter={activeAdapter}
-          selectedModel={selectedModel}
-          modelCount={models.length}
+          strategy={strategy}
           copiedConfigIndex={copiedConfigIndex}
           onCopyConfig={handleCopyConfig}
           selectedAdapterId={selectedAdapterId}

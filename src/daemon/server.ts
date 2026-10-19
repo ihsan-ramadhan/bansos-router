@@ -35,7 +35,7 @@ import {
   relayFetch,
   type RelayState,
 } from "../relay/egress";
-import { ADAPTERS, findAdapter } from "../adapters";
+import { ADAPTERS, buildSetupContext, findAdapter } from "../adapters";
 import { harnessStatuses } from "../cli/doctor";
 import { ADMIN_PATHS, handleAdmin, type AdminOptions } from "./admin";
 import { createSseFrameSplitter, readSseStream } from "../protocols/stream";
@@ -2108,6 +2108,7 @@ export function createServer(opts: ServerOptions): http.Server {
           id: a.id,
           name: a.name,
           wire: a.wire,
+          modelMode: a.modelMode,
           configPaths: a.configPaths,
           status: statuses.find((h) => h.id === a.id)?.status ?? "missing",
         })),
@@ -2128,17 +2129,18 @@ export function createServer(opts: ServerOptions): http.Server {
         sendJson(res, 404, { error: { message: `adapter "${id}" not found` } });
         return;
       }
-      const defaultModel = model || pickSmartDefaultModel(catalog.servableModels);
       const reqHost = req.headers.host || `127.0.0.1:${port}`;
       const isHttps = Boolean((req.socket as import("node:tls").TLSSocket)?.encrypted);
       const proto = isHttps ? "https" : "http";
-      const baseUrl = `${proto}://${reqHost}/v1`;
-      const ctx = {
-        baseUrl,
-        defaultModel,
-        models: catalog.servableModels,
-        specificModel: Boolean(model),
-      };
+      const ctx = buildSetupContext(`${proto}://${reqHost}/v1`, catalog.servableModels, {
+        model,
+        models: parsedUrl.searchParams.getAll("models"),
+        upstreams: parsedUrl.searchParams.getAll("upstream"),
+      });
+      if ("error" in ctx) {
+        sendJson(res, 400, { error: { message: ctx.error } });
+        return;
+      }
       const config = adapter.render(ctx);
       sendJson(res, 200, {
         id: adapter.id,

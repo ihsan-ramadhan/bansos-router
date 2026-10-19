@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync, spawn } from "node:child_process";
+import { runAutostart } from "./autostart";
 import { runDoctor } from "./doctor";
 import { runPing } from "./ping";
 import { runRelay } from "./relay";
@@ -27,6 +28,7 @@ Commands:
   logs        tail the daemon log live
   usage       show request usage + token totals (--json)
   relay       manage relay egress
+  autostart   start the daemon when you log in (on/off/status)
   doctor      diagnose setup
 
 Global flags:
@@ -50,7 +52,7 @@ Harnesses: claude-code, aider, opencode, codex, hermes, goose,
 Examples:
   bansos start --bg              # daemon in background, then:
   bansos setup codex             # wire Codex CLI to the router
-  bansos ping mimo-v2.5-free      # probe one model
+  bansos ping big-pickle         # probe one model
   bansos status --json           # machine-readable status
 
 "bansosd" still works as an alias for the daemon (e.g. "bansosd --bg").
@@ -78,6 +80,25 @@ Examples:
   bansos start --bg
   bansos start --bg --port 18000
 `,
+  autostart: `bansos autostart - start the daemon when you log in
+
+Usage:
+  bansos autostart [on|off|status] [--json]
+
+How:
+  Linux    systemd user service ~/.config/systemd/user/bansos-router.service
+           (restarts the daemon if it crashes)
+  macOS    LaunchAgent ~/Library/LaunchAgents/io.github.ihsan-ramadhan.bansos-router.plist
+  Windows  bansos-router.cmd in the Startup folder (runs "bansos start --bg")
+
+Notes:
+  "on" starts the daemon right away unless one is already running; a running
+  daemon is left alone and the service takes over at the next login.
+  "off" only stops future logins from starting it; "bansos stop" stops the
+  daemon. After moving node or reinstalling bansos elsewhere, run "on" again.
+
+Exit codes: 0 success, 1 unsupported system or the service manager failed.
+`,
   stop: `bansos stop - stop the daemon recorded in state.json (SIGTERM, then SIGKILL after 400ms)
 
 Usage:
@@ -96,21 +117,26 @@ Exit codes: 0 always (0 even when nothing was running).
   setup: `bansos setup - write harness config files pointing at the router
 
 Usage:
-  bansos setup <harness...> [--model <id>] [--dry-run] [--undo]
+  bansos setup <harness...> [--model <id> | --models <id,...> --upstream <id,...>] [--dry-run] [--undo]
 
 Flags:
-  --model <id>  model id written into configs as the default
-                (default: highest-capacity reasoning model; run "bansos models")
-  --dry-run     print what would be written, change nothing
-  --undo        remove bansos blocks/keys previously written by setup
+  --model <id>        pin one model: the only model a harness gets
+  --models <id,...>   write only these models (opencode, goose, openclaw,
+                      continue; claude-code picks its tiers from them)
+  --upstream <id,...> add every model of these upstreams (zen, kilo, llm7, ovh)
+  --dry-run           print what would be written, change nothing
+  --undo              remove bansos blocks/keys previously written by setup
 
 Notes:
-  Model ids come from "bansos models". Without --model the catalog default is used.
+  Model ids come from "bansos models". With no model flag every live model is
+  written, and single-model harnesses get the catalog default. --models and
+  --upstream combine; --model cannot be mixed with them.
   Config locations are listed under each harness in docs/harnesses.md.
 
 Examples:
   bansos setup codex
-  bansos setup claude-code aider --model mimo-v2.5-free
+  bansos setup claude-code aider --model big-pickle
+  bansos setup opencode --upstream zen --models kilo-auto/free
   bansos setup codex --undo
 `,
   status: `bansos status - show daemon reachability and model count
@@ -254,6 +280,8 @@ async function main(): Promise<number> {
       return runUsage(json);
     case "relay":
       return runRelay(args.slice(1));
+    case "autostart":
+      return runAutostart(args.slice(1), json);
     case "doctor":
       return runDoctor(args.slice(1));
     case "--version":
@@ -496,33 +524,24 @@ function findDaemonPids(statePid: number | null): number[] {
   return [...pids];
 }
 
-// cross-platform process list (ps on POSIX, wmic on Windows); never throws
+// Get-CimInstance replaces wmic, which Windows 11 24H2 no longer installs; base64 sidesteps command-line quoting
+const WIN_PROCESS_LIST = Buffer.from(
+  "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | ForEach-Object { \"$($_.ProcessId) $($_.CommandLine)\" }",
+  "utf16le",
+).toString("base64");
+
+// cross-platform process list as "pid cmdline" lines (ps on POSIX, PowerShell on Windows); never throws
 function scanProcessList(): Array<{ pid: number; cmdline: string }> {
   try {
-    if (process.platform === "win32") {
-      const out = execFileSync(
-        "wmic",
-        ["process", "get", "ProcessId,CommandLine"],
+    const out = process.platform === "win32"
+      ? execFileSync(
+        "powershell.exe",
+        ["-NoProfile", "-NonInteractive", "-EncodedCommand", WIN_PROCESS_LIST],
         { encoding: "utf8", windowsHide: true, stdio: ["ignore", "pipe", "ignore"] },
-      );
-      const rows: Array<{ pid: number; cmdline: string }> = [];
-      for (const line of out.split(/\r?\n/).slice(1)) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        // wmic prints "CommandLine  ProcessId"; the pid is the trailing number
-        const m = trimmed.match(/\s(\d+)\s*$/);
-        if (!m) continue;
-        rows.push({ pid: Number(m[1]), cmdline: trimmed.slice(0, m.index).trim() });
-      }
-      return rows;
-    }
-    const out = execFileSync(
-      "ps",
-      ["-axo", "pid=,command="],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
-    );
+      )
+      : execFileSync("ps", ["-axo", "pid=,command="], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
     const rows: Array<{ pid: number; cmdline: string }> = [];
-    for (const line of out.split("\n")) {
+    for (const line of out.split(/\r?\n/)) {
       const m = line.match(/^\s*(\d+)\s+(.*)$/);
       if (m) rows.push({ pid: Number(m[1]), cmdline: m[2] ?? "" });
     }

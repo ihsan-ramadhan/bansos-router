@@ -1,11 +1,10 @@
 import { Search } from "lucide-preact";
 import type { ModelItem } from "../../types";
-import { getProviderDotColor, getHarnessStrategy, groupModelsByProvider } from "../../utils/agent";
+import { getProviderDotColor, groupModelsByProvider } from "../../utils/agent";
 
 interface AgentModelSelectorProps {
   models: ModelItem[];
   selectedModel: string;
-  selectedAdapterId: string;
   onSelectModel: (modelId: string) => void;
   onClose: () => void;
   searchQuery: string;
@@ -15,7 +14,6 @@ interface AgentModelSelectorProps {
 export function AgentModelSelector({
   models,
   selectedModel,
-  selectedAdapterId,
   onSelectModel,
   onClose,
   searchQuery,
@@ -63,11 +61,11 @@ export function AgentModelSelector({
             }`}
           >
             <div className="flex items-center justify-between w-full">
-              <span>Auto (Recommended Setup)</span>
+              <span>Auto (catalog default)</span>
               <span className="text-[10px] text-emerald-400 font-mono">Default</span>
             </div>
-            <span className="text-[10px] text-[#71717a] font-normal">
-              {getHarnessStrategy(selectedAdapterId, models.length).description}
+            <span className="text-[10px] text-[#9393a0] font-normal">
+              Uses the catalog's default reasoning model, and follows it when the catalog changes.
             </span>
           </button>
 

@@ -26,6 +26,8 @@ export interface HarnessAdapter {
   id: string;
   name: string;
   wire: WireProtocol;
+  // list: writes every picked model; tiered: maps tiers from them; single: one model; discovery: lists /v1/models itself
+  modelMode: "list" | "tiered" | "single" | "discovery";
   // candidate config locations; first existing wins (or create)
   configPaths: string[];
   // pure render; file writing happens in the cli (milestone M2)

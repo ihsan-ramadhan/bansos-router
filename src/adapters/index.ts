@@ -1,6 +1,6 @@
 import type { HarnessAdapter, SetupContext, ConfigWrite } from "./types";
 import { START_MARKER, END_MARKER } from "./types";
-import { compareModelsByCapacity } from "../upstreams/types";
+import { compareModelsByCapacity, pickSmartDefaultModel, type ModelDef } from "../upstreams/types";
 
 const tomlBlock = (): Pick<ConfigWrite, "mode" | "markers"> => ({
   mode: "overwrite-block",
@@ -17,6 +17,7 @@ function claudeCodeAdapter(): HarnessAdapter {
     id: "claude-code",
     name: "Claude Code",
     wire: "anthropic",
+    modelMode: "tiered",
     configPaths: ["~/.claude/settings.json"],
     render(ctx: SetupContext): ConfigWrite[] {
       const validModels = ctx.models.filter(
@@ -84,6 +85,7 @@ function aiderAdapter(): HarnessAdapter {
     id: "aider",
     name: "Aider",
     wire: "chat",
+    modelMode: "single",
     configPaths: ["~/.aider.conf.yml", ".aider.conf.yml"],
     render(ctx: SetupContext): ConfigWrite[] {
       const lines = [
@@ -112,6 +114,7 @@ function opencodeAdapter(): HarnessAdapter {
     id: "opencode",
     name: "OpenCode",
     wire: "chat",
+    modelMode: "list",
     configPaths: [
       "~/.config/opencode/opencode.json",
       "~/.config/opencode/opencode.jsonc",
@@ -162,6 +165,7 @@ function codexAdapter(): HarnessAdapter {
     id: "codex",
     name: "Codex CLI",
     wire: "responses",
+    modelMode: "single",
     configPaths: ["~/.codex/config.toml", ".codex/config.toml"],
     render(ctx: SetupContext): ConfigWrite[] {
       const toml = [
@@ -195,6 +199,7 @@ function hermesAdapter(): HarnessAdapter {
     id: "hermes",
     name: "Hermes (Nous)",
     wire: "chat",
+    modelMode: "single",
     configPaths: ["~/.hermes/config.yaml"],
     render(ctx: SetupContext): ConfigWrite[] {
       const yaml = [
@@ -224,6 +229,7 @@ function gooseAdapter(): HarnessAdapter {
     id: "goose",
     name: "Goose",
     wire: "chat",
+    modelMode: "list",
     configPaths: ["~/.config/goose/custom_providers/bansos.json"],
     render(ctx: SetupContext): ConfigWrite[] {
       const models = ctx.specificModel
@@ -262,6 +268,7 @@ function openclawAdapter(): HarnessAdapter {
     id: "openclaw",
     name: "OpenClaw",
     wire: "chat",
+    modelMode: "list",
     configPaths: [
       "~/.openclaw/config.json",
       "~/.openclaw/openclaw.json",
@@ -309,6 +316,7 @@ function antigravityAdapter(): HarnessAdapter {
     id: "antigravity",
     name: "Antigravity CLI",
     wire: "chat",
+    modelMode: "single",
     configPaths: ["~/.config/antigravity/config.toml"],
     render(ctx: SetupContext): ConfigWrite[] {
       const toml = [
@@ -337,6 +345,7 @@ function jcodeAdapter(): HarnessAdapter {
     id: "jcode",
     name: "JCode",
     wire: "chat",
+    modelMode: "single",
     configPaths: ["~/.jcode/config.toml", "~/.config/jcode/openai-compatible.env"],
     render(ctx: SetupContext): ConfigWrite[] {
       const targetModel = ctx.models.find((m) => m.id === ctx.defaultModel);
@@ -386,6 +395,7 @@ function nineRouterAdapter(): HarnessAdapter {
     id: "9router",
     name: "9Router",
     wire: "chat",
+    modelMode: "discovery",
     configPaths: ["~/.9router/db.json", "~/.9router/db/data.sqlite"],
     render(ctx: SetupContext): ConfigWrite[] {
       const db = {
@@ -436,6 +446,7 @@ function continueAdapter(): HarnessAdapter {
     id: "continue",
     name: "Continue (VS Code / JetBrains)",
     wire: "chat",
+    modelMode: "list",
     configPaths: ["~/.continue/config.json", ".continue/config.json"],
     render(ctx: SetupContext): ConfigWrite[] {
       const list = ctx.specificModel
@@ -502,6 +513,7 @@ function clineAdapter(): HarnessAdapter {
     id: "cline",
     name: "Cline (VS Code)",
     wire: "chat",
+    modelMode: "single",
     configPaths: ["~/.config/cline/config.json", "~/.cline/config.json"],
     render(ctx: SetupContext): ConfigWrite[] {
       return renderOpenAiCompatConfig(ctx, "~/.config/cline/config.json");
@@ -518,6 +530,7 @@ function rooAdapter(): HarnessAdapter {
     id: "roo",
     name: "Roo Code (VS Code)",
     wire: "chat",
+    modelMode: "single",
     configPaths: ["~/.config/roo-cline/config.json", "~/.roo-cline/config.json"],
     render(ctx: SetupContext): ConfigWrite[] {
       return renderOpenAiCompatConfig(ctx, "~/.config/roo-cline/config.json");
@@ -533,6 +546,7 @@ function ompAdapter(): HarnessAdapter {
     id: "omp",
     name: "OMP (Oh My Pi)",
     wire: "chat",
+    modelMode: "discovery",
     configPaths: ["~/.omp/agent/models.yml"],
     render(ctx: SetupContext): ConfigWrite[] {
       // column 0; applyYamlBlockWrite nests it under providers: at the right indent
@@ -580,4 +594,32 @@ export const ADAPTERS: HarnessAdapter[] = [
 
 export function findAdapter(id: string): HarnessAdapter | undefined {
   return ADAPTERS.find((a) => a.id === id);
+}
+
+export interface ModelPick {
+  model?: string;
+  models?: string[];
+  upstreams?: string[];
+}
+
+// a list or upstream pick narrows the models written; a single model pins one; neither means every model
+export function buildSetupContext(baseUrl: string, pool: ModelDef[], pick: ModelPick): SetupContext | { error: string } {
+  const ids = pick.models ?? [];
+  const upstreams = pick.upstreams ?? [];
+  if (pick.model) {
+    if (ids.length > 0 || upstreams.length > 0) return { error: "pick either one model or a model list, not both" };
+    return { baseUrl, defaultModel: pick.model, models: pool, specificModel: true };
+  }
+  if (ids.length === 0 && upstreams.length === 0) {
+    return { baseUrl, defaultModel: pickSmartDefaultModel(pool), models: pool, specificModel: false };
+  }
+  const known = new Set(pool.map((m) => m.source));
+  const badUpstreams = upstreams.filter((u) => !known.has(u as ModelDef["source"]));
+  if (badUpstreams.length > 0) return { error: `no models from upstream: ${badUpstreams.join(", ")}` };
+  const find = (id: string) => pool.find((m) => m.id === id) ?? pool.find((m) => m.id.endsWith(`/${id}`));
+  const missing = ids.filter((id) => !find(id));
+  if (missing.length > 0) return { error: `unknown or unavailable model: ${missing.join(", ")}` };
+  const wanted = new Set(ids.map((id) => find(id)!.id));
+  const models = pool.filter((m) => wanted.has(m.id) || upstreams.includes(m.source));
+  return { baseUrl, defaultModel: pickSmartDefaultModel(models), models, specificModel: false };
 }

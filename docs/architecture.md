@@ -96,7 +96,7 @@ The core server, run via `bansos start` (foreground or `--bg`) or the
 |---|---|
 | HTTP server | Node `http`, bound to `127.0.0.1`, port `17070`, auto-bump to next free port up to `17090` (proven pattern from pi-bansos); port/bind configurable via `~/.bansos/config.json` |
 | Inbound routes | Inference: `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1/responses`, `GET /v1/models`. Control (Web UI + CLI): `GET /healthz`, `GET /bansos/status`, `POST /bansos/refresh`, `GET /bansos/adapters[/render]`, `GET/POST /bansos/relay`, `POST /bansos/relay/probe`, `GET /bansos/usage`, `GET /bansos/events` |
-| Admin routes | `GET/POST /bansos/config`, `POST /bansos/restart`, `GET /bansos/logs`, `GET /bansos/doctor`, `POST /bansos/adapters/apply` (`src/daemon/admin.ts`): answered only for loopback peers, and POSTs need a loopback Origin or none |
+| Admin routes | `GET/POST /bansos/config`, `POST /bansos/restart`, `GET /bansos/logs`, `GET /bansos/doctor`, `POST /bansos/adapters/apply`, `GET/POST /bansos/autostart` (`src/daemon/admin.ts`): answered only for loopback peers, and POSTs need a loopback Origin or none |
 | Catalog | Runtime catalog = static registry ∪ dynamic snapshots (Kilo, LLM7, OVH, and Zen via models.dev; local gateways join in M5), filtered by liveness; served by `/v1/models` (strict mode leaves out upstreams outside the allowlist); **never forwarded upstream** (prevents paid-model leakage, see §6) |
 | Health checker | At startup: fetch each upstream catalog, mark models alive/dead. Periodic refresh (configurable, e.g. every 30 min) + manual refresh via CLI |
 | Protocol translation | Inbound wire -> internal normalized turn -> upstream Chat Completions. See `docs/protocols.md` |
@@ -121,6 +121,7 @@ The core server, run via `bansos start` (foreground or `--bg`) or the
 | `bansos stop [--all]` | Stop the daemon in `~/.bansos/state.json`; `--all` also scans for every other bansos daemon |
 | `bansos logs [--activity]` | Tail the daemon log, or the request feed |
 | `bansos usage [--json]` | Request and token totals over the last 60 days |
+| `bansos autostart on/off/status` | Start the daemon at login via a systemd user service, a LaunchAgent, or the Windows Startup folder |
 | `bansosd` | Alias bin for the daemon (same entry file as `bansos`) |
 
 The CLI **does not require the daemon to be running** for setup/doctor
@@ -156,6 +157,10 @@ demand, stops it again when pi exits if the extension spawned it).
   on demand by the pi extension. `bansos doctor` reports a daemon that is not
   running with the command to start it. `bansos stop` stops the recorded
   daemon; `bansos stop --all` adds a `/proc` (Linux) or process-list scan.
+- `bansos autostart on` hands the daemon to the OS service manager at login.
+  systemd and launchd run it in the foreground and restart it after a crash
+  but not after `bansos stop` (a clean exit); the Windows Startup folder runs
+  `bansos start --bg`.
 - The dashboard's Settings tab can restart the daemon in place with the saved
   config; the process stays the same, only the HTTP server is rebuilt.
 
@@ -284,6 +289,7 @@ bansos-router/
 │   │   ├── write.ts        # JSON merge, TOML/YAML block writers
 │   │   ├── relay.ts
 │   │   ├── ping.ts
+│   │   ├── autostart.ts    # start at login (systemd, launchd, Startup folder)
 │   │   └── doctor.ts
 │   ├── daemon/             # bansosd server
 │   │   ├── index.ts        # entry, port bump, lifecycle, in-place restart

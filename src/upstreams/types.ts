@@ -53,7 +53,7 @@ export function compareModelsByCapacity(a: ModelDef, b: ModelDef): number {
 // muse spark 1.3 is the better coding default than inkling despite less context; wins when alive
 export const PREFERRED_DEFAULT_MODELS = ["muse-spark-1.3-contributor-free"];
 
-export function pickSmartDefaultModel(models: ModelDef[], fallback = "mimo-v2.5-free"): string {
+export function pickSmartDefaultModel(models: ModelDef[], fallback = "big-pickle"): string {
   const valid = models.filter((m) => !m.id.toLowerCase().includes("safety"));
   for (const id of PREFERRED_DEFAULT_MODELS) {
     if (valid.some((m) => m.id === id)) return id;

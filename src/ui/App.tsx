@@ -99,6 +99,7 @@ export function App() {
           <AgentSetup
             models={usableModels}
             daemonPort={daemonPort}
+            onCatalogStale={() => void loadStatus()}
           />
         </div>
 

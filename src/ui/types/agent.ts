@@ -1,7 +1,16 @@
+export type ModelMode = "list" | "tiered" | "single" | "discovery";
+
+export interface ModelPick {
+  model?: string;
+  models?: string[];
+  upstreams?: string[];
+}
+
 export interface AdapterSummary {
   id: string;
   name: string;
   wire: "chat" | "anthropic" | "responses";
+  modelMode: ModelMode;
   configPaths: string[];
   status?: "configured" | "unconfigured" | "missing";
 }

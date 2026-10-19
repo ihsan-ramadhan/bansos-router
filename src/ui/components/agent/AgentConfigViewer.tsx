@@ -1,13 +1,13 @@
 import { FileCode, Check, Copy } from "lucide-preact";
 import type { AdapterRenderResponse, AdapterSummary } from "../../types";
-import { getWireBadge, getHarnessStrategy } from "../../utils/agent";
+import { getWireBadge } from "../../utils/agent";
 
 interface AgentConfigViewerProps {
   renderData: AdapterRenderResponse | null;
   rendering: boolean;
+  error?: string | null;
   activeAdapter?: AdapterSummary;
-  selectedModel: string;
-  modelCount: number;
+  strategy: { label: string; color: string } | null;
   copiedConfigIndex: number | null;
   onCopyConfig: (content: string, index: number) => void;
   selectedAdapterId: string;
@@ -16,9 +16,9 @@ interface AgentConfigViewerProps {
 export function AgentConfigViewer({
   renderData,
   rendering,
+  error,
   activeAdapter,
-  selectedModel,
-  modelCount,
+  strategy,
   copiedConfigIndex,
   onCopyConfig,
   selectedAdapterId,
@@ -36,9 +36,9 @@ export function AgentConfigViewer({
               {getWireBadge(activeAdapter.wire).label}
             </span>
           )}
-          {activeAdapter && !selectedModel && (
-            <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${getHarnessStrategy(activeAdapter.id, modelCount).color}`}>
-              {getHarnessStrategy(activeAdapter.id, modelCount).label}
+          {activeAdapter && strategy && (
+            <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${strategy.color}`}>
+              {strategy.label}
             </span>
           )}
         </div>
@@ -56,7 +56,10 @@ export function AgentConfigViewer({
             Rendering config...
           </div>
         )}
-        {!rendering && (!renderData || renderData.config.length === 0) && (
+        {!rendering && error && (
+          <div className="py-12 text-center text-xs text-[#9393a0]">{error}</div>
+        )}
+        {!rendering && !error && (!renderData || renderData.config.length === 0) && (
           <div className="py-12 text-center text-xs text-[#71717a]">
             No config template available for this harness.
           </div>
@@ -102,8 +105,8 @@ export function AgentConfigViewer({
       </div>
 
       {/* Tips */}
-      <div className="bg-[#121215] border-t border-[#23232a] px-3 sm:px-4 py-2.5 text-[10px] sm:text-[11px] text-[#71717a] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1">
-        <span>💡 You can revert changes anytime with <code>bansos setup {selectedAdapterId} --undo</code></span>
+      <div className="bg-[#121215] border-t border-[#23232a] px-3 sm:px-4 py-2.5 text-[10px] sm:text-[11px] text-[#9393a0] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1">
+        <span>Undo it any time with <code>bansos setup {selectedAdapterId} --undo</code>.</span>
       </div>
     </div>
   );

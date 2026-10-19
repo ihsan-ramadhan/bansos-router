@@ -11,6 +11,8 @@ import type {
   DaemonSettings,
   DoctorReport,
   SetupResult,
+  AutostartState,
+  ModelPick,
 } from "../types";
 
 const BASE_URL = "";
@@ -39,12 +41,14 @@ export async function fetchAdapters(): Promise<AdapterSummary[]> {
   return res.json();
 }
 
-export async function renderAdapter(id: string, model?: string): Promise<AdapterRenderResponse> {
+export async function renderAdapter(id: string, pick: ModelPick = {}): Promise<AdapterRenderResponse> {
   const url = new URL(`${window.location.origin}/bansos/adapters/render`);
   url.searchParams.set("id", id);
-  if (model) url.searchParams.set("model", model);
+  if (pick.model) url.searchParams.set("model", pick.model);
+  for (const m of pick.models ?? []) url.searchParams.append("models", m);
+  for (const u of pick.upstreams ?? []) url.searchParams.append("upstream", u);
   const res = await fetch(url.toString());
-  if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to render adapter ${id}`);
+  if (!res.ok) throw new Error(await errorMessage(res, `HTTP ${res.status}: Failed to render the ${id} config`));
   return res.json();
 }
 
@@ -158,12 +162,28 @@ export async function fetchDoctor(): Promise<DoctorReport> {
   return res.json();
 }
 
-export async function applyHarness(id: string, options: { model?: string; undo?: boolean } = {}): Promise<SetupResult> {
+export async function applyHarness(id: string, options: ModelPick & { undo?: boolean } = {}): Promise<SetupResult> {
   const res = await fetch(`${BASE_URL}/bansos/adapters/apply`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id, ...options }),
   });
   if (!res.ok) throw new Error(await errorMessage(res, `HTTP ${res.status}: Failed to update ${id}`));
+  return res.json();
+}
+
+export async function fetchAutostart(): Promise<AutostartState> {
+  const res = await fetch(`${BASE_URL}/bansos/autostart`);
+  if (!res.ok) throw new Error(await errorMessage(res, `HTTP ${res.status}: Failed to read start-at-login`));
+  return res.json();
+}
+
+export async function setAutostart(enabled: boolean): Promise<AutostartState> {
+  const res = await fetch(`${BASE_URL}/bansos/autostart`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `HTTP ${res.status}: Failed to change start-at-login`));
   return res.json();
 }

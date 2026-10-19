@@ -97,7 +97,12 @@ from §4 yourself if you want the change in one shell only.
 
 ### 3.3 Model pinning & smart tiering
 
-`bansos setup <harness> --model <id>` pins one specific model. Without `--model`, adapters apply intelligent defaults:
+`bansos setup <harness> --model <id>` pins one specific model.
+`--models <id,...>` and `--upstream <id,...>` narrow the list instead (they
+combine; an upstream adds every model it serves), and `--model` cannot be mixed
+with them. Each adapter declares a `modelMode` (`list`, `tiered`, `single`,
+`discovery`) that `/bansos/adapters` reports, so the dashboard shows a checklist,
+a single picker, or nothing. With no model flag, adapters apply these defaults:
 - **Claude Code**: Maps tiers automatically (`haiku` -> fast non-reasoning, `sonnet` -> daily reasoning, `opus` -> highest-capacity reasoning) and sets `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`.
 - **OpenCode, Goose, OpenClaw, Continue**: Register all catalog models so every model is selectable in the harness.
 - **9Router, OMP**: Register a provider that discovers models from `/v1/models` on its own.

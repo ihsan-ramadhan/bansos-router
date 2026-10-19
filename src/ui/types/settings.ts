@@ -28,6 +28,16 @@ export interface ConfigState {
   canRestart: boolean;
 }
 
+export interface AutostartState {
+  manager: "systemd" | "launchd" | "startup-folder" | null;
+  supported: boolean;
+  reason?: string;
+  enabled: boolean;
+  path?: string;
+  command?: string[];
+  broken: boolean;
+}
+
 export type HarnessState = "configured" | "unconfigured" | "missing";
 
 export interface DoctorReport {

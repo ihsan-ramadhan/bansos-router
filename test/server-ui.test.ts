@@ -251,3 +251,37 @@ test("POST /bansos/relay/probe enforces an SSRF allowlist", async () => {
     await close();
   }
 });
+
+test("render writes only the picked models and upstreams, and refuses bad picks", async () => {
+  const { baseUrl, close } = await setupTestServer();
+  const opencodeModels = async (query: string) => {
+    const res = await fetch(`${baseUrl}/bansos/adapters/render?id=opencode&${query}`);
+    const body = (await res.json()) as { config: Array<{ content: string }>; error?: { message: string } };
+    return { status: res.status, body, ids: res.ok ? Object.keys(JSON.parse(body.config[0]!.content).provider.bansos.models) : [] };
+  };
+  try {
+    const zen = SEEDED_MODELS.filter((m) => m.source === "zen").map((m) => m.id);
+    const picked = await opencodeModels("upstream=zen&models=kilo-auto/free");
+    assert.deepEqual(new Set(picked.ids), new Set([...zen, "kilo-auto/free"]));
+
+    const alias = await opencodeModels("models=laguna-xs-2.1:free");
+    assert.deepEqual(alias.ids, ["poolside/laguna-xs-2.1:free"], "a bare alias resolves to its full id");
+
+    assert.equal((await opencodeModels("")).ids.length, SEEDED_MODELS.length, "no pick keeps every model");
+
+    const unknown = await opencodeModels("models=nope");
+    assert.equal(unknown.status, 400);
+    assert.match(unknown.body.error!.message, /unknown or unavailable model: nope/);
+    assert.equal((await opencodeModels("upstream=nope")).status, 400);
+    assert.equal((await opencodeModels("model=big-pickle&models=kilo-auto/free")).status, 400);
+
+    const adapters = (await (await fetch(`${baseUrl}/bansos/adapters`)).json()) as Array<{ id: string; modelMode: string }>;
+    const mode = (id: string) => adapters.find((a) => a.id === id)?.modelMode;
+    assert.deepEqual(
+      ["opencode", "claude-code", "aider", "jcode", "omp", "9router"].map(mode),
+      ["list", "tiered", "single", "single", "discovery", "discovery"],
+    );
+  } finally {
+    await close();
+  }
+});

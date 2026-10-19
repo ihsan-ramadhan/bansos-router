@@ -1,4 +1,4 @@
-import type { ModelItem } from "../types";
+import type { ModelItem, ModelMode, ModelPick } from "../types";
 import { formatProviderLabel } from "./models";
 
 export function getWireLabel(wire: string): string {
@@ -33,41 +33,61 @@ export function getProviderDotColor(provider: string): string {
   }
 }
 
-export function getHarnessStrategy(adapterId: string, modelCount: number) {
-  switch (adapterId) {
-    case "claude-code":
+export function getHarnessStrategy(mode: ModelMode, modelCount: number) {
+  switch (mode) {
+    case "tiered":
       return {
-        type: "tiered",
-        label: "Smart Tier (Haiku: Fast / Sonnet & Opus: Reasoning)",
-        description: "Auto-maps Haiku (fast non-reasoning) & Sonnet/Opus (flagship reasoning)",
+        label: `Haiku, Sonnet and Opus from ${modelCount} model${modelCount === 1 ? "" : "s"}`,
+        description: "Maps Haiku to a fast model and Sonnet and Opus to reasoning models",
         color: "text-amber-300 bg-amber-950/60 border-amber-800/40",
       };
-    case "opencode":
-    case "goose":
-    case "openclaw":
-    case "continue":
+    case "list":
       return {
-        type: "multi",
-        label: `All Models (${modelCount} Models Registered)`,
-        description: `Registers all ${modelCount} free models directly into agent config`,
+        label: `${modelCount} model${modelCount === 1 ? "" : "s"} registered`,
+        description: `Registers ${modelCount} free models in the agent config`,
         color: "text-emerald-300 bg-emerald-950/60 border-emerald-800/40",
       };
-    case "9router":
-    case "jcode":
+    case "discovery":
       return {
-        type: "dynamic",
-        label: "Dynamic Model Discovery",
-        description: "Fetches live models dynamically from /v1/models at runtime",
+        label: "Discovers models from /v1/models",
+        description: "The agent lists the live models from bansos itself",
         color: "text-cyan-300 bg-cyan-950/60 border-cyan-800/40",
       };
     default:
       return {
-        type: "single",
-        label: "Single Active Model",
-        description: "Sets primary flagship model in agent config",
+        label: "Catalog default model",
+        description: "Sets the catalog's default reasoning model",
         color: "text-blue-300 bg-blue-950/60 border-blue-800/40",
       };
   }
+}
+
+const providerOf = (m: ModelItem) => (m.source || m.owned_by || "other").toLowerCase();
+
+// what a pick covers in today's catalog: every model of a picked upstream, new ones included, plus single ids
+export function pickedModels(models: ModelItem[], pick: ModelPick): ModelItem[] {
+  return models.filter((m) => pick.upstreams?.includes(providerOf(m)) || pick.models?.includes(m.id));
+}
+
+// a fully checked provider becomes an --upstream pick, the rest stay individual ids
+export function pickFromChecked(models: ModelItem[], checked: string[]): ModelPick {
+  const set = new Set(checked);
+  const upstreams: string[] = [];
+  const ids: string[] = [];
+  for (const group of groupModelsByProvider(models)) {
+    const picked = group.models.filter((m) => set.has(m.id)).map((m) => m.id);
+    if (picked.length > 0 && picked.length === group.models.length) upstreams.push(group.provider);
+    else ids.push(...picked);
+  }
+  return { ...(upstreams.length > 0 ? { upstreams } : {}), ...(ids.length > 0 ? { models: ids } : {}) };
+}
+
+export function setupCommand(adapterId: string, pick: ModelPick): string {
+  const parts = [`bansos setup ${adapterId}`];
+  if (pick.model) parts.push(`--model ${pick.model}`);
+  if (pick.upstreams?.length) parts.push(`--upstream ${pick.upstreams.join(",")}`);
+  if (pick.models?.length) parts.push(`--models ${pick.models.join(",")}`);
+  return parts.join(" ");
 }
 
 export interface GroupedModel {
