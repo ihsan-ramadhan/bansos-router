@@ -11,7 +11,7 @@
 2. **Protocol selection is automatic.** The adapter picks the right endpoint
    (`/v1/chat/completions`, `/v1/messages`, or `/v1/responses`) for the
    harness's native wire format.
-3. **Idempotent & reversible.** `setup` never overwrites user edits blindly  - 
+3. **Idempotent & reversible.** `setup` never overwrites user edits blindly:
    it writes a clearly-marked block, and `bansos setup <harness> --undo`
    removes it.
 4. **No secrets written.** The daemon accepts any placeholder key
@@ -38,9 +38,9 @@ Legend: 🟢 config-only · 🟡 config + small adapter · 🔵 works manually, 
 | **Cline** | OpenAI Chat | `~/.config/cline/config.json` | 🟢 | Sets `apiProvider: "openai-compatible"`, `openAiBaseUrl` |
 | **Roo Code** | OpenAI Chat | `~/.config/roo-cline/config.json` | 🟢 | Sets `apiProvider: "openai-compatible"`, `openAiBaseUrl` |
 | **OMP (Oh My Pi)** | OpenAI Chat | `~/.omp/agent/models.yml` | 🟢 | Appends `bansos` provider with `openai-models-list` discovery |
-| **Claude Desktop** | Anthropic Messages |- | 🔴 | No supported custom base URL; out of scope (hacky MITM only) |
-| **Copilot CLI** |- |- | 🔴 | OAuth-only, no custom endpoint |
-| **Gemini CLI** |- |- | 🔴 | Retired (June 2026) -> Antigravity CLI |
+| **Claude Desktop** | Anthropic Messages | n/a | 🔴 | No supported custom base URL; out of scope (hacky MITM only) |
+| **Copilot CLI** | n/a | n/a | 🔴 | OAuth-only, no custom endpoint |
+| **Gemini CLI** | n/a | n/a | 🔴 | Retired (June 2026) -> Antigravity CLI |
 
 ## 3. Adapter contract (implementation spec)
 
@@ -88,22 +88,23 @@ type ConfigWrite = {
   `--undo` drops tagged lines and restores the `-prev` ones, so Codex is never
   left pointing at a provider table that no longer exists.
 
-### 3.2 Env-based adapters (Aider, Claude Code)
+### 3.2 Env-based harnesses (Aider, Claude Code)
 
-Claude Code and Aider can take env vars. The adapter offers two modes:
-
-- **settings-file mode** (default): write into the harness's native config
-  (`~/.claude/settings.json` `env` block / `aider.conf.yml`).
-- **shell-rc mode** (`--rc`): *(planned)* append `export` lines to
-  `~/.bashrc`/`~/.zshrc` inside markers. Preferred by users who want the
-  change only in one shell.
+Claude Code and Aider also read env vars, but `bansos setup` writes their
+native config instead (`~/.claude/settings.json` `env` block /
+`~/.aider.conf.yml`), so nothing touches the shell rc. Export the variables
+from §4 yourself if you want the change in one shell only.
 
 ### 3.3 Model pinning & smart tiering
 
 `bansos setup <harness> --model <id>` pins one specific model. Without `--model`, adapters apply intelligent defaults:
 - **Claude Code**: Maps tiers automatically (`haiku` -> fast non-reasoning, `sonnet` -> daily reasoning, `opus` -> highest-capacity reasoning) and sets `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`.
 - **OpenCode, Goose, OpenClaw, Continue**: Register all catalog models so every model is selectable in the harness.
-- **Aider, Codex, Hermes, Antigravity, JCode, Cline, Roo, 9Router**: Default to the smart primary model (currently `muse-spark-1.3-contributor-free`) and switch freely via `/v1/models`.
+- **9Router, OMP**: Register a provider that discovers models from `/v1/models` on its own.
+- **Aider, Codex, Hermes, Antigravity, JCode, Cline, Roo**: Default to the smart primary model (currently `muse-spark-1.3-contributor-free`) and switch freely via `/v1/models`.
+
+In strict mode only models from `allowedUpstreams` are registered or picked as
+the default.
 
 ## 4. Per-harness setup snippets (target output)
 
@@ -140,10 +141,10 @@ export AIDER_MODEL=<id>
       "npm": "@ai-sdk/openai-compatible",
       "options": { "baseURL": "http://127.0.0.1:17070/v1" },
       "models": {
-        "mimo-v2.5-free": {},
+        "muse-spark-1.3-contributor-free": {},
         "nemotron-3-ultra-free": {},
         "big-pickle": {},
-        "ling-3.0-flash-fin-free": {}
+        "kilo-auto/free": {}
         // ... all live free models registered by default
       }
     }
@@ -214,18 +215,18 @@ base_url = "http://127.0.0.1:17070/v1"
 {
   "providerNodes": [
     {
-      "id": "bansos",
+      "id": "openai-compatible-chat-bansos",
       "name": "Bansos Router",
-      "type": "custom",
+      "type": "openai-compatible",
       "prefix": "bansos",
-      "apiType": "openai",
+      "apiType": "chat",
       "baseUrl": "http://127.0.0.1:17070/v1"
     }
   ],
   "providerConnections": [
     {
       "id": "bansos-default",
-      "provider": "bansos",
+      "provider": "openai-compatible-chat-bansos",
       "authType": "api_key",
       "name": "Bansos Router",
       "priority": 1,
@@ -264,9 +265,9 @@ running.
 
 ```
 npm i -g bansos-router
-bansos setup aider --model deepseek-v4-flash-free
-# writes OPENAI_API_BASE etc. (or shell rc)
-bansos start       # start daemon (or: bansos doctor -> "start it?" -> yes)
+bansos start --bg  # start the daemon
+bansos setup aider --model big-pickle
+# writes openai_api_base / openai_api_key / model into ~/.aider.conf.yml
 aider              # works
 ```
 
@@ -283,15 +284,17 @@ claude
 
 `bansos setup claude-code aider opencode codex`: all configs written, all
 pointing at the same daemon. Rate limits are shared across harnesses (see
-`docs/upstreams.md` §7): relay becomes the escape hatch. (pi is not a
+`docs/upstreams.md` §6): relay (§7) becomes the escape hatch. (pi is not a
 `bansos setup` harness; install the `pi-bansos-router` extension instead.)
 
 ## 6. Verification (`bansos doctor`)
 
-For each configured harness, doctor:
+`bansos doctor` checks, in order:
 
-1. daemon running? (TCP connect to port)
-2. `/v1/models` reachable & non-empty?
-3. harness config file exists and contains bansos markers (or merged keys)?
-4. for Codex: `wire_api = "responses"` present (not `chat`)?
-5. report per-harness ✅/⚠️/❌ with fix hints.
+1. the daemon answers `/healthz` (and how many models it serves);
+2. relay state and the security config (strict mode, DLP, config warnings);
+3. per harness: config file missing, present with bansos markers or merged
+   keys, or present without them;
+4. whether a newer `bansos-router` is on npm.
+
+It exits 1 when any check fails.

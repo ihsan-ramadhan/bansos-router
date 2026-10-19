@@ -45,6 +45,10 @@ export function App() {
     () => new Set((status?.providers ?? []).filter((p) => !p.allowed).map((p) => p.id)),
     [status?.providers],
   );
+  const usableModels = useMemo(
+    () => models.filter((m) => !blockedSources.has(m.source || m.owned_by || "")),
+    [models, blockedSources],
+  );
 
   return (
     <div className="min-h-screen flex flex-col bg-[#111113] text-[#f4f4f6]">
@@ -93,7 +97,7 @@ export function App() {
         {/* Tab 2: Agent Setup */}
         <div className={activeTab === "agent" ? "block" : "hidden"}>
           <AgentSetup
-            models={models}
+            models={usableModels}
             daemonPort={daemonPort}
           />
         </div>
@@ -109,7 +113,7 @@ export function App() {
         {/* Tab 4: Playground */}
         <div className={activeTab === "playground" ? "block" : "hidden"}>
           <Playground
-            models={models}
+            models={usableModels}
             daemonPort={daemonPort}
           />
         </div>

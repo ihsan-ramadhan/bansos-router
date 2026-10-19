@@ -51,6 +51,11 @@ export class RuntimeCatalog {
     return [...this.byId.values()];
   }
 
+  // models whose upstream the security policy lets a request reach
+  get servableModels(): ModelDef[] {
+    return this.models.filter((m) => isUpstreamAllowed(this.security, this.bySource.get(m.source)?.id ?? m.source));
+  }
+
   get upstreamIds(): string[] {
     return this.upstreams.map((u) => u.id);
   }

@@ -83,7 +83,7 @@ export function loadConfig(file = CONFIG_FILE): BansosConfig {
   };
 }
 
-  // atomic write: temp file in the same dir, then rename over target
+// atomic write: temp file in the same dir, then rename over target
 export function writeJsonAtomic(file: string, data: unknown): void {
   ensureBansosDir();
   const tmp = `${file}.${process.pid}.tmp`;

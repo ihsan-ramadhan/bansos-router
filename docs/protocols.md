@@ -11,21 +11,31 @@
 | `POST /v1/chat/completions` | OpenAI Chat Completions | pi, Aider, OpenCode, Hermes, Goose, OpenClaw, Antigravity, JCode, Cline, Continue |
 | `POST /v1/messages` | Anthropic Messages | Claude Code, OpenClaw (anthropic mode) |
 | `POST /v1/responses` | OpenAI Responses | Codex CLI (≥0.122, `wire_api = "responses"`) |
-| `GET /v1/models` | OpenAI (list) | model pickers; returns **only alive curated models** |
-| `GET /` | Web UI Console | browser dashboard console |
-| `GET /healthz` |: | daemon health |
-| `GET /bansos/status` |: | CLI status payload (JSON) |
-| `POST /bansos/refresh` |: | CLI refresh: re-run upstream health checks now |
-| `GET /bansos/adapters` |: | list available harness adapters for Web UI |
-| `GET /bansos/adapters/render` |: | render harness configuration snippet |
-| `GET /bansos/relay` |: | get saved relay nodes and active state |
-| `POST /bansos/relay` |: | update relay state (toggle, add, remove, use) |
-| `POST /bansos/relay/probe` |: | test reachability and latency of a relay node |
+| `GET /v1/models` | OpenAI (list) | model pickers; returns **only alive curated models** (strict mode: only allowlisted upstreams; `?all=1` adds the blocked ones for the dashboard) |
+| `GET /` | Web UI | browser dashboard |
+| `GET /healthz` | bansos JSON | daemon health |
+| `GET /bansos/status` | bansos JSON | CLI status payload, provider counts, security in force |
+| `POST /bansos/refresh` | bansos JSON | re-run upstream health checks now |
+| `GET /bansos/adapters` | bansos JSON | list harness adapters for the Web UI |
+| `GET /bansos/adapters/render` | bansos JSON | render a harness config snippet |
+| `POST /bansos/adapters/apply` | bansos JSON | write or undo a harness config (admin) |
+| `GET /bansos/relay` | bansos JSON | saved relay nodes and active state |
+| `POST /bansos/relay` | bansos JSON | update relay state (toggle, add, remove, use) |
+| `POST /bansos/relay/probe` | bansos JSON | reachability and latency of a relay node |
+| `GET /bansos/usage` | bansos JSON | usage totals (`?window=`) |
+| `GET /bansos/events` | bansos JSON | request feed (`?limit=`, `?window=`) |
+| `GET/POST /bansos/config` | bansos JSON | read or save `~/.bansos/config.json` (admin) |
+| `POST /bansos/restart` | bansos JSON | restart with the saved config (admin) |
+| `GET /bansos/logs` | bansos JSON | tail of the daemon log (admin) |
+| `GET /bansos/doctor` | bansos JSON | doctor report for the Web UI (admin) |
+
+Admin routes answer loopback peers only (see `architecture.md` §3.1).
 
 ## 2. Internal normalized model
 
 Every inbound protocol is parsed into one internal representation, then
-rendered to the upstream wire (all upstreams are OpenAI Chat Completions).
+rendered to the upstream wire: OpenAI Chat Completions, or Responses for
+models marked `wireApi: "responses"` (see `upstreams.md` §3).
 
 ```ts
 type InternalTurn = {
@@ -72,9 +82,9 @@ Rules:
 | Assistant text | `role=assistant` | `role=assistant` | `output` items | `role=assistant` |
 | Tool call | `tool_calls[]` | `content:[{type:tool_use}]` | `output[]` function_call item | `tool_calls[]` |
 | Tool result | `role=tool` + `tool_call_id` | `role=user` + `tool_result` block | `input[]` `function_call_output` item | `role=tool` + `tool_call_id` |
-| Stop | `stop` | `end_turn` | `end_turn` |: |
-| Stop: tool | `tool_calls` | `tool_use` | `function_call` |: |
-| Stop: length | `length` | `max_tokens` | `max_output_tokens` |: |
+| Stop | `stop` | `end_turn` | `end_turn` | n/a |
+| Stop: tool | `tool_calls` | `tool_use` | `function_call` | n/a |
+| Stop: length | `length` | `max_tokens` | `max_output_tokens` | n/a |
 
 ### 3.2 Tool calling
 

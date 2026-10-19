@@ -53,7 +53,7 @@ function resolveTargetFile(adapter: HarnessAdapter, defaultPath: string): string
   return defaultPath;
 }
 
-async function getSetupModels(baseUrl: string): Promise<ModelDef[]> {
+async function getSetupModels(baseUrl: string): Promise<{ models: ModelDef[]; fromDaemon: boolean }> {
   try {
     const res = await fetch(`${baseUrl}/models`, { signal: AbortSignal.timeout(800) });
     if (res.ok) {
@@ -61,7 +61,7 @@ async function getSetupModels(baseUrl: string): Promise<ModelDef[]> {
         data?: Array<{ id: string; context_window?: number; max_tokens?: number; reasoning?: boolean; name?: string }>;
       };
       if (Array.isArray(json.data) && json.data.length > 0) {
-        return json.data.map((m) => {
+        return { fromDaemon: true, models: json.data.map((m) => {
           const known = SEEDED_MODELS.find((s) => s.id === m.id);
           if (known) return known;
           return modelDef({
@@ -74,13 +74,13 @@ async function getSetupModels(baseUrl: string): Promise<ModelDef[]> {
             input: ["text"],
             compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
           });
-        });
+        }) };
       }
     }
   } catch {
     // daemon offline or unreachable, fall back to seeded offline list
   }
-  return SEEDED_MODELS;
+  return { models: SEEDED_MODELS, fromDaemon: false };
 }
 
 function update9RouterSqlite(dbPath: string, ctx: SetupContext): boolean {
@@ -280,8 +280,12 @@ export async function runSetup(argv: string[]): Promise<number> {
   }
 
   const baseUrl = `http://${effectiveBind()}:${effectivePort()}/v1`;
-  const models = await getSetupModels(baseUrl);
-  const defaultModel = args.model ?? pickSmartDefaultModel(models);
+  const { models, fromDaemon } = await getSetupModels(baseUrl);
+  const pinned = args.model;
+  if (pinned && fromDaemon && !models.some((m) => m.id === pinned || m.id.endsWith(`/${pinned}`))) {
+    console.warn(`bansos setup: "${pinned}" is not served by the daemon right now (not alive, or blocked by strict mode); writing it anyway`);
+  }
+  const defaultModel = pinned ?? pickSmartDefaultModel(models);
   const ctx: SetupContext = {
     baseUrl,
     defaultModel,

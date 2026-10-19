@@ -119,6 +119,7 @@ interface DaemonFlags {
 
 function startServer(
   port: number,
+  requestedPort: number,
   bind: string,
   config: BansosConfig,
   log: ReturnType<typeof createLogger>,
@@ -146,14 +147,14 @@ function startServer(
     startedAt,
     security: config.security,
     activity,
-    admin: { bind, refreshIntervalMs: config.refreshIntervalMs, flags, restart },
+    admin: { requestedPort, bind, refreshIntervalMs: config.refreshIntervalMs, flags, restart },
   });
 
   return new Promise((resolve, reject) => {
     server.once("error", (err: NodeJS.ErrnoException) => {
       if (err.code === "EADDRINUSE" && port < MAX_PORT) {
         log.warn(`port ${port} busy - trying ${port + 1}`);
-        resolve(startServer(port + 1, bind, config, log, activity, flags, restart));
+        resolve(startServer(port + 1, requestedPort, bind, config, log, activity, flags, restart));
         return;
       }
       reject(err);
@@ -217,10 +218,9 @@ async function main(argv: string[]): Promise<void> {
       [
         ...process.execArgv,
         process.argv[1]!,
-        "--port",
-        String(port),
-        "--bind",
-        bind,
+        "daemon",
+        ...(args.port !== undefined ? ["--port", String(args.port)] : []),
+        ...(args.bind !== undefined ? ["--bind", args.bind] : []),
         ...(args.unsafeAllowNonLoopback ? ["--unsafe-allow-non-loopback"] : []),
         // marker so the child knows it is the file-backed instance
         "--bg-child",
@@ -248,7 +248,7 @@ async function main(argv: string[]): Promise<void> {
     const wantPort = args.port ?? cfg.port ?? DEFAULT_PORT;
     const wantBind = args.bind ?? cfg.bind;
     assertBindAllowed(wantBind, cfg.security, args.unsafeAllowNonLoopback);
-    const running = await startServer(wantPort, wantBind, cfg, log, activity, flags, () => void restart());
+    const running = await startServer(wantPort, wantPort, wantBind, cfg, log, activity, flags, () => void restart());
     current = { ...running, config: cfg };
     const actualPort = running.port;
     log.info(`bansosd listening on http://${wantBind}:${actualPort}`);
@@ -270,13 +270,14 @@ async function main(argv: string[]): Promise<void> {
       );
     }
 
-    await running.catalog.refresh();
-
-    if (process.env.BANSOS_LOG !== "json") {
-      out.write(
-        `  └── Models   : ${running.catalog.models.length} alive (${[...new Set(running.catalog.models.map((m) => m.source))].join(", ")})\n\n`
-      );
-    }
+    // not awaited: a restart counts as done once the server listens, so the next one is not dropped
+    void running.catalog.refresh().then(() => {
+      if (process.env.BANSOS_LOG !== "json") {
+        out.write(
+          `  └── Models   : ${running.catalog.servableModels.length} alive (${[...new Set(running.catalog.servableModels.map((m) => m.source))].join(", ")})\n\n`
+        );
+      }
+    }, (err) => log.warn(`catalog refresh failed: ${String((err as Error)?.message ?? err)}`));
   };
 
   const stop = (running: Running): Promise<void> => {

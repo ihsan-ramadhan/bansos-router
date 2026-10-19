@@ -34,7 +34,7 @@ interface Daemon {
   close(): Promise<void>;
 }
 
-async function startDaemon(config: unknown, opts: { bind?: string; restart?: boolean; flags?: { port?: boolean } } = {}): Promise<Daemon> {
+async function startDaemon(config: unknown, opts: { bind?: string; restart?: boolean; flags?: { port?: boolean }; port?: number; requestedPort?: number } = {}): Promise<Daemon> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bansos-settings-"));
   const configFile = path.join(dir, "config.json");
   const logFile = path.join(dir, "bansosd.log");
@@ -47,11 +47,12 @@ async function startDaemon(config: unknown, opts: { bind?: string; restart?: boo
   const server = createServer({
     catalog,
     rateLimiter: new RateLimiter({ limit: 1_000, windowMs: 60_000 }),
-    port: 17070,
+    port: opts.port ?? 17070,
     log,
     startedAt: Date.now(),
     security,
     admin: {
+      requestedPort: opts.requestedPort,
       bind: opts.bind ?? "127.0.0.1",
       refreshIntervalMs: 1_800_000,
       configFile,
@@ -251,6 +252,16 @@ test("restart answers first, then runs the restart hook", async () => {
   } finally {
     await busy.close();
   }
+  const bumped = await startDaemon({ ...BASE_CONFIG, port: 17070 }, { port: 17071, requestedPort: 17070 });
+  try {
+    const view = await (await fetch(`${bumped.baseUrl}/bansos/config`)).json();
+    assert.deepEqual(view.restartRequired, [], "an auto-bumped port is not a pending change");
+    const res = await postJson(`${bumped.baseUrl}/bansos/restart`, {});
+    assert.equal(res.status, 202, "the saved port being taken is what caused the bump, not a reason to refuse");
+    assert.equal((await res.json()).port, 17071);
+  } finally {
+    await bumped.close();
+  }
   const fixed = await startDaemon(BASE_CONFIG, { restart: false });
   try {
     assert.equal((await postJson(`${fixed.baseUrl}/bansos/restart`, {})).status, 501);
@@ -349,6 +360,28 @@ test("status and doctor report real provider counts and the security actually in
       [...expected.keys()].filter((id) => id !== "zen"),
       "providers outside the allowlist are reported as blocked, not available",
     );
+  } finally {
+    await d.close();
+  }
+});
+
+test("strict mode lists and configures only models an allowed upstream serves", async () => {
+  const d = await startDaemon({ ...BASE_CONFIG, security: { mode: "strict", allowedUpstreams: ["kilo"] } });
+  try {
+    const kiloIds = SEEDED_MODELS.filter((m) => m.source === "kilo").map((m) => m.id);
+    const listed = (await (await fetch(`${d.baseUrl}/v1/models`)).json()).data.map((m: { id: string }) => m.id);
+    assert.deepEqual(listed, kiloIds);
+    const all = (await (await fetch(`${d.baseUrl}/v1/models?all=1`)).json()).data;
+    assert.equal(all.length, SEEDED_MODELS.length, "the dashboard still sees blocked models to badge them");
+    const status = await (await fetch(`${d.baseUrl}/bansos/status`)).json();
+    assert.equal(status.modelCount, kiloIds.length);
+    const render = await (await fetch(`${d.baseUrl}/bansos/adapters/render?id=aider`)).json();
+    const text = JSON.stringify(render.config);
+    assert.ok(!text.includes("muse-spark"), "the smart default skips a blocked zen model");
+    assert.ok(kiloIds.some((id) => text.includes(id)));
+    const pinned = await postJson(`${d.baseUrl}/bansos/adapters/apply`, { id: "aider", model: "big-pickle" });
+    assert.equal(pinned.status, 400, "pinning a blocked model is refused instead of writing a config that 403s");
+    assert.match((await pinned.json()).error.message, /zen, which strict mode blocks/);
   } finally {
     await d.close();
   }

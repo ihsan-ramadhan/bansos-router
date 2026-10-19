@@ -1,7 +1,8 @@
 # bansos-router: Architecture
 
-> Status: **draft** · Not yet implemented. This document defines the target
-> architecture before any code is written.
+> How the daemon, CLI, dashboard and pi extension fit together, and the
+> decisions behind them. Wire translation, harness adapters and upstreams each
+> have their own doc (`protocols.md`, `harnesses.md`, `upstreams.md`).
 
 ## 1. Vision
 
@@ -39,7 +40,7 @@ harness.**
                 │  catalog · health-check · rate │
                 │  limit · relay egress          │
                 └───────────────┬────────────────┘
-                                │  OpenAI Chat Completions (+ relay egress)
+                                │  OpenAI Chat or Responses (+ relay egress)
                 ┌───────────────▼────────────────┐
                 │   keyless free upstreams        │
                 │   OpenCode Zen · KiloCode GW ·  │
@@ -93,14 +94,15 @@ The core server, run via `bansos start` (foreground or `--bg`) or the
 
 | Concern | Design |
 |---|---|
-| HTTP server | Node `http`/Bun native server, bound to `127.0.0.1`, port `17070`, auto-bump to next free port up to `17090` (proven pattern from pi-bansos); port/bind configurable via `~/.bansos/config.json` |
-| Inbound routes | Inference: `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1/responses`, `GET /v1/models`. Control (Web UI + CLI): `GET /healthz`, `GET/POST /bansos/status`, `POST /bansos/refresh`, `GET /bansos/adapters[/render]`, `GET/POST /bansos/relay`, `POST /bansos/relay/probe`, `GET /bansos/usage`, `GET /bansos/events` (semua live) |
-| Catalog | Runtime catalog = static registry ∪ dynamic snapshots (LLM7 today; local gateways join in M5), filtered by liveness; served by `/v1/models`; **never forwarded upstream** (prevents paid-model leakage, see §6) |
+| HTTP server | Node `http`, bound to `127.0.0.1`, port `17070`, auto-bump to next free port up to `17090` (proven pattern from pi-bansos); port/bind configurable via `~/.bansos/config.json` |
+| Inbound routes | Inference: `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1/responses`, `GET /v1/models`. Control (Web UI + CLI): `GET /healthz`, `GET /bansos/status`, `POST /bansos/refresh`, `GET /bansos/adapters[/render]`, `GET/POST /bansos/relay`, `POST /bansos/relay/probe`, `GET /bansos/usage`, `GET /bansos/events` |
+| Admin routes | `GET/POST /bansos/config`, `POST /bansos/restart`, `GET /bansos/logs`, `GET /bansos/doctor`, `POST /bansos/adapters/apply` (`src/daemon/admin.ts`): answered only for loopback peers, and POSTs need a loopback Origin or none |
+| Catalog | Runtime catalog = static registry ∪ dynamic snapshots (Kilo, LLM7, OVH, and Zen via models.dev; local gateways join in M5), filtered by liveness; served by `/v1/models` (strict mode leaves out upstreams outside the allowlist); **never forwarded upstream** (prevents paid-model leakage, see §6) |
 | Health checker | At startup: fetch each upstream catalog, mark models alive/dead. Periodic refresh (configurable, e.g. every 30 min) + manual refresh via CLI |
 | Protocol translation | Inbound wire -> internal normalized turn -> upstream Chat Completions. See `docs/protocols.md` |
 | Rate limiter | Local per-IP limit (protects against accidental LAN exposure; upstreams have their own limits) |
 | Relay egress | When enabled, upstream calls go through a user-owned relay via `x-relay-target` / `x-relay-path` headers (proven pattern). See `docs/upstreams.md` §7 |
-| Request logging | Structured logs (JSON lines) to stdout + optional file; quiet by default |
+| Request logging | Text or JSON lines (`BANSOS_LOG=json`) to stdout and always to `~/.bansos/logs/bansosd.log`, rotated past 5 MB; secrets and raw upstream errors are kept out in strict mode |
 
 ### 3.2 `bansos`: the CLI (short-lived)
 
@@ -113,10 +115,12 @@ The core server, run via `bansos start` (foreground or `--bg`) or the
 | `bansos refresh` | Re-run health checks now |
 | `bansos relay on/off/status` | Toggle relay egress live |
 | `bansos relay url <URL>` / `use <URL>` / `list` / `remove <URL>` | Manage saved relays |
-| `bansos relay deploy` | Deploy a fresh Vercel relay (token used once, never stored) |
-| `bansos doctor` | Diagnose: port conflicts, upstream reachability, harness config validity |
+| `bansos relay deploy` | Stub (M4): prints how to bring your own relay |
+| `bansos doctor` | Diagnose: daemon reachability, relay, security config, harness config validity, available update |
 | `bansos start [--bg]` | Start the daemon (foreground, or detached with `--bg`) |
-| `bansos stop` | Stop all running daemons (via `~/.bansos/state.json` + process scan) |
+| `bansos stop [--all]` | Stop the daemon in `~/.bansos/state.json`; `--all` also scans for every other bansos daemon |
+| `bansos logs [--activity]` | Tail the daemon log, or the request feed |
+| `bansos usage [--json]` | Request and token totals over the last 60 days |
 | `bansosd` | Alias bin for the daemon (same entry file as `bansos`) |
 
 The CLI **does not require the daemon to be running** for setup/doctor
@@ -149,9 +153,11 @@ demand, stops it again when pi exits if the extension spawned it).
   explicitly discouraged; set it via `~/.bansos/config.json` (`"bind"`) with
   awareness of the risks.
 - Daemon lifecycle: started manually (`bansos start`, or `bansosd`) or spawned
-  on demand by the pi extension. A `bansos doctor` subcommand detects "daemon
-  not running" and offers to start it. `bansos stop` kills every daemon
-  process (state.json pid + `/proc` scan for the daemon binary).
+  on demand by the pi extension. `bansos doctor` reports a daemon that is not
+  running with the command to start it. `bansos stop` stops the recorded
+  daemon; `bansos stop --all` adds a `/proc` (Linux) or process-list scan.
+- The dashboard's Settings tab can restart the daemon in place with the saved
+  config; the process stays the same, only the HTTP server is rebuilt.
 
 ## 5. State & persistence
 
@@ -160,11 +166,13 @@ never wipe it):
 
 ```
 ~/.bansos/
-├── config.json        # port, bind, refresh interval, default harness settings
+├── config.json        # port, bind, refresh interval, security
 ├── state.json         # runtime state: pid/port/bind of the running daemon
 ├── activity.json      # request feed + token usage (rolling 60 days)
 ├── relay-state.json   # saved relays + active relay + enabled flag
-└── logs/              # daemon log (bansosd.log)
+├── pi-models.json     # last catalog the pi extension saw (offline fallback)
+├── update-check.json  # npm version check cache (24 h)
+└── logs/              # daemon log (bansosd.log, rotated)
 ```
 
 State files are plain JSON, never secret-bearing (keyless design).
@@ -179,9 +187,11 @@ State files are plain JSON, never secret-bearing (keyless design).
 | Paid-model leakage | `/v1/models` serves **only the curated alive catalog**, never the upstream catalog (OpenCode Zen returns ~60 models incl. paid) |
 | Path/method abuse | Allowlist of paths + methods; reject traversal/encoded variants (pattern from pi-bansos) |
 | Relay abuse | Relay allowlist (`ALLOWED_TARGETS`): only known upstream hosts may be targeted via `x-relay-target` |
-| Relay probe SSRF | Probe targets limited to saved/active relays or public https; literal loopback/private/link-local IPs (mis. metadata `169.254.x`) ditolak 403 unless explicitly saved |
-| Relay state tampering | Relay URLs divalidasi saat write (`http(s)`, tanpa credentials, panjang dibatasi, field asing dibuang) |
-| Secret handling | No keys stored. Vercel deploy token is used once in-memory, never persisted |
+| Relay probe SSRF | Probe targets limited to saved/active relays or public https; literal loopback/private/link-local IPs (e.g. metadata `169.254.x`) are rejected with 403 unless explicitly saved |
+| Relay state tampering | Relay URLs are validated on write (`http(s)`, no credentials, bounded length, unknown fields dropped) |
+| Settings tampering | Admin routes answer loopback peers only; POSTs from a non-loopback Origin are refused |
+| Pasted secrets leaving the machine | Strict mode (`security.mode: "strict"`): only allowlisted upstreams, no relay, no cross-provider failover, and DLP redacts (or blocks, `dlp: "block"`) API keys, tokens and private keys before a request leaves |
+| Secret handling | No keys stored |
 | Local abuse | Per-IP rate limit on the daemon itself |
 | Local socket | No TLS needed (loopback); upstream calls are HTTPS |
 
@@ -189,11 +199,9 @@ State files are plain JSON, never secret-bearing (keyless design).
 
 ### 7.1 Hard constraints
 
-1. **Dual-runtime**: the core must run under both **Node** (standalone
-   `bansosd`) and **Bun** (inside the pi extension, which pi loads into its
-   own Bun process). Rule: use web-standard APIs only (`fetch`,
-   `ReadableStream`, `TextEncoder`) plus `node:http`: both runtimes support
-   them (proven by pi-bansos). No Node-only or Bun-only APIs in shared code.
+1. **Node only for the core**: the pi extension talks to the daemon over HTTP
+   and imports none of `src/`, so the core targets Node ≥20 alone (CI runs
+   20, 22 and 24).
 2. **npm distribution**: `npm i -g bansos-router`, two bins.
 3. **Minimal dependencies**: a proxy must be auditable; keep the tree tiny.
 
@@ -201,7 +209,7 @@ State files are plain JSON, never secret-bearing (keyless design).
 
 | Layer | Decision | Rationale |
 |---|---|---|
-| Runtime | **TypeScript on Node ≥20** (target LTS 22), Bun-compatible style | Widest install base; reuse pi-bansos logic (TS); Bun as a dev/binary bonus |
+| Runtime | **TypeScript on Node ≥20** (target LTS 22) | Widest install base; reuse pi-bansos logic (TS) |
 | Language | TS strict, ES modules, `verbatimModuleSyntax`; `tsc --noEmit` for type-check only | No build-time type checking in the hot path |
 | HTTP server | `node:http`: **no framework** | Raw streaming control; frameworks add nothing (pi-bansos proof) |
 | Upstream client | global `fetch` + `duplex: "half"` | SSE pass-through; connection pooling built into undici |
@@ -212,27 +220,30 @@ State files are plain JSON, never secret-bearing (keyless design).
 | Logging | hand-rolled JSON-lines logger, quiet by default | Proxy doesn't need pino-grade observability |
 | Testing | `node:test` (+ `tsx` loader in dev) | Zero-dep; enough for unit + streaming integration tests |
 | Build | **esbuild** -> one bundle (`dist/cli/index.js`); bins `bansos` + `bansosd` point at it | Single-file entry, no runtime build dep; `tsx` only for dev |
+| Dashboard | **Preact + Tailwind**, built by Vite into `dist/ui` and served by the daemon | Small bundle, no server-side rendering needed |
 | Process mgmt | `bansos start` foreground; `--bg` = detached spawn + log file; `bansos stop` = SIGTERM all daemon pids; `bansos status` = TCP health-check | `state.json` pid + `/proc` (Linux) / `ps` / `wmic` scan, no PID-file complexity |
 
 ### 7.3 Dependency budget
 
 ```
 runtime (0)
-dev (4):    typescript, esbuild, tsx, @types/node
+dev (10):   typescript, esbuild, tsx, @types/node,
+            vite, @preact/preset-vite, preact, lucide-preact,
+            tailwindcss, @tailwindcss/vite
 ```
 
-Everything else is standard library. This keeps the audit surface tiny and is
-itself a differentiator (LiteLLM ships dozens of deps; freebuff-proxy vendors
+The dashboard dependencies are build-time only: the published package ships
+the built `dist/ui`. Everything else is standard library. This keeps the audit
+surface tiny and is itself a differentiator (LiteLLM ships dozens of deps; freebuff-proxy vendors
 its frontend and stealth libs).
 
 ### 7.4 Package layout
 
 ```
 bansos-router/            # npm: bansos-router (bins: bansos, bansosd)
-├── src/                  # core: Bun+Node compatible (web APIs + node:http)
+├── src/                  # core: Node ≥20 (web APIs + node:http)
 ├── dist/                 # esbuild output (gitignored; built by `prepare`)
-├── extensions/pi/        # separate npm package: pi-bansos-router (planned)
-│                         #   (pi installs packages from npm, not folders)
+├── extensions/pi/        # separate npm package: pi-bansos-router
 ├── docs/
 └── package.json          # engines: node >=20
 ```
@@ -245,11 +256,11 @@ bansos-router/            # npm: bansos-router (bins: bansos, bansosd)
 3. **Go rewrite**: last resort, only if single-static-binary becomes the
    dominant requirement (that's the path freebuff-proxy took).
 
-### 7.6 Open question (must be fixed before M0)
+### 7.6 Self-built translation
 
-Self-built translation vs. wrapping **LiteLLM**. This doc assumes self-built.
-If the Responses/Messages translation effort balloons, LiteLLM as an embedded
-engine with bansos as a config generator is the fallback plan.
+Translation is self-built rather than wrapping **LiteLLM**. LiteLLM as an
+embedded engine, with bansos as a config generator, stays the fallback if the
+Responses/Messages translation ever outgrows what is reasonable to maintain.
 
 ### 7.7 References (what we borrow from each)
 
@@ -258,24 +269,33 @@ engine with bansos as a config generator is the fallback plan.
 | [`mannnrachman/pi-bansos`](https://github.com/mannnrachman/pi-bansos) | TypeScript (pi extension) | Keyless upstream patterns (Zen spoofed headers, Kilo keyless), startup health-check, relay egress (`x-relay-target`/`x-relay-path`), auto port bump, pi `registerProvider` + `/bansos` command |
 | [`trefeon/freebuff-proxy`](https://github.com/trefeon/freebuff-proxy) | Go | Reference only (future M5 scope): production 3-wire translation in practice (chat / responses / messages), token pooling + bridge/hybrid modes, safe-mode stealth, registry refresh + per-token quota lock, admin dashboard, Go release tooling (goreleaser, service install): its ban-risk hygiene rules inform our ToS guardrails |
 
-## 8. Repository layout (planned)
+## 8. Repository layout
 
 ```
 bansos-router/
 ├── package.json            # bins: bansos, bansosd
+├── scripts/sync-version.mjs # copies the root version into extensions/pi
 ├── src/
 │   ├── logger.ts           # shared JSON-lines logger (hand-rolled)
-│   ├── cli/                # bansos command (setup, status, relay, doctor)
-│   │   ├── index.ts
-│   │   ├── setup.ts        # per-harness config writers
+│   ├── update.ts           # npm registry version check (24 h cache)
+│   ├── cli/                # bansos command
+│   │   ├── index.ts        # dispatch, start/stop/status/logs/usage
+│   │   ├── setup.ts        # apply/undo harness configs
+│   │   ├── write.ts        # JSON merge, TOML/YAML block writers
 │   │   ├── relay.ts
+│   │   ├── ping.ts
 │   │   └── doctor.ts
 │   ├── daemon/             # bansosd server
-│   │   ├── index.ts        # entry, port bump, lifecycle
+│   │   ├── index.ts        # entry, port bump, lifecycle, in-place restart
 │   │   ├── server.ts       # http server + routing + static UI serving
-│   │   ├── catalog.ts      # model registry + liveness
+│   │   ├── admin.ts        # settings, restart, logs, doctor, setup apply
+│   │   ├── activity.ts     # request feed + usage (activity.json)
+│   │   ├── catalog.ts      # model registry + liveness + cooldowns
 │   │   ├── rate-limit.ts
 │   │   └── state.ts        # ~/.bansos persistence
+│   ├── security/
+│   │   ├── policy.ts       # strict mode, bind and upstream allowlist
+│   │   └── secret-guard.ts # DLP scan + redaction
 │   ├── ui/                 # Web console dashboard (Preact + Vite)
 │   ├── protocols/          # wire translation
 │   │   ├── internal.ts     # normalized chat-turn model
@@ -283,7 +303,7 @@ bansos-router/
 │   │   ├── anthropic.ts    # inbound Messages
 │   │   ├── responses.ts    # inbound Responses
 │   │   ├── responses-upstream.ts # outbound Responses (wireApi models)
-│   │   ├── index.ts        # protocol router (endpoint -> parser)
+│   │   ├── tool-bridge.ts  # maps Zen's injected tools onto the caller's
 │   │   └── stream.ts       # SSE translation helpers
 │   ├── upstreams/          # sources + health checks
 │   │   ├── index.ts        # registry (keyless defaults + configured locals)
@@ -292,33 +312,31 @@ bansos-router/
 │   │   ├── kilo.ts         # KiloCode gateway (keyless)
 │   │   ├── llm7.ts         # LLM7 (keyless, dynamic catalog)
 │   │   ├── ovh.ts          # OVHcloud AI Endpoints (anonymous, seeds ∩ live)
-│   │   ├── local.ts        # local OpenAI-compatible gateways
-│   │   │                   #   (freebuff-proxy, LiteLLM, 9router, ollama)
-│   │   └── types.ts
+│   │   └── local.ts        # local OpenAI-compatible gateways (M5, no catalog yet)
 │   ├── relay/              # relay egress + deploy
 │   │   ├── egress.ts       # x-relay-target forwarding
-│   │   └── vercel.ts       # one-shot deploy
+│   │   └── vercel.ts       # one-shot deploy (stub, M4)
 │   └── adapters/           # harness config templates
 │       ├── index.ts        # registry + per-harness render (all harnesses)
-│       ├── types.ts        # HarnessAdapter contract
-│       │                   #   (pi lives in extensions/pi: separate package)
-├── test/                   # node:test suites (SSE framing, rate limiter, ...)
+│       └── types.ts        # HarnessAdapter contract
+├── extensions/pi/          # pi-bansos-router (separate npm package)
+├── test/                   # node:test suites
 ├── docs/
-│   ├── architecture.md    # this file
+│   ├── architecture.md     # this file
 │   ├── protocols.md
 │   ├── harnesses.md
 │   └── upstreams.md
 ├── README.md
-└── LICENSE                # MIT
+└── LICENSE                 # MIT
 ```
 
 ## 9. Milestones
 
-| Milestone | Scope | Exit criteria |
+| Milestone | Scope | Status |
 |---|---|---|
-| **M0: Core daemon** | Port pi-bansos core: server, path guards, rate limit, catalog, OpenCode Zen upstream, health check, `/v1/chat/completions` + `/v1/models` | `curl http://127.0.0.1:17070/v1/chat/completions` streams a reply; only alive models listed |
-| **M1: Anthropic wire** | `/v1/messages` translation (system, tools, thinking, SSE) | Claude Code works via `ANTHROPIC_BASE_URL` against bansosd |
-| **M2: Setup CLI** | `bansos setup` (9 harness adapters), `bansos start/stop`, `bansos status/models/doctor`, single `bansos` binary (+ `bansosd` alias) | Fresh machine: `npm i -g` -> `bansos setup aider` -> aider works |
-| **M3: Responses wire** | `/v1/responses` translation | Codex CLI works via `wire_api = "responses"` |
-| **M4: Relay UX** | `relay on/off/url/use/list/remove/deploy` + rotation | Rate-limit hit -> relay on -> back in business, no restart |
-| **M5: More upstreams** | OpenRouter `:free`, Routeway, OVHcloud anonymous tier (shipped), FreeBuff via `freebuff-proxy` (token-based local gateway, relay off), periodic health refresh | Catalog grows without breaking `/v1/models` contract |
+| **M0: Core daemon** | Server, path guards, rate limit, catalog, OpenCode Zen upstream, health check, `/v1/chat/completions` + `/v1/models` | Shipped |
+| **M1: Anthropic wire** | `/v1/messages` translation (system, tools, thinking, SSE) | Shipped |
+| **M2: Setup CLI** | `bansos setup` adapters, `bansos start/stop`, `bansos status/models/doctor`, single `bansos` binary (+ `bansosd` alias) | Shipped (14 harnesses) |
+| **M3: Responses wire** | `/v1/responses` translation for Codex CLI | Shipped |
+| **M4: Relay UX** | `relay on/off/url/use/list/remove/deploy` + rotation | Shipped except `deploy` and rotation |
+| **M5: More upstreams** | OpenRouter `:free`, Routeway, OVHcloud anonymous tier, FreeBuff via `freebuff-proxy` (token-based local gateway, relay off), periodic health refresh | OVH, LLM7 and periodic refresh shipped; the rest open |

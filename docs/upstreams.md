@@ -21,27 +21,26 @@
     **roadmap (M5)**: opt-in, chained at `127.0.0.1:<port>`; may carry a
     token; relay egress **off**.
 
-### 1.1 Dynamic catalog & hardcoded fallback
+### 1.1 Dynamic catalog & pinned fallback
 
-Catalog bansos-router bersifat **live-first dengan pinned fallback**:
+The catalog is **live-first with a pinned fallback**:
 
-- **Kilo & LLM7** secara periodik (default tiap 30 menit,
-  `refreshIntervalMs` di `~/.bansos/config.json`) memanggil endpoint
-  `/models` upstream dan menyaring model gratis:
-  - Kilo: filter `id` diakhiri `:free` ditambah ID dari pinned list.
-  - LLM7: filter `usage_based_only === false` atau `tier === "turbo"`.
-- Saat endpoint upstream gagal / timeout / mengembalikan array kosong,
-  daemon otomatis mempertahankan model hasil `seed()` (pinned hardcoded)
-  sehingga katalog tidak kosong.
-- Ketiga upstream diquery **paralel** dalam satu pass, jadi satu gateway lambat
-  hanya memakan latensinya sendiri, bukan dijumlahkan.
-- **Zen memakai models.dev sebagai sumber metadata**: endpoint `/models`
-  mereka hanya mengembalikan `{id, object, created, owned_by}` tanpa satu pun
-  field yang dibutuhkan `ModelDef`, dan tanpa penanda gratis/berbayar
-  (`created` pun palsu: di-stamp per request). Jadi katalog dibangun dari
-  irisan models.dev dengan listing Zen; seed lokal tinggal jadi sumber
-  `wireApi`, fallback field yang tidak dipublikasikan index, dan daftar id yang
-  diprobe. Model free baru ikut otomatis. Lihat §4.2.
+- On a timer (every 30 minutes by default, `refreshIntervalMs` in
+  `~/.bansos/config.json`) each upstream's own model listing is fetched and
+  filtered down to free models:
+  - Kilo: ids ending in `:free`, plus the pinned list.
+  - LLM7: `usage_based_only === false` or `tier === "turbo"`.
+  - OVH: the listing intersected with the seeds.
+- When a listing fails, times out or comes back empty, the daemon keeps the
+  models from `seed()` (the pinned list), so the catalog never empties.
+- All upstreams are queried **in parallel** in one pass, so a slow gateway
+  costs only its own latency instead of adding to the others.
+- **Zen uses models.dev for metadata**: its `/models` endpoint returns only
+  `{id, object, created, owned_by}`, none of the fields `ModelDef` needs and no
+  free/paid marker (even `created` is fake, stamped per request). The catalog
+  is the intersection of models.dev with the Zen listing; the local seed only
+  supplies `wireApi`, fallbacks for fields the index leaves out, and the ids to
+  probe. New free models join on their own. See §4.1.
 
 ## 2. Upstreams (v1)
 
@@ -52,7 +51,7 @@ Catalog bansos-router bersifat **live-first dengan pinned fallback**:
 | Base URL | `https://opencode.ai/zen/v1` (OpenAI-compatible) |
 | Auth | Keyless passthrough (no login) |
 | Spoofed headers | `User-Agent: opencode/latest/2.0.5/cli`, `authorization: Bearer public`, `x-opencode-client: cli`, `x-opencode-project: <hex40>`, `x-opencode-session: ses_<descending_id>`, `x-session-affinity: <session>`, `x-session-id: <session>`, `b3`, `traceparent` |
-| Model source | **Pinned seed** (`src/upstreams/zen.ts`) intersected with live `GET /v1/models`; seeded ids missing from the live list are probed once and dropped if they fail. Live ids outside the seed are never added, so the catalog cannot leak paid models |
+| Model source | models.dev free models (`cost.input === 0`, not deprecated) intersected with live `GET /v1/models`, plus the pinned seed (`src/upstreams/zen.ts`); seeded ids missing from the live list are probed once and dropped if they fail. An id models.dev marks paid never enters, so the catalog cannot leak paid models |
 | Rate limit | Unpublished; treated as best-effort |
 | Gateway quirk | The free-tier gate requires `stream: true` and the presence of core tools (`read` + `shell`). The router injects them when the caller declared none, folds the forced stream back to JSON for non-streaming callers (both wires), and strips tool calls aimed at the injected tools. See §2.1.1 |
 
@@ -190,9 +189,9 @@ v1 ships **keyless upstreams only**. These land later:
 ## 3. Catalog format
 
 Static registry shipped in code, one seed array per upstream
-(`src/upstreams/zen.ts`, `kilo.ts`, `llm7.ts`), one entry per known free model. Exception: sources with **dynamic catalogs** (LLM7) are
-snapshotted into the runtime catalog at health-check time instead of being
-pinned statically. The **runtime catalog** is the union of the static
+(`src/upstreams/zen.ts`, `kilo.ts`, `llm7.ts`, `ovh.ts`), one entry per known
+free model. The live listings of §1.1 replace a source's seeds at
+health-check time. The **runtime catalog** is the union of the static
 registry and dynamic snapshots, filtered by liveness; only the runtime
 catalog is served.
 
@@ -200,7 +199,7 @@ catalog is served.
 type ModelDef = {
   id: string;            // exact upstream model id (never an alias)
   name: string;
-  source: "zen" | "kilo" | "llm7" | "local";
+  source: "zen" | "kilo" | "llm7" | "ovh" | "local";
   reasoning: boolean;
   contextWindow: number;
   maxTokens: number;
@@ -212,6 +211,7 @@ type ModelDef = {
   };
   cost: { input: 0; output: 0; cacheRead: 0; cacheWrite: 0 };
   wireApi?: "chat" | "responses";  // upstream wire format; defaults to chat
+  supportsTools?: boolean;          // false skips the model for tool requests
 };
 ```
 
@@ -226,10 +226,11 @@ seeing OpenAI chat and needs no per-model branching.
 v1 seed (pinned seeds + live refresh; liveness drops dead ids, live `:free`
 ids from the kilo API join at runtime):
 
-**OpenCode Zen (7 seeded):** `mimo-v2.5-free`, `nemotron-3-ultra-free`,
-`big-pickle`, `nemotron-3.5-lightning-free`, `ling-3.0-flash-fin-free`,
-`muse-spark-1.3-contributor-free`, `muse-spark-1.2-contributor-free` (the two
-Muse ids are `wireApi: "responses"`)
+**OpenCode Zen (10 seeded):** `muse-spark-1.3-contributor-free`,
+`muse-spark-1.2-contributor-free` (both `wireApi: "responses"`), `cat-jam-free`,
+`space-bunny-free`, `nemotron-3.5-lightning-free`, `longcat-2.5-preview-free`,
+`mimo-v2.6-flash-free`, `big-pickle`, `nemotron-3-ultra-free`,
+`step-5-preview-free`
 
 **KiloCode gateway (17 seeded):** `kilo-auto/free`, `stepfun/step-3.7-flash:free`,
 `nvidia/nemotron-3-ultra-550b-a55b:free`, `nvidia/nemotron-3-super-120b-a12b:free`,
@@ -266,7 +267,7 @@ exhaustive (some servable promos are never listed), so zen re-checks each
 seed against the listing and only probe-verifies the unlisted ones keyless
 (typically zero to one model per refresh).
 
-### 4.2 Building the Zen catalog
+### 4.1 Building the Zen catalog
 
 Kilo and LLM7 can auto-add a model they have never seen because their listings
 carry everything `ModelDef` needs. Zen's listing carries an id and nothing else,
@@ -330,11 +331,11 @@ larger winning.
 
 ## 5. Rate limiting (daemon-local)
 
-- Per-IP sliding window on inbound requests (default: generous, e.g. 300/min)
- : protects the loopback socket if the user binds LAN, not a real abuse
+- Per-IP sliding window on inbound requests, 300 per minute by default:
+  protects the loopback socket if the user binds LAN, not a real abuse
   defense for public exposure (which we don't support).
-- Configurable via `~/.bansos/config.json`; disabled entirely with
-  `BANSOS_RATE_LIMIT=0`.
+- Set the limit with the `BANSOS_RATE_LIMIT` env var; `0` or an invalid value
+  falls back to the default.
 
 ## 6. Upstream rate-limit reality
 
@@ -342,10 +343,11 @@ larger winning.
 |---|---|---|
 | KiloCode | 200 req/hr/IP | ✅ yes: all harnesses share your IP |
 | OpenCode Zen | unpublished | ✅ likely |
-| OpenRouter free | 20 req/min, 200 req/day/model | ✅ yes |
+| LLM7 | 1 concurrent request per IP (anonymous) | ✅ yes |
+| OVHcloud | 2 req/min/IP (anonymous) | ✅ yes; direct only, the relay cannot help |
 
 **Consequence:** running 5 harnesses through one daemon shares one budget.
-This is the core argument for the relay feature (§8).
+This is the core argument for the relay feature (§7).
 
 ## 7. Relay egress
 
@@ -379,7 +381,7 @@ x-relay-path:   /api/gateway/chat/completions
 
 | Type | Deploy | Lifetime |
 |---|---|---|
-| Vercel worker | `bansos relay deploy`, **stub (M4, belum berfungsi)**; bring-your-own URL dulu | free tier: 100 GB / 500k invocations/mo |
+| Vercel worker | `bansos relay deploy` is a **stub (M4)**; bring your own URL for now | free tier: 100 GB / 500k invocations/mo |
 | Cloudflare worker | manual URL via `bansos relay url <URL>` | free tier generous |
 | Deno / user-owned | manual URL | any |
 
@@ -394,7 +396,7 @@ x-relay-path:   /api/gateway/chat/completions
   saved and switched; auto-rotation across saved relays is a v1.1 candidate.
 - **Probe (reachability check) is SSRF-limited**: `/bansos/relay/probe` may
   only target the active relay, a *saved* relay, or a public `https://` host.
-  Literal loopback/private/link-local IPs (mis. `127.0.0.1`,
+  Literal loopback/private/link-local IPs (e.g. `127.0.0.1`,
   `169.254.x`/metadata, `192.168.x`) are rejected with 403 unless the URL is
   explicitly saved as a relay.
 - **Relay URLs are validated on write**: only `http(s)://` without embedded
@@ -409,7 +411,7 @@ x-relay-path:   /api/gateway/chat/completions
 | Model promo expired (id 404s) | upstream 404/400 on request | returned as error; dropped on next refresh |
 | Per-IP rate limit hit | upstream 429/402 | error surfaced (mapped per protocol); `bansos relay on` is the fix |
 | Whole upstream down | connect timeout | mark source degraded, keep last-known catalog, log |
-| Relay down | relay 5xx/timeout | silent direct fallback (keep working); `bansos relay off` untuk mematikan egress relay |
+| Relay down | relay 5xx/timeout | silent direct fallback (keep working); `bansos relay off` turns relay egress off |
 | Error under HTTP 200 (JSON) | `{error}` with no `choices` (Kilo → Nvidia overloaded) | treated as 502, fails over |
 | Error under HTTP 200 (SSE) | first `data:` frame carries `error` (Zen `Streaming response failed: [503]`; Kilo/OpenRouter send it after `: KILO PROCESSING` keepalives and keep a `choices` array in the same frame) | `peekStreamError` buffers up to the first data frame, keepalives included, for at most 5 s so headers are never held back longer; an error there is treated as 502 and fails over; a later error frame becomes a 502 for non-stream callers, an Anthropic `error` event, or `response.failed` |
 | Model cannot take tools / images | 400/404 `does not support tools`, `No endpoints found that support tool use`, `does not support vision` | catalog flag `supportsTools` (Kilo `supported_parameters`, LLM7 `capabilities.tools`) and `input` skip such models up front; a matching error message fails over too. With failover off the upstream error is returned as-is: tools are never silently dropped |

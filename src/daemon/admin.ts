@@ -19,6 +19,7 @@ export interface AdminOptions {
   security: SecurityConfig;
   catalog: RuntimeCatalog;
   port: number;
+  requestedPort?: number;
   bind: string;
   refreshIntervalMs: number;
   flags?: { port?: boolean; bind?: boolean; unsafeAllowNonLoopback?: boolean };
@@ -84,7 +85,7 @@ function configView(opts: AdminOptions) {
   const restartRequired: string[] = [];
   if (JSON.stringify(securityView(saved.security)) !== JSON.stringify(running.security)) restartRequired.push("security");
   if (savedView.refreshIntervalMs !== running.refreshIntervalMs) restartRequired.push("refreshIntervalMs");
-  if (!opts.flags?.port && savedView.port !== running.port) restartRequired.push("port");
+  if (!opts.flags?.port && savedView.port !== (opts.requestedPort ?? opts.port)) restartRequired.push("port");
   if (!opts.flags?.bind && savedView.bind !== running.bind) restartRequired.push("bind");
   return {
     path: file,
@@ -227,12 +228,14 @@ function applySetup(opts: AdminOptions, body: unknown): AdminResult {
   if (!adapter) return { status: 404, body: { error: { message: `harness "${body.id}" not found` } } };
   let model: string | undefined;
   if (body.model !== undefined && body.model !== "") {
-    if (typeof body.model !== "string" || !opts.catalog.resolve(body.model)) {
-      return { status: 400, body: { error: { message: `unknown model: ${String(body.model)}` } } };
+    const def = typeof body.model === "string" ? opts.catalog.resolve(body.model) : undefined;
+    if (!def) return { status: 400, body: { error: { message: `unknown model: ${String(body.model)}` } } };
+    if (!opts.catalog.servableModels.includes(def)) {
+      return { status: 400, body: { error: { message: `model ${def.id} is served by ${def.source}, which strict mode blocks` } } };
     }
-    model = body.model;
+    model = body.model as string;
   }
-  const models = opts.catalog.models;
+  const models = opts.catalog.servableModels;
   const ctx = {
     baseUrl: setupBaseUrl(opts.bind, opts.port),
     defaultModel: model ?? pickSmartDefaultModel(models),
@@ -293,13 +296,14 @@ export async function handleAdmin(
   if (url === "/bansos/restart" && method === "POST") {
     if (!opts.restart) return { status: 501, body: { error: { message: "this daemon cannot restart itself" } } };
     const saved = loadConfig(opts.configFile ?? CONFIG_FILE);
-    const port = opts.flags?.port ? opts.port : saved.port;
+    const requested = opts.requestedPort ?? opts.port;
+    const port = opts.flags?.port ? requested : saved.port;
     const bind = opts.flags?.bind ? opts.bind : saved.bind;
-    const moving = port !== opts.port || bind !== opts.bind;
+    const moving = port !== requested || bind !== opts.bind;
     if (moving && !(await portFree(port, bind))) {
       return { status: 409, body: { error: { message: `port ${port} on ${bind} is already in use; pick another port and save again` } } };
     }
-    return { status: 202, body: { restarting: true, port, bind }, after: opts.restart };
+    return { status: 202, body: { restarting: true, port: moving ? port : opts.port, bind }, after: opts.restart };
   }
 
   if (url === "/bansos/logs" && method === "GET") {

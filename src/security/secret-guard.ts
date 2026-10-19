@@ -56,9 +56,7 @@ const SENSITIVE_KEYS = new Set([
   "signingsecret",
 ]);
 
-// the bare (unquoted) value must stop at a line-separator escape: on the wire a nested string keeps
-// "\n" as two characters, so without this the value swallows the *next* assignment line and a
-// already-redacted marker reads as a live credential (scan and redact would then disagree forever).
+// a bare value stops at an escaped newline so it cannot swallow the next line of a nested JSON string
 const BARE_VALUE = /((?:(?!\\[nrt])[^\s,;'"}])+)/.source;
 
 const INLINE_ASSIGNMENTS = [

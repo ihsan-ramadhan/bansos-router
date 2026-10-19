@@ -1,6 +1,5 @@
 // node's web ReadableStream type: the DOM global lacks [Symbol.asyncIterator], node has it
 import type { ReadableStream } from "node:stream/web";
-import type http from "node:http";
 import { StringDecoder } from "node:string_decoder";
 
 // openai-style data:{json} frame
@@ -16,10 +15,6 @@ export function sseEvent(event: string, data: unknown): string {
 // openai terminal marker
 export function sseDone(): string {
   return "data: [DONE]\n\n";
-}
-
-export function writeSse(res: http.ServerResponse, frame: string): void {
-  res.write(frame);
 }
 
 // split raw sse bytes into complete "\n\n"-terminated frames; multibyte chars and CRLF survive chunk boundaries

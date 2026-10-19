@@ -22,7 +22,7 @@ export async function fetchStatus(): Promise<DaemonStatus> {
 }
 
 export async function fetchModels(): Promise<ModelsResponse> {
-  const res = await fetch(`${BASE_URL}/v1/models`);
+  const res = await fetch(`${BASE_URL}/v1/models?all=1`);
   if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch models`);
   return res.json();
 }

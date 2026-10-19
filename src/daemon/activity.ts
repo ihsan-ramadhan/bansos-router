@@ -57,20 +57,6 @@ export interface ActivityInput {
 export const ACTIVITY_FILE = path.join(BANSOS_DIR, "activity.json");
 const MAX_RETENTION_MS = 60 * 24 * 60 * 60 * 1000; // 60 days
 
-export function emptyUsage(): UsageStats {
-  return {
-    totalRequests: 0,
-    okRequests: 0,
-    errorRequests: 0,
-    totalInputTokens: 0,
-    totalOutputTokens: 0,
-    failoverCount: 0,
-    avgDurationMs: 0,
-    perModel: {},
-    perUpstream: {},
-  };
-}
-
 export class ActivityStore {
   private events: ActivityEvent[] = [];
   private nextId = 1;

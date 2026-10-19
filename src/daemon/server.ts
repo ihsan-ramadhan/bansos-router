@@ -61,7 +61,7 @@ export interface StatusPayload {
   };
 }
 
-export function providerCounts(
+function providerCounts(
   catalog: RuntimeCatalog,
   security: SecurityConfig,
 ): Array<{ id: string; models: number; allowed: boolean }> {
@@ -249,7 +249,7 @@ function isHostTrusted(req: http.IncomingMessage): boolean {
 }
 
 // CSRF guard: browsers always send Origin cross-site; native clients send none
-export function isOriginTrusted(req: http.IncomingMessage): boolean {
+function isOriginTrusted(req: http.IncomingMessage): boolean {
   const origin = req.headers.origin;
   if (origin === undefined) return true;
   let url: URL;
@@ -2023,9 +2023,10 @@ export function createServer(opts: ServerOptions): http.Server {
     const url = cleanUrl.replace(/\/+$/, "");
 
     if (method === "GET" && (url === "/v1/models" || url === "/models")) {
+      const listAll = new URL(rawUrl, "http://127.0.0.1").searchParams.has("all");
       sendJson(res, 200, {
         object: "list",
-        data: catalog.models.map((m) => ({
+        data: (listAll ? catalog.models : catalog.servableModels).map((m) => ({
           id: m.id,
           object: "model",
           created: 0,
@@ -2049,7 +2050,7 @@ export function createServer(opts: ServerOptions): http.Server {
       sendJson(res, 200, {
         status: "ok",
         uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
-        modelCount: catalog.models.length,
+        modelCount: catalog.servableModels.length,
         relay: { enabled: relay.enabled, url: relay.url },
         security: {
           mode: security.mode,
@@ -2066,8 +2067,8 @@ export function createServer(opts: ServerOptions): http.Server {
         status: "ok",
         uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
         port,
-        modelCount: catalog.models.length,
-        models: catalog.models.map((m) => m.id),
+        modelCount: catalog.servableModels.length,
+        models: catalog.servableModels.map((m) => m.id),
         providers: providerCounts(catalog, security),
         relay: { enabled: relay.enabled, url: relay.url },
         security: {
@@ -2087,7 +2088,7 @@ export function createServer(opts: ServerOptions): http.Server {
         .then((report) => {
           sendJson(res, 200, {
             refreshed: true,
-            modelCount: catalog.models.length,
+            modelCount: catalog.servableModels.length,
             alive: report.alive,
           });
         })
@@ -2127,7 +2128,7 @@ export function createServer(opts: ServerOptions): http.Server {
         sendJson(res, 404, { error: { message: `adapter "${id}" not found` } });
         return;
       }
-      const defaultModel = model || pickSmartDefaultModel(catalog.models);
+      const defaultModel = model || pickSmartDefaultModel(catalog.servableModels);
       const reqHost = req.headers.host || `127.0.0.1:${port}`;
       const isHttps = Boolean((req.socket as import("node:tls").TLSSocket)?.encrypted);
       const proto = isHttps ? "https" : "http";
@@ -2135,7 +2136,7 @@ export function createServer(opts: ServerOptions): http.Server {
       const ctx = {
         baseUrl,
         defaultModel,
-        models: catalog.models,
+        models: catalog.servableModels,
         specificModel: Boolean(model),
       };
       const config = adapter.render(ctx);
@@ -2351,7 +2352,6 @@ export function createServer(opts: ServerOptions): http.Server {
       sendJson(res, 404, { error: { message: "not found" } });
     };
 
-    if (url === "/v1/responses" || url === "/responses") notFound();
-    else notFound();
+    notFound();
   });
 }

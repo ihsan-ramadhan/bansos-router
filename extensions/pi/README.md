@@ -14,6 +14,12 @@ Or from local repository path:
 pi install /path/to/bansos-router/extensions/pi
 ```
 
+OMP (Oh My Pi) loads it too:
+
+```bash
+omp plugin install pi-bansos-router
+```
+
 ## Features
 
 - Registers the `bansosr` provider in pi. The daemon address comes from
@@ -28,6 +34,8 @@ pi install /path/to/bansos-router/extensions/pi
 - Spawns the daemon on demand if it is offline (`bansos start --bg`).
 - On quit, stops only the daemon it started itself: a daemon you were already
   running is left alone.
-- `/bansosr` reports router health and the active model count, and says so
-  explicitly if the daemon has moved to a different port than this session
-  registered.
+- `/bansosr` reports router health, the active model count and relay state,
+  says so explicitly if the daemon has moved to a different port than this
+  session registered, and mentions a newer extension version on npm.
+- In strict mode only models from allowlisted upstreams are registered, since
+  the daemon's `/v1/models` leaves the others out.

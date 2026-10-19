@@ -197,8 +197,8 @@ Usage:
 Flags:
   --json    emit the raw /bansos/usage document instead of a summary table
 
-Requires a running daemon (bansos start). Aggregates reset when the daemon
-restarts. Use the "Activity" tab in the web UI for a live, per-request feed.
+Requires a running daemon (bansos start). Aggregates cover the last 60 days,
+kept in ~/.bansos/activity.json across restarts. Use the "Activity" tab in the web UI for a live, per-request feed.
 Exit codes: 0 daemon reachable, 1 daemon unreachable.
 `,
 };
@@ -719,7 +719,7 @@ async function runUsage(json: boolean): Promise<number> {
     n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k` : String(n);
   const dur = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`);
 
-  console.log(`\n● usage summary (resets on daemon restart)\n`);
+  console.log(`\n● usage summary (last 60 days)\n`);
   console.log(`  requests    : ${body.totalRequests} (${body.okRequests} ok, ${body.errorRequests} err)`);
   console.log(`  tokens in   : ${fmt(body.totalInputTokens)}`);
   console.log(`  tokens out  : ${fmt(body.totalOutputTokens)}`);
