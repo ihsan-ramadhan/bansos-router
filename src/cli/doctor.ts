@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import { spawnSync } from "node:child_process";
 import { ADAPTERS } from "../adapters";
 import { effectiveBind, effectivePort, loadConfig, loadConfigWarnings } from "../daemon/state";
 import { START_MARKER } from "../adapters/types";
@@ -93,7 +92,7 @@ export function harnessStatuses(): HarnessStatus[] {
 function sqliteKeysExist(dbPath: string, keys: string[]): boolean {
   const valid = keys
     .map((k) => k.split("."))
-    .filter(([table, id]) => Boolean(table && id && /^[A-Za-z_][A-Za-z0-9_]*$/.test(table)));
+    .filter(([table, id]) => Boolean(table && id && /^[A-Za-z_]\w*$/.test(table)));
   if (valid.length === 0) return false;
 
   try {
@@ -110,19 +109,9 @@ function sqliteKeysExist(dbPath: string, keys: string[]): boolean {
       }
     }
   } catch {
-    // fall through to the sqlite3 CLI (a config path can point at a non-database file)
+    // not a readable database (or no sqlite support in this runtime): report unconfigured
   }
-
-  try {
-    return valid.some(([table, id]) => {
-      const res = spawnSync("sqlite3", [dbPath, `SELECT 1 FROM ${table} WHERE id = '${id!.replace(/'/g, "''")}';`], {
-        encoding: "utf8",
-      });
-      return res.status === 0 && res.stdout.trim() !== "";
-    });
-  } catch {
-    return false;
-  }
+  return false;
 }
 
 function hasKeys(content: string, keys: string[]): boolean {
