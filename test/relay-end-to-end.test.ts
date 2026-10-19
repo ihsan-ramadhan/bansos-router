@@ -104,8 +104,13 @@ function setupTestDaemon(): Promise<{
   });
 }
 
+// loadRelayState() returns the module's cached object, so holding it directly
+// gives a live reference: the mutations below rewrote the "snapshot" and the
+// finally block saved the polluted state back to ~/.bansos/relay-state.json.
+// Every suite run left https://cli-relay.example.com (and friends) in the real
+// relay state, which then showed up in the failover/rotate pools.
 test("Relay API: Full state management (add, use, toggle, remove)", async () => {
-  const originalState = loadRelayState();
+  const originalState = structuredClone(loadRelayState());
   const { baseUrl, close } = await setupTestDaemon();
 
   try {
@@ -180,7 +185,7 @@ test("Relay API: Full state management (add, use, toggle, remove)", async () => 
 });
 
 test("Relay CLI: runRelay commands execute cleanly", async () => {
-  const originalState = loadRelayState();
+  const originalState = structuredClone(loadRelayState());
 
   try {
 
@@ -219,7 +224,7 @@ test("Relay CLI: runRelay commands execute cleanly", async () => {
 });
 
 test("Relay Egress: OpenAI Chat completions route through active relay with x-relay headers", async () => {
-  const originalState = loadRelayState();
+  const originalState = structuredClone(loadRelayState());
   const mockRelay = await createMockRelayServer();
   const { baseUrl, catalog, close: closeDaemon } = await setupTestDaemon();
 
@@ -276,7 +281,7 @@ test("Relay Egress: OpenAI Chat completions route through active relay with x-re
 });
 
 test("Relay Egress: Anthropic Messages API routes through active relay and converts response", async () => {
-  const originalState = loadRelayState();
+  const originalState = structuredClone(loadRelayState());
   const mockRelay = await createMockRelayServer();
   const { baseUrl, catalog, close: closeDaemon } = await setupTestDaemon();
 
