@@ -7,6 +7,7 @@ import { RateLimiter } from "../src/daemon/rate-limit";
 import { createLogger } from "../src/logger";
 import { loadRelayState, saveRelayState } from "../src/relay/egress";
 import { modelDef, type Upstream } from "../src/upstreams/types";
+import { snapshotRelayState } from "./isolate";
 
 async function assertDaemonAlive(baseUrl: string, attempts = 20): Promise<void> {
   for (let i = 0; i < attempts; i++) {
@@ -248,7 +249,7 @@ test("CORS headers are only emitted for loopback origins", async () => {
 // A3: relay mutation payload validation
 
 test("relay mutation rejects malformed URLs without touching state", async () => {
-  const originalState = structuredClone(loadRelayState());
+  const originalState = snapshotRelayState();
   const { baseUrl, close } = await createTestDaemon("http://127.0.0.1:1");
   try {
     saveRelayState({ enabled: false, url: "", relays: [] });
@@ -368,7 +369,7 @@ test("client disconnect aborts the upstream request instead of leaving it runnin
 });
 
 test("a cross-site POST cannot repoint the relay", async () => {
-  const originalState = structuredClone(loadRelayState());
+  const originalState = snapshotRelayState();
   const { baseUrl, close } = await createTestDaemon("http://127.0.0.1:1");
   try {
     saveRelayState({ enabled: false, url: "", relays: [] });
