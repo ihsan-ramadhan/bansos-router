@@ -10,7 +10,6 @@ import { DEFAULT_SECURITY_CONFIG } from "../src/security/policy";
 import { runRelay } from "../src/cli/relay";
 import { loadRelayState, saveRelayState } from "../src/relay/egress";
 import { modelDef, type ModelDef } from "../src/upstreams/types";
-import { snapshotRelayState } from "./isolate";
 
 // records what the daemon forwards so the test can assert on headers and body
 function createMockRelayServer(shouldFail = false): Promise<{
@@ -106,7 +105,7 @@ function setupTestDaemon(): Promise<{
 }
 
 test("Relay API: Full state management (add, use, toggle, remove)", async () => {
-  const originalState = snapshotRelayState();
+  const originalState = loadRelayState();
   const { baseUrl, close } = await setupTestDaemon();
 
   try {
@@ -181,7 +180,7 @@ test("Relay API: Full state management (add, use, toggle, remove)", async () => 
 });
 
 test("Relay CLI: runRelay commands execute cleanly", async () => {
-  const originalState = snapshotRelayState();
+  const originalState = loadRelayState();
 
   try {
 
@@ -220,7 +219,7 @@ test("Relay CLI: runRelay commands execute cleanly", async () => {
 });
 
 test("Relay Egress: OpenAI Chat completions route through active relay with x-relay headers", async () => {
-  const originalState = snapshotRelayState();
+  const originalState = loadRelayState();
   const mockRelay = await createMockRelayServer();
   const { baseUrl, catalog, close: closeDaemon } = await setupTestDaemon();
 
@@ -277,7 +276,7 @@ test("Relay Egress: OpenAI Chat completions route through active relay with x-re
 });
 
 test("Relay Egress: Anthropic Messages API routes through active relay and converts response", async () => {
-  const originalState = snapshotRelayState();
+  const originalState = loadRelayState();
   const mockRelay = await createMockRelayServer();
   const { baseUrl, catalog, close: closeDaemon } = await setupTestDaemon();
 

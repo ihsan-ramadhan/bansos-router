@@ -7,7 +7,6 @@ import { RateLimiter } from "../src/daemon/rate-limit";
 import { createLogger } from "../src/logger";
 import { SEEDED_MODELS } from "../src/upstreams";
 import { loadRelayState, saveRelayState } from "../src/relay/egress";
-import { snapshotRelayState } from "./isolate";
 
 function setupTestServer(): Promise<{ server: http.Server; baseUrl: string; close: () => Promise<void> }> {
   const log = createLogger({ level: "error" });
@@ -114,7 +113,7 @@ test("GET /bansos/adapters/render renders harness config", async () => {
 });
 
 test("GET and POST /bansos/relay read and update relay state", async () => {
-  const originalState = snapshotRelayState();
+  const originalState = loadRelayState();
   const { baseUrl, close } = await setupTestServer();
   try {
     const resGet = await fetch(`${baseUrl}/bansos/relay`);
@@ -183,7 +182,7 @@ test("404 returns HTML for browser navigation and JSON for API requests", async 
 });
 
 test("POST /bansos/relay/probe enforces an SSRF allowlist", async () => {
-  const originalState = snapshotRelayState();
+  const originalState = loadRelayState();
   const { baseUrl, close } = await setupTestServer();
   try {
     // no active or saved relay
