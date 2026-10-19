@@ -8,7 +8,12 @@ import {
   type SecurityConfig,
 } from "../security/policy";
 
-export const BANSOS_DIR = path.join(os.homedir(), ".bansos");
+// BANSOS_DIR is overridable so the test suite never writes to the real daemon
+// state. Tests used to load and save ~/.bansos/relay-state.json and append
+// fixture events (mock/zen:free, strict-origin, zen-origin) to the real
+// activity.json — which is exactly what the relay watchdog gates on, so a test
+// run could arm a failover. Default stays ~/.bansos for every real invocation.
+export const BANSOS_DIR = process.env.BANSOS_DIR || path.join(os.homedir(), ".bansos");
 
 export const CONFIG_FILE = path.join(BANSOS_DIR, "config.json");
 export const STATE_FILE = path.join(BANSOS_DIR, "state.json");
