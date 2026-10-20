@@ -8,7 +8,7 @@ import { runPing } from "./ping";
 import { runRelay } from "./relay";
 import { runSetup } from "./setup";
 import { runDaemon, DEFAULT_PORT, MAX_PORT } from "../daemon";
-import { BANSOS_DIR, STATE_FILE, effectiveBind, effectivePort, readJson } from "../daemon/state";
+import { BANSOS_DIR, STATE_FILE, effectiveBind, effectivePort, readJson, runningDaemonUrl } from "../daemon/state";
 import { VERSION, checkUpdate } from "../update";
 
 function help(): void {
@@ -327,6 +327,12 @@ async function runStart(args: string[]): Promise<number> {
     // runs in-process and never returns; Ctrl+C or SIGTERM shuts it down
     await runDaemon(args);
     return daemonExitCode();
+  }
+
+  const running = await runningDaemonUrl(port);
+  if (running) {
+    console.log(`bansosd already running at ${running}`);
+    return 0;
   }
 
   const logFile = path.join(BANSOS_DIR, "logs", "bansosd.log");

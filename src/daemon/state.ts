@@ -49,6 +49,18 @@ export function effectiveBind(): string {
   return typeof state?.bind === "string" ? state.bind : loadConfig().bind;
 }
 
+// base url of the daemon answering /healthz at the recorded port; an explicit other port never collides with it
+export async function runningDaemonUrl(port?: number): Promise<string | null> {
+  if (port !== undefined && port !== effectivePort()) return null;
+  const base = `http://${effectiveBind()}:${effectivePort()}`;
+  try {
+    const res = await fetch(`${base}/healthz`, { signal: AbortSignal.timeout(800) });
+    return res.ok ? base : null;
+  } catch {
+    return null;
+  }
+}
+
 export function readRawConfig(file = CONFIG_FILE): { raw: Partial<BansosConfig> | null; invalid: boolean } {
   let text: string;
   try {

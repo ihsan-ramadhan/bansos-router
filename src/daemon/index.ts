@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 import {
   loadConfig,
   loadConfigWarnings,
+  runningDaemonUrl,
   writeJsonAtomic,
   STATE_FILE,
   LOG_DIR,
@@ -175,6 +176,13 @@ async function main(argv: string[]): Promise<void> {
   const config = loadConfig();
   const port = args.port ?? config.port ?? DEFAULT_PORT;
   const bind = args.bind ?? config.bind;
+
+  // a second daemon would only bump to the next port and split state.json and the activity log
+  const running = args.bgChild ? null : await runningDaemonUrl(args.port);
+  if (running) {
+    console.log(`bansosd already running at ${running}`);
+    return;
+  }
 
   // always log to file (for `bansos logs`) and tee to stdout; built before the bind check
   fs.mkdirSync(LOG_DIR, { recursive: true });

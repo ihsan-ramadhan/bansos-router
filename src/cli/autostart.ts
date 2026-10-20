@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { effectiveBind, effectivePort } from "../daemon/state";
+import { runningDaemonUrl } from "../daemon/state";
 
 export type AutostartManager = "systemd" | "launchd" | "startup-folder";
 
@@ -180,15 +180,6 @@ export function disableAutostart(env: AutostartEnv = defaultAutostartEnv()): Aut
   return autostartStatus(env);
 }
 
-async function daemonRunning(): Promise<boolean> {
-  try {
-    const res = await fetch(`http://${effectiveBind()}:${effectivePort()}/healthz`, { signal: AbortSignal.timeout(800) });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
 function printStatus(s: AutostartStatus): void {
   if (!s.supported) {
     console.log(`autostart: unsupported (${s.reason})`);
@@ -210,7 +201,7 @@ export async function runAutostart(argv: string[], json = false): Promise<number
       return 0;
     }
     if (cmd === "on") {
-      const running = await daemonRunning();
+      const running = (await runningDaemonUrl()) !== null;
       const s = enableAutostart(!running);
       if (json) {
         console.log(JSON.stringify(s, null, 2));
