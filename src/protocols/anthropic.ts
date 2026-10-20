@@ -110,10 +110,15 @@ function convertMessage(m: any): any[] | null {
     return [{ role: "tool", tool_call_id: m.tool_call_id ?? m.tool_use_id ?? "unknown", content: text }];
   }
 
+  // DeepSeek thinking mode 400s on an assistant turn without reasoning_content, and every upstream accepts ""
   if (role === "assistant") {
-    if (typeof content === "string") return [{ role: "assistant", content }];
+    if (typeof content === "string") return [{ role: "assistant", content, reasoning_content: "" }];
     const blocks = Array.isArray(content) ? content : [];
     const text = blocksToText(blocks);
+    const reasoning_content = blocks
+      .map((b: any) => (b && b.type === "thinking" && typeof b.thinking === "string" ? b.thinking : ""))
+      .filter(Boolean)
+      .join("\n");
     const toolCalls: any[] = [];
     for (const b of blocks) {
       if (b && b.type === "tool_use") {
@@ -125,9 +130,9 @@ function convertMessage(m: any): any[] | null {
       }
     }
     if (toolCalls.length > 0) {
-      return [{ role: "assistant", content: text || null, tool_calls: toolCalls }];
+      return [{ role: "assistant", content: text || null, reasoning_content, tool_calls: toolCalls }];
     }
-    return [{ role: "assistant", content: text || "" }];
+    return [{ role: "assistant", content: text || "", reasoning_content }];
   }
 
   if (role === "user") {

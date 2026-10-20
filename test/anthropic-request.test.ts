@@ -59,3 +59,44 @@ test("anthropic stream hides undeclared tools without promoting the planning to 
   assert.doesNotMatch(wire, /text_delta/);
   assert.match(wire, /"stop_reason":"end_turn"/);
 });
+
+test("thinking blocks travel back as reasoning_content on the assistant turn", () => {
+  const r = parseAnthropicRequest({
+    model: "m",
+    max_tokens: 10,
+    messages: [
+      { role: "user", content: "go" },
+      {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "need the file", signature: "" },
+          { type: "tool_use", id: "a", name: "read", input: { path: "x" } },
+        ],
+      },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "a", content: "data" }] },
+    ],
+  });
+  assert.ok(r.ok);
+  if (!r.ok) return;
+  const messages = r.value.chatBody.messages as Array<Record<string, any>>;
+  assert.equal(messages[1]!.reasoning_content, "need the file");
+  assert.equal(messages[1]!.content, null);
+  assert.equal("reasoning_content" in messages[0]!, false);
+});
+
+test("an assistant turn with no thinking still carries an empty reasoning_content", () => {
+  const r = parseAnthropicRequest({
+    model: "m",
+    max_tokens: 10,
+    messages: [
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "hello" },
+      { role: "assistant", content: [{ type: "tool_use", id: "a", name: "read", input: {} }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "a", content: "data" }] },
+    ],
+  });
+  assert.ok(r.ok);
+  if (!r.ok) return;
+  const messages = r.value.chatBody.messages as Array<Record<string, any>>;
+  assert.deepEqual(messages.filter((m) => m.role === "assistant").map((m) => m.reasoning_content), ["", ""]);
+});

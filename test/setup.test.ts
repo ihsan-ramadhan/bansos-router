@@ -37,6 +37,17 @@ test("parseJsonc strips comments and trailing commas", () => {
   });
 });
 
+test("parseJsonc reads a megabyte config with trailing commas in linear time", () => {
+  const nodes = Array.from({ length: 6000 }, (_, i) => ({ id: `n${i}`, data: { tags: [i, i + 1], name: "x".repeat(40) } }));
+  const jsonc = JSON.stringify({ nodes }, null, 2).replace(/\n(\s*)([}\]])/g, ",\n$1$2");
+  assert.ok(jsonc.length > 1 << 20);
+  const t0 = Date.now();
+  const parsed = parseJsonc(jsonc);
+  const elapsed = Date.now() - t0;
+  assert.deepEqual(parsed, { nodes });
+  assert.ok(elapsed < 2000, `parsing took ${elapsed}ms`);
+});
+
 test("applyMergeWrite merges seamlessly with existing JSONC content", () => {
   const existingJsonc = `
     {

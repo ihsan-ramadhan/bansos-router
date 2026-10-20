@@ -60,7 +60,7 @@ function responsesToolsToInternal(tools: unknown): InternalTurn["tools"] {
   return out.length ? out : undefined;
 }
 
-const SKIPPED_INPUT_ITEMS = new Set(["reasoning", "item_reference", "web_search_call", "file_search_call", "computer_call", "image_generation_call"]);
+const SKIPPED_INPUT_ITEMS = new Set(["item_reference", "web_search_call", "file_search_call", "computer_call", "image_generation_call"]);
 
 // convert a responses `input` (string or typed items) into chat messages; Error on unmappable shapes
 function responsesInputToMessages(input: unknown, _previousId: unknown): InternalTurn["messages"] | Error {
@@ -71,6 +71,13 @@ function responsesInputToMessages(input: unknown, _previousId: unknown): Interna
       : [input];
 
   const messages: InternalTurn["messages"] = [];
+  // reasoning items precede the assistant output they belong to
+  let thinking = "";
+  const claimThinking = (m: InternalTurn["messages"][number]) => {
+    if (!thinking) return;
+    m.thinking = m.thinking ? `${m.thinking}\n${thinking}` : thinking;
+    thinking = "";
+  };
 
   for (const item of items) {
     if (!item || typeof item !== "object") {
@@ -78,6 +85,11 @@ function responsesInputToMessages(input: unknown, _previousId: unknown): Interna
     }
     const it = item as Record<string, unknown>;
     if (typeof it.type === "string" && SKIPPED_INPUT_ITEMS.has(it.type)) continue;
+    if (it.type === "reasoning") {
+      const text = reasoningItemText(it);
+      if (text) thinking = thinking ? `${thinking}\n${text}` : text;
+      continue;
+    }
 
     if (it.type === "function_call_output" || it.type === "custom_tool_call_output") {
       messages.push({
@@ -101,6 +113,7 @@ function responsesInputToMessages(input: unknown, _previousId: unknown): Interna
       const prev = messages[messages.length - 1];
       if (prev?.role === "assistant") prev.toolCalls = [...(prev.toolCalls ?? []), call];
       else messages.push({ role: "assistant", toolCalls: [call], content: "" });
+      claimThinking(messages[messages.length - 1]!);
       continue;
     }
 
@@ -120,10 +133,20 @@ function responsesInputToMessages(input: unknown, _previousId: unknown): Interna
       continue;
     }
 
-    messages.push({ role: role as InternalTurn["messages"][number]["role"], content });
+    const message = { role: role as InternalTurn["messages"][number]["role"], content };
+    if (role === "assistant") claimThinking(message);
+    messages.push(message);
   }
 
   return messages;
+}
+
+// full reasoning text when the client kept it, otherwise the summary we streamed
+function reasoningItemText(item: Record<string, unknown>): string {
+  const texts = (parts: unknown) =>
+    Array.isArray(parts) ? parts.map((p) => (typeof p?.text === "string" ? p.text : "")).filter(Boolean) : [];
+  const content = texts(item.content);
+  return (content.length > 0 ? content : texts(item.summary)).join("\n");
 }
 
 function blocksToText(blocks: InternalContentBlock[]): string {

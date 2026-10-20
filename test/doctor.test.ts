@@ -17,12 +17,12 @@ function withHome<T>(home: string, fn: () => T): T {
   try {
     return fn();
   } finally {
-    process.env.HOME = real;
+    if (real === undefined) delete process.env.HOME;
+    else process.env.HOME = real;
   }
 }
 
-// 9router's configPaths include ~/.9router/db/data.sqlite. Reading a 27MB blob as
-// text and scanning it wedged the daemon (GET /bansos/adapters hung every endpoint).
+// 9router lists ~/.9router/db/data.sqlite, and scanning a 27MB blob as text wedged the daemon
 test("an adapter config that is a binary blob is never scanned as text", () => {
   const home = tempHome();
   const blob = Buffer.alloc(8 * 1024 * 1024, 0x7d); // brace-heavy, like a sqlite page dump
@@ -39,12 +39,15 @@ test("an adapter config that is a binary blob is never scanned as text", () => {
   }
 });
 
-test("9router status is read from the sqlite registry when one is present", () => {
-  const home = tempHome();
-  const dbPath = path.join(home, ".9router", "db", "data.sqlite");
+test("9router status is read from the sqlite registry when one is present", (t) => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sqliteMod = (process as any).getBuiltinModule?.("node:sqlite");
-  if (!sqliteMod?.DatabaseSync) return; // this runtime cannot read sqlite; nothing to assert
+  if (!sqliteMod?.DatabaseSync) {
+    t.skip("node:sqlite is not available in this runtime");
+    return;
+  }
+  const home = tempHome();
+  const dbPath = path.join(home, ".9router", "db", "data.sqlite");
   const db = new sqliteMod.DatabaseSync(dbPath);
   db.exec("CREATE TABLE providerNodes (id TEXT PRIMARY KEY, name TEXT)");
   db.prepare("INSERT INTO providerNodes(id, name) VALUES(?, ?)").run(

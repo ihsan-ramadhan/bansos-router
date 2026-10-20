@@ -26,11 +26,7 @@ export function sanitizeChatBody(
     if (!m || typeof m !== "object") return m;
     const msg = m as Record<string, unknown>;
     const next: Record<string, unknown> = { ...msg };
-    // upstreams reject reasoning echoes from prior turns on input
-    if ("reasoning_content" in next) {
-      delete next.reasoning_content;
-      messagesModified = true;
-    }
+    // reasoning_content is kept: DeepSeek in thinking mode 400s when a tool-call turn arrives without it
     if ("thought" in next) {
       delete next.thought;
       messagesModified = true;

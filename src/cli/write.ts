@@ -15,7 +15,7 @@ export function expandHome(p: string): string {
 // robust zero-dependency JSONC / JSON parser (strips line/block comments & trailing commas)
 export function parseJsonc(text: string): Record<string, unknown> {
   const clean = text.replace(/^\uFEFF/, "");
-  let out = "";
+  const out: string[] = [];
   let inString = false;
   let quoteChar = "";
   let isEscaped = false;
@@ -25,7 +25,7 @@ export function parseJsonc(text: string): Record<string, unknown> {
     const next = clean[i + 1];
 
     if (inString) {
-      out += ch;
+      out.push(ch);
       if (isEscaped) {
         isEscaped = false;
       } else if (ch === "\\") {
@@ -37,25 +37,28 @@ export function parseJsonc(text: string): Record<string, unknown> {
       if (ch === '"' || ch === "'") {
         inString = true;
         quoteChar = ch;
-        out += ch;
+        out.push(ch);
       } else if (ch === "/" && next === "/") {
         // line comment: skip until newline
         while (i < clean.length && clean[i] !== "\n") i++;
-        if (i < clean.length) out += clean[i]; // preserve newline
+        if (i < clean.length) out.push(clean[i]!); // preserve newline
       } else if (ch === "/" && next === "*") {
         // block comment: skip until */
         i += 2;
         while (i < clean.length && !(clean[i] === "*" && clean[i + 1] === "/")) i++;
         i++; // skip /
       } else if (ch === "}" || ch === "]") {
-        out = out.replace(/,(\s*)$/, "$1") + ch;
+        let j = out.length - 1;
+        while (j >= 0 && /\s/.test(out[j]!)) j--;
+        if (out[j] === ",") out.splice(j, 1);
+        out.push(ch);
       } else {
-        out += ch;
+        out.push(ch);
       }
     }
   }
 
-  return JSON.parse(out) as Record<string, unknown>;
+  return JSON.parse(out.join("")) as Record<string, unknown>;
 }
 
 function markerBlock(content: string, markers: [string, string]): string {

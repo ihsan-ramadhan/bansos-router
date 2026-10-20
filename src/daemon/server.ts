@@ -1566,6 +1566,7 @@ async function handleResponses(
         ? m.content
         : m.content.map((b) => (b.type === "text" ? b : { type: "image_url", image_url: { url: b.url } })),
       ...(m.toolCallId ? { tool_call_id: m.toolCallId } : {}),
+      ...(m.role === "assistant" ? { reasoning_content: m.thinking ?? "" } : {}),
       ...(m.toolCalls
         ? { tool_calls: m.toolCalls.map((tc) => ({
             id: tc.id,

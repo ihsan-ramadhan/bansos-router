@@ -67,10 +67,8 @@ export async function runDoctor(_argv: string[]): Promise<number> {
 
 export type HarnessStatus = { id: string; status: "configured" | "unconfigured" | "missing"; path?: string };
 
-// adapter config paths can point at a binary store (9router keeps its registry in
-// data.sqlite), and parseJsonc is a per-character scanner whose trailing-comma trim
-// is O(n^2) — scanning a multi-megabyte blob as text wedges the event loop
-const MAX_TEXT_CONFIG_BYTES = 1 << 20;
+// a status check reads the whole file on the event loop, so anything bigger is not a config
+const MAX_TEXT_CONFIG_BYTES = 8 << 20;
 
 export function harnessStatuses(): HarnessStatus[] {
   return ADAPTERS.map((adapter) => {

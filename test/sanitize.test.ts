@@ -59,3 +59,15 @@ test("sanitizeChatBody is a no-op passthrough for a clean body", () => {
   };
   assert.equal(sanitizeChatBody(input, true), input, "same reference when nothing to strip");
 });
+
+test("sanitizeChatBody keeps reasoning_content that DeepSeek thinking mode needs replayed", () => {
+  const input = {
+    model: "deepseek-v4.1-flash-free",
+    messages: [
+      { role: "user", content: "weather?" },
+      { role: "assistant", content: null, reasoning_content: "", tool_calls: [{ id: "c", type: "function", function: { name: "w", arguments: "{}" } }] },
+      { role: "tool", tool_call_id: "c", content: "18C" },
+    ],
+  };
+  assert.equal(sanitizeChatBody(input, true), input);
+});

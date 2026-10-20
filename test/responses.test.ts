@@ -137,6 +137,22 @@ test("parseResponsesTurn: replayed reasoning items are skipped, not rejected", (
   assert.deepEqual(r.value.messages.map((m) => m.content), ["hi", "hello", "again"]);
 });
 
+test("parseResponsesTurn: reasoning items ride along on the assistant turn they precede", () => {
+  const r = parseResponsesTurn({
+    model: "m",
+    input: [
+      { role: "user", content: "weather?" },
+      { type: "reasoning", id: "rs_1", summary: [{ type: "summary_text", text: "call the tool" }] },
+      { type: "function_call", call_id: "a", name: "weather", arguments: "{}" },
+      { type: "function_call_output", call_id: "a", output: "18C" },
+    ],
+  });
+  assert.ok(r.ok);
+  if (!r.ok) return;
+  assert.equal(r.value.messages[1]!.thinking, "call the tool");
+  assert.equal(r.value.messages[0]!.thinking, undefined);
+});
+
 test("parseResponsesTurn: rejects missing model/input", () => {
   assert.equal(parseResponsesTurn({ input: "x" }).ok, false);
   assert.equal(parseResponsesTurn({ model: "mimo-v2.5-free" }).ok, false);
