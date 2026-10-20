@@ -8,12 +8,7 @@ import { createLogger } from "../src/logger";
 import { SEEDED_MODELS, DEFAULT_UPSTREAMS } from "../src/upstreams";
 import { loadRelayState, saveRelayState } from "../src/relay/egress";
 
-// End-to-end proof that an llm7 request leaves through the relay, not direct.
-// The regression this guards was silent: ALLOWED_TARGETS held "https://llm7.io"
-// while LLM7_BASE_URL is "https://api.llm7.io/v1", so relayFetch's origin check
-// missed and every llm7 call bypassed the relay with no error anywhere.
-// test/relay-targets.test.ts covers the allowlist invariant; this covers the
-// actual forwarded request.
+// the allowlist once held "https://llm7.io", so every llm7 call silently skipped the relay
 test("llm7 chat request is forwarded through the configured relay", async () => {
   const seen: Array<{ target?: string; path?: string; model?: string }> = [];
 

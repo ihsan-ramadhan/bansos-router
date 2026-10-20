@@ -241,7 +241,7 @@ export function RelayFooterInfo() {
           </span>
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#121215] border border-[#282832] text-xs font-mono text-[#d4d4d8]">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" />
-            <span>https://llm7.io</span>
+            <span>https://api.llm7.io</span>
           </span>
         </div>
       </div>

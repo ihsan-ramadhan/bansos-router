@@ -1,11 +1,6 @@
 import { RELAY_STATE_FILE, readJson, writeJsonAtomic } from "../daemon/state";
 
-// only known keyless upstream origins may be targeted via the relay
-// The allowlist is matched against `new URL(chatUrl).origin`, so each entry
-// must be the origin of the base URL the upstream actually calls. llm7's base
-// URL is https://api.llm7.io/v1, so listing "https://llm7.io" never matched:
-// relayFetch fell through to a direct fetch and every llm7 request bypassed
-// the relay silently — no error, no log.
+// only known keyless upstream origins may be targeted via the relay; each entry must equal an upstream chatUrl origin
 export const ALLOWED_TARGETS = [
   "https://opencode.ai",
   "https://api.kilo.ai",

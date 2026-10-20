@@ -3,12 +3,7 @@ import assert from "node:assert/strict";
 import { ALLOWED_TARGETS } from "../src/relay/egress";
 import { DEFAULT_UPSTREAMS } from "../src/upstreams";
 
-// The relay forwards to `x-relay-target` only when that origin is allowlisted,
-// and relayFetch derives the target from each upstream's chatUrl origin. If the
-// two drift apart the upstream silently goes direct — no error, no log, just an
-// unused relay. Caught in production: ALLOWED_TARGETS held "https://llm7.io"
-// while LLM7_BASE_URL is "https://api.llm7.io/v1", so llm7 bypassed the relay
-// entirely while zen and kilo went through it.
+// an upstream whose chatUrl origin is missing here silently skips the relay instead of failing
 test("every relayAllowed upstream origin is in ALLOWED_TARGETS", () => {
   const allowed = new Set(ALLOWED_TARGETS);
   const checked: string[] = [];

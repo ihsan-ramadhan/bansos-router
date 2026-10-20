@@ -366,7 +366,7 @@ x-relay-path:   /api/gateway/chat/completions
 - Relay is a trivial server: read `x-relay-target` + `x-relay-path`, validate
   against an allowlist, forward method/headers/body, stream back.
 - **Allowlist:** `ALLOWED_TARGETS` = known upstream origins only
-  (`opencode.ai`, `api.kilo.ai`, `llm7.io`, ...). Relay cannot be abused as an
+  (`opencode.ai`, `api.kilo.ai`, `api.llm7.io`). Relay cannot be abused as an
   open proxy to arbitrary hosts.
 - **Local gateways bypass the relay (M5)**: chained local upstreams
   (freebuff-proxy at `127.0.0.1:3457`, LiteLLM, 9router, ollama) will always

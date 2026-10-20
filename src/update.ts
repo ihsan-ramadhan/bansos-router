@@ -1,12 +1,12 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import pkgJson from "../package.json";
+import { BANSOS_DIR } from "./daemon/state";
 
 // single source of truth: package.json "version"
 export const VERSION: string = pkgJson.version;
 
-const CACHE_FILE = path.join(os.homedir(), ".bansos", "update-check.json");
+const CACHE_FILE = path.join(BANSOS_DIR, "update-check.json");
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 interface CacheEntry {
