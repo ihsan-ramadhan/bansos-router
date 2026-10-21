@@ -75,9 +75,8 @@ function page(upstreams: Upstream[], total: number, checkedAt: Date): string {
 body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
 main { max-width: 860px; margin: 0 auto; padding: 48px 16px 64px; }
 h1 { font-size: 28px; line-height: 1.2; margin: 0 0 12px; display: flex; align-items: center; gap: 12px; }
-h1 img { border-radius: 10px; }
 h2 { font-size: 17px; margin: 40px 0 10px; display: flex; align-items: baseline; gap: 10px; }
-p { margin: 0 0 10px; max-width: 64ch; }
+p { margin: 0 0 10px; }
 .lede { font-size: 17px; }
 .meta { color: var(--muted); }
 .count { color: var(--muted); font-weight: 400; font-size: 14px; font-variant-numeric: tabular-nums; }
@@ -101,7 +100,7 @@ footer { margin-top: 48px; color: var(--muted); }
 </head>
 <body>
 <main>
-<h1><img src="logo-64.png" width="40" height="40" alt="">bansos-router models</h1>
+<h1><img src="favicon.png" width="40" height="40" alt="">bansos-router models</h1>
 <p class="lede">${total} free coding models across ${upstreams.length} upstreams, as the daemon's own catalog check saw them.</p>
 <p class="meta">Checked <time datetime="${iso}">${shown}</time> from GitHub Actions, every six hours. Some upstreams answer differently by region and IP, so run <code>bansos models</code> for what your machine can reach.</p>
 ${upstreams.map(section).join("\n")}
@@ -150,7 +149,7 @@ async function main(): Promise<void> {
   fs.writeFileSync(path.join(outDir, "models.json"), `${JSON.stringify(json, null, 2)}\n`);
   fs.writeFileSync(path.join(outDir, "badge.json"), `${JSON.stringify(badge)}\n`);
   fs.copyFileSync(path.join(ROOT, "src/ui/public/favicon.ico"), path.join(outDir, "favicon.ico"));
-  fs.copyFileSync(path.join(ROOT, "assets/logo-64.png"), path.join(outDir, "logo-64.png"));
+  fs.copyFileSync(path.join(ROOT, "src/ui/public/favicon.png"), path.join(outDir, "favicon.png"));
   console.log(`wrote ${total} models to ${outDir}`);
 }
 

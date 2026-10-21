@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/logo.png" alt="bansos-router logo" width="140" />
+<img src="assets/logo-rounded.png" alt="bansos-router logo" width="140" />
 
 # bansos-router
 
