@@ -13,6 +13,7 @@ Free, keyless coding models for every coding harness, through one local daemon. 
 ![npm version](https://img.shields.io/npm/v/bansos-router?color=blue&label=npm)
 ![npm downloads total](https://img.shields.io/npm/dt/bansos-router?color=informational&label=downloads)
 ![CI build](https://img.shields.io/github/actions/workflow/status/ihsan-ramadhan/bansos-router/ci.yml?branch=main&label=ci)
+[![free models](https://img.shields.io/endpoint?url=https%3A%2F%2Fihsan-ramadhan.github.io%2Fbansos-router%2Fbadge.json)](https://ihsan-ramadhan.github.io/bansos-router/)
 ![License](https://img.shields.io/npm/l/bansos-router?color=lightgrey&label=license)
 
 </div>
@@ -155,73 +156,12 @@ By default, `bansos setup` automatically configures intelligent defaults per har
 
 To write only some models, pass `--models <id,...>` and/or `--upstream <id,...>` (every model of that upstream), for example `bansos setup opencode --upstream zen --models kilo-auto/free`. Claude Code then picks its Haiku, Sonnet and Opus tiers from that set. The dashboard's Agent Setup tab has the same picker, with a checkbox per model and per upstream.
 
-Context and max output are token counts. The seeded catalog is 40 models and the live one changes as upstreams rotate free tiers; run `bansos models` or `bansos ping` to see what is alive right now.
+The model list changes as upstreams rotate their free tiers, so it lives on its own page: [ihsan-ramadhan.github.io/bansos-router](https://ihsan-ramadhan.github.io/bansos-router/). A GitHub Action runs the daemon's own catalog check every six hours and publishes the result there, with reasoning, vision, context and max output for each model, and as [`models.json`](https://ihsan-ramadhan.github.io/bansos-router/models.json). It checks from a GitHub datacenter, so run `bansos models` or `bansos ping` to see what your machine can reach.
 
-### OpenCode Zen
-
-| model id | reasoning | vision | context | max output |
-|---|---|---|---|---|
-| `muse-spark-1.3-contributor-free` | ✓ | ✓ | 1M | 131k |
-| `muse-spark-1.2-contributor-free` | ✓ | ✓ | 1M | 131k |
-| `cat-jam-free` | ✓ | ✗ | 262k | 131k |
-| `space-bunny-free` | ✓ | ✓ | 1M | 524k |
-| `nemotron-3.5-lightning-free` | ✓ | ✗ | 262k | 262k |
-| `longcat-2.5-preview-free` | ✓ | ✓ | 1M | 131k |
-| `mimo-v2.6-flash-free` | ✓ | ✓ | 200k | 32k |
-| `big-pickle` | ✓ | ✗ | 200k | 32k |
-| `nemotron-3-ultra-free` | ✓ | ✗ | 1M | 128k |
-| `step-5-preview-free` | ✓ | ✓ | 1M | 65k |
-
-Muse Spark answers only on the Responses API (`/v1/responses`) and returns HTTP 500 on chat completions. bansos-router translates the upstream leg both ways, so Muse works from any harness — chat completions, Responses, and Anthropic clients all see their usual wire format, tool calls included.
-
-### KiloCode gateway
-
-| model id | reasoning | vision | context | max output |
-|---|---|---|---|---|
-| `kilo-auto/free` | ✓ | ✗ | 256k | 10k |
-| `stepfun/step-3.7-flash:free` | ✓ | ✓ | 262k | 262k |
-| `nvidia/nemotron-3-ultra-550b-a55b:free` | ✓ | ✗ | 1M | 65k |
-| `nvidia/nemotron-3-super-120b-a12b:free` | ✓ | ✗ | 262k | 262k |
-| `nvidia/nemotron-3.5-lightning:free` | ✓ | ✗ | 1M | 65k |
-| `nvidia/nemotron-3.5-content-safety:free` | ✓ | ✓ | 128k | 8k |
-| `liquid/lfm-2.5-2.6b:free` | ✓ | ✗ | 65k | 8k |
-| `poolside/laguna-s-2.1:free` | ✓ | ✗ | 262k | 32k |
-| `cohere/north-mini-code:free` | ✓ | ✗ | 256k | 64k |
-| `poolside/laguna-xs-2.1:free` | ✓ | ✗ | 262k | 32k |
-| `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | ✓ | ✓ | 256k | 65k |
-| `inclusionai/ling-3.0-flash-sante:free` | ✓ | ✗ | 262k | 32k |
-| `inclusionai/ling-3.0-flash-fin:free` | ✓ | ✗ | 262k | 32k |
-| `dots-studio/dots-3-note-preview:free` | ✓ | ✓ | 512k | 65k |
-| `thinkingmachines/inkling:free` | ✓ | ✓ | 1M | 65k |
-| `thinkingmachines/inkling-small:free` | ✓ | ✓ | 1M | 65k |
-| `openrouter/free` | ✓ | ✓ | 200k | 65k |
-
-### LLM7
-
-| model id | reasoning | vision | context | max output |
-|---|---|---|---|---|
-| `codestral-latest` | ✗ | ✗ | 32k | 8k |
-| `minimax-m2.7` | ✓ | ✗ | 180k | 32k |
-| `mistral-Nemo-Instruct-2407` | ✗ | ✗ | 128k | 16k |
-| `default` | ✗ | ✗ | 128k | 8k |
-| `fast` | ✗ | ✗ | 128k | 8k |
-
-### OVHcloud AI Endpoints
-
-| model id | reasoning | vision | context | max output |
-|---|---|---|---|---|
-| `ovh/gpt-oss-120b` | ✓ | ✗ | 131k | 32k |
-| `ovh/gpt-oss-20b` | ✓ | ✗ | 131k | 32k |
-| `ovh/Qwen3.5-397B-A17B` | ✓ | ✓ | 262k | 65k |
-| `ovh/Qwen3.8-27B` | ✓ | ✓ | 262k | 32k |
-| `ovh/Qwen3.6-27B` | ✓ | ✓ | 262k | 65k |
-| `ovh/Qwen3.5-9B` | ✓ | ✓ | 262k | 65k |
-| `ovh/Mistral-Small-3.2-24B-Instruct-2506` | ✗ | ✓ | 131k | 16k |
-| `ovh/Meta-Llama-3_3-70B-Instruct` | ✗ | ✗ | 131k | 16k |
+Muse Spark answers only on the Responses API (`/v1/responses`) and returns HTTP 500 on chat completions. bansos-router translates the upstream leg both ways, so Muse works from any harness: chat completions, Responses, and Anthropic clients all see their usual wire format, tool calls included.
 
 Notes:
 
-- The tables above mirror the seeds in `src/upstreams/*`. On refresh the daemon serves the live catalog, which can differ as upstreams rotate free tiers.
 - Kilo's `:free` models are liveness-gated: the daemon re-checks the kilo catalog on a timer and drops models that are no longer offered free.
 - Zen seeds are re-checked against `GET /v1/models` on refresh. The listing is not exhaustive (some servable promos are never listed), so an unlisted seed is probe-verified keyless before being kept; a retired promo (e.g. `hy3-free`, gone and answering 401) disappears automatically.
 - LLM7 models are filtered dynamically by `usage_based_only: false` (tier turbo); `default` and `fast` are stable selectors. `pro` tier is paid-only and excluded.

@@ -1,0 +1,51 @@
+name: Model list
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Check the catalog and publish
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # a run where no upstream answers fails here and the last published list stays up
+      - name: Build the page
+        run: npx tsx scripts/models-page.ts site
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+      - name: Deploy
+        id: deploy
+        uses: actions/deploy-pages@v5
