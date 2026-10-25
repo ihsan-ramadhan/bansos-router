@@ -8,7 +8,7 @@ test("zenUpstream requestHeaders generates valid OpenCode v2 spoofing headers", 
 
   assert.equal(headers["authorization"], "Bearer public");
   assert.ok(headers["User-Agent"]?.startsWith("opencode/"));
-  assert.equal(headers["x-opencode-client"], "desktop");
+  assert.equal(headers["x-opencode-client"], "cli");
 
   const ses = headers["x-opencode-session"];
   assert.ok(ses, "x-opencode-session must exist");

@@ -79,8 +79,8 @@ export interface Upstream {
   responsesUrl?: string;
   // live model catalog, or null when unreachable
   fetchCatalog(): Promise<ModelDef[] | null>;
-  // extra headers for upstream requests (spoofed cli identity)
-  requestHeaders(model?: ModelDef): Record<string, string>;
+  // extra headers for upstream requests; callers may pass inbound headers so an upstream can reuse the harness's own session identity instead of minting a synthetic one.
+  requestHeaders(model?: ModelDef, callerHeaders?: Record<string, string | string[] | undefined>): Record<string, string>;
   // optionally adapt body for upstream quirks (e.g. gateway spoofing)
   transformRequestBody?(body: Record<string, unknown>, model: ModelDef): Record<string, unknown>;
 }

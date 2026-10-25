@@ -48,12 +48,12 @@ The catalog is **live-first with a pinned fallback**:
 
 | Field | Value |
 |---|---|
-| Base URL | `https://opencode.ai/zen/v1` (OpenAI-compatible) |
-| Auth | Keyless passthrough (no login) |
-| Spoofed headers | `User-Agent: opencode/latest/2.0.5/cli`, `authorization: Bearer public`, `x-opencode-client: cli`, `x-opencode-project: <hex40>`, `x-opencode-session: ses_<descending_id>`, `x-session-affinity: <session>`, `x-session-id: <session>`, `b3`, `traceparent` |
+| Base URL | `https://opencode.ai/inference/openai/v1/chat/completions` |
+| Auth | Keyless passthrough (`authorization: Bearer public`) |
+| Spoofed headers | `User-Agent: opencode/latest/2.1.3/cli`, `authorization: Bearer public`, `x-opencode-client: cli`, `x-opencode-project: <hex40>`, `x-opencode-session: <session_id>`, `x-session-affinity: <session_id>`, `b3`, `traceparent` |
 | Model source | models.dev free models (`cost.input === 0`, not deprecated) intersected with live `GET /v1/models`, plus the pinned seed (`src/upstreams/zen.ts`); seeded ids missing from the live list are probed once and dropped if they fail. An id models.dev marks paid never enters, so the catalog cannot leak paid models |
 | Rate limit | Unpublished; treated as best-effort |
-| Gateway quirk | The free-tier gate requires `stream: true` and the presence of core tools (`read` + `shell`). The router injects them when the caller declared none, folds the forced stream back to JSON for non-streaming callers (both wires), and strips tool calls aimed at the injected tools. See §2.1.1 |
+| Gateway quirk | The free-tier gate requires `stream: true`, the presence of core tools (`read` + `shell`), an `<env>` block in the system prompt, and Cloudflare JA4 TLS fingerprint matching BoringSSL. The daemon auto-spawns the local OpenCode background service (`opencode serve --service`) if installed to reuse live session affinity. When neither OpenCode nor Bun is available, requests auto-failover to Kilo/LLM7/OVH. |
 
 #### 2.1.1 Consequences of the injected tools
 

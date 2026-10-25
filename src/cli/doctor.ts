@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 import { ADAPTERS } from "../adapters";
 import { effectiveBind, effectivePort, loadConfig, loadConfigWarnings } from "../daemon/state";
 import { START_MARKER } from "../adapters/types";
@@ -44,6 +45,26 @@ export async function runDoctor(_argv: string[]): Promise<number> {
   } else {
     console.log(`· autostart   off${autostart.supported ? " (bansos autostart on)" : ""}`);
   }
+  // zen models readiness
+  let hasOpenCode = false;
+  try {
+    hasOpenCode = spawnSync("which", ["opencode"], { encoding: "utf-8", timeout: 1000 }).status === 0;
+  } catch {}
+  const hasBun = "Bun" in globalThis || (() => {
+    try {
+      return spawnSync("which", ["bun"], { encoding: "utf-8", timeout: 1000 }).status === 0;
+    } catch {
+      return false;
+    }
+  })();
+  if (hasOpenCode) {
+    console.log(`✓ opencode    installed (Zen free models ready)`);
+  } else if (hasBun) {
+    console.log(`✓ runtime     bun detected (Zen free models ready)`);
+  } else {
+    console.log(`· opencode    not installed (Zen models require opencode or bun; Kilo/LLM7/OVH work directly)`);
+  }
+
 
   // 2. per-harness config files.
   for (const h of harnessStatuses()) {

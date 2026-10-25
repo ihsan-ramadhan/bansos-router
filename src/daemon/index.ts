@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import http from "node:http";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import stream from "node:stream";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   loadConfig,
   loadConfigWarnings,
@@ -13,7 +15,7 @@ import {
   LOG_FILE,
   type BansosConfig,
 } from "./state";
-import { createLogger } from "../logger";
+import { createLogger, type Logger } from "../logger";
 import { assertBindAllowed } from "../security/policy";
 import { buildUpstreams, SEEDED_MODELS } from "../upstreams";
 import { VERSION } from "../update";
@@ -260,6 +262,8 @@ async function main(argv: string[]): Promise<void> {
     current = { ...running, config: cfg };
     const actualPort = running.port;
     log.info(`bansosd listening on http://${wantBind}:${actualPort}`);
+    // auto-start local opencode service if installed so Zen session integration is immediate
+    ensureOpenCodeService(log);
 
     // publish the bound port before the first refresh; the --bg parent polls state.json for only 5s
     writeJsonAtomic(STATE_FILE, {
@@ -332,4 +336,36 @@ async function main(argv: string[]): Promise<void> {
 
 export async function runDaemon(argv: string[]): Promise<void> {
   await main(argv);
+}
+
+export function ensureOpenCodeService(log?: Logger): void {
+  let opencodePath = "";
+  try {
+    const check = spawnSync("which", ["opencode"], { encoding: "utf-8", timeout: 1000 });
+    if (check.status === 0 && check.stdout.trim()) {
+      opencodePath = check.stdout.trim();
+    }
+  } catch {}
+
+  if (!opencodePath) return;
+
+  const servicePath = path.join(os.homedir(), ".local", "state", "opencode", "service.json");
+  try {
+    if (fs.existsSync(servicePath)) {
+      const data = JSON.parse(fs.readFileSync(servicePath, "utf-8")) as { pid?: number };
+      if (typeof data?.pid === "number") {
+        process.kill(data.pid, 0);
+        return;
+      }
+    }
+  } catch {}
+
+  try {
+    const child = spawn(opencodePath, ["serve", "--service"], {
+      stdio: "ignore",
+      detached: true,
+    });
+    child.unref();
+    log?.info(`auto-started local opencode service (pid ${child.pid})`);
+  } catch {}
 }

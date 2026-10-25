@@ -1,14 +1,21 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { BANSOS_DIR } from "../daemon/state";
 import { restoreBridgedCalls } from "../protocols/tool-bridge";
 import { modelDef, type ModelDef, type Upstream } from "./types";
 
-const ZEN_INFERENCE_URL = "https://opencode.ai/inference/v1";
+// MITM-captured from real opencode CLI v2.1.3: POST https://opencode.ai/inference/openai/v1/chat/completions; the old /inference/v1/... path returns 429 for identical requests.
+const ZEN_INFERENCE_URL = "https://opencode.ai/inference/openai/v1";
 const ZEN_MODELS_URL = "https://opencode.ai/zen/v1";
 export const MODELS_DEV_URL = "https://models.dev/api.json";
 
-const OPENCODE_UA_FALLBACK = "1.18.31";
-const OPENCODE_UA_VERSION_RE = /^\d+\.\d+\.\d+$/;
+// UA of the real opencode CLI (binary: `opencode/${channel}/${version}/${name}`, e.g. opencode/latest/2.1.3/cli)
+const OPENCODE_UA_FALLBACK = "latest/2.1.3/cli";
 const OPENCODE_USER_AGENT_ENV = "BANSOS_OPENCODE_UA";
+const OPENCODE_UA_VERSION_RE = /^\d+\.\d+\.\d+$/;
 const BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 const OPENCODE_EXACT_TOOLS = [
@@ -49,8 +56,96 @@ const OPENCODE_EXACT_TOOLS = [
   },
 ] as const;
 
+interface PersistentZenIdentity {
+  session: string;
+  project: string;
+}
 
-const OPENCODE_PROJECT_ID = randomBytes(20).toString("hex");
+const ZEN_IDENTITY_FILE = path.join(BANSOS_DIR, "zen-identity.json");
+let cachedZenIdentity: PersistentZenIdentity | null = null;
+let lastIdentityLookup = 0;
+const IDENTITY_CACHE_TTL_MS = 30_000;
+
+function findLocalOpenCodeIdentity(): PersistentZenIdentity | null {
+  const dbPath = path.join(os.homedir(), ".local", "share", "opencode", "opencode.db");
+  if (!fs.existsSync(dbPath)) return null;
+  try {
+    const res = spawnSync("sqlite3", [
+      dbPath,
+      "SELECT id, project_id FROM session_v2 ORDER BY time_updated DESC LIMIT 1;",
+    ], { encoding: "utf-8", timeout: 1500 });
+    if (res.status === 0 && res.stdout.trim()) {
+      const parts = res.stdout.trim().split("|");
+      if (parts.length >= 2 && parts[0] && parts[1]) {
+        return { session: parts[0], project: parts[1] };
+      }
+    }
+  } catch {}
+  try {
+    const res = spawnSync("sqlite3", [
+      dbPath,
+      "SELECT id, project_id FROM session ORDER BY time_created DESC LIMIT 1;",
+    ], { encoding: "utf-8", timeout: 1500 });
+    if (res.status === 0 && res.stdout.trim()) {
+      const parts = res.stdout.trim().split("|");
+      if (parts.length >= 2 && parts[0] && parts[1]) {
+        return { session: parts[0], project: parts[1] };
+      }
+    }
+  } catch {}
+  return null;
+}
+
+function loadZenIdentity(): PersistentZenIdentity {
+  const now = Date.now();
+  if (cachedZenIdentity && now - lastIdentityLookup < IDENTITY_CACHE_TTL_MS) {
+    return cachedZenIdentity;
+  }
+  lastIdentityLookup = now;
+
+  // 1. prefer reading latest active session from local OpenCode database
+  const local = findLocalOpenCodeIdentity();
+  if (local) {
+    saveZenIdentity(local);
+    return local;
+  }
+
+  // 2. read existing saved identity from disk
+  try {
+    if (fs.existsSync(ZEN_IDENTITY_FILE)) {
+      const data = JSON.parse(fs.readFileSync(ZEN_IDENTITY_FILE, "utf-8")) as unknown;
+      if (
+        data &&
+        typeof data === "object" &&
+        "session" in data &&
+        "project" in data &&
+        typeof data.session === "string" &&
+        typeof data.project === "string"
+      ) {
+        const parsed: PersistentZenIdentity = { session: data.session, project: data.project };
+        cachedZenIdentity = parsed;
+        return parsed;
+      }
+    }
+  } catch {}
+
+  // 3. fallback to synthetic
+  const fallback: PersistentZenIdentity = {
+    session: generateSessionId(),
+    project: randomBytes(20).toString("hex"),
+  };
+  saveZenIdentity(fallback);
+  return fallback;
+}
+
+function saveZenIdentity(identity: PersistentZenIdentity): void {
+  cachedZenIdentity = identity;
+  try {
+    fs.mkdirSync(BANSOS_DIR, { recursive: true });
+    fs.writeFileSync(ZEN_IDENTITY_FILE, JSON.stringify(identity, null, 2), "utf-8");
+  } catch {}
+}
+
 const OPENCODE_SESSION_RE = /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
 const OPENCODE_RESPONSES_MODELS = new Set([
   "muse-spark-1.2-contributor-free",
@@ -93,11 +188,6 @@ function generateRequestId(timestamp = Date.now()): string {
   return `msg_${timeHexFrom(current)}${unstableRandom()}`;
 }
 
-const OPENCODE_SESSION = generateSessionId();
-if (!OPENCODE_SESSION_RE.test(OPENCODE_SESSION)) {
-  throw new Error("opencode session id generation failed shape check");
-}
-
 let liveOpenCodeVersion: string | null = null;
 
 function getOpenCodeUA(): string {
@@ -108,21 +198,65 @@ function getOpenCodeUA(): string {
   return `opencode/${OPENCODE_UA_FALLBACK}`;
 }
 
-function opencodeHeaders(withRequestHeader = false): Record<string, string> {
+// inbound opencode session headers are forwarded verbatim so the upstream sees the harness's own session identity instead of a synthetic one.
+const PASSTHROUGH_HEADERS = [
+  "user-agent",
+  "x-opencode-client",
+  "x-opencode-project",
+  "x-opencode-session",
+  "x-opencode-session-id",
+  "x-opencode-parent-session-id",
+  "x-session-affinity",
+  "x-session-id",
+  "x-parent-session-id",
+] as const;
+
+function firstHeader(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) return value[0];
+  return value;
+}
+
+function opencodeHeaders(
+  callerHeaders?: Record<string, string | string[] | undefined>,
+  withRequestHeader = false,
+): Record<string, string> {
+  const headers: Record<string, string> = {};
+  // Prefer the harness's own identity over synthetic spoofing, but only pass through User-Agent if it identifies as opencode.
+  if (callerHeaders) {
+    for (const name of PASSTHROUGH_HEADERS) {
+      const value = firstHeader(callerHeaders[name]);
+      if (value) {
+        if (name === "user-agent") {
+          if (value.startsWith("opencode/")) headers["User-Agent"] = value;
+        } else {
+          headers[name] = value;
+        }
+      }
+    }
+  }
+  if (headers["x-opencode-session"] && headers["x-opencode-project"]) {
+    saveZenIdentity({
+      session: headers["x-opencode-session"],
+      project: headers["x-opencode-project"],
+    });
+  }
+
+  const identity = loadZenIdentity();
   const traceId = randomBytes(16).toString("hex");
   const spanId = randomBytes(8).toString("hex");
-  const headers: Record<string, string> = {
-    "User-Agent": getOpenCodeUA(),
-    authorization: "Bearer public",
-    "x-opencode-client": "desktop",
-    "x-opencode-project": OPENCODE_PROJECT_ID,
-    "x-opencode-session": OPENCODE_SESSION,
-    "x-opencode-session-id": OPENCODE_SESSION,
-    "x-session-affinity": OPENCODE_SESSION,
-    b3: `${traceId}-${spanId}-1-${spanId}`,
-    traceparent: `00-${traceId}-${spanId}-01`,
-    Accept: "text/event-stream",
-  };
+  const parentSpanId = randomBytes(8).toString("hex");
+  const session = headers["x-opencode-session"] ?? identity.session;
+  const project = headers["x-opencode-project"] ?? identity.project;
+
+  if (!headers["User-Agent"]) headers["User-Agent"] = getOpenCodeUA();
+  headers["authorization"] ??= "Bearer public";
+  headers["x-opencode-client"] ??= "cli";
+  headers["x-opencode-project"] = project;
+  headers["x-opencode-session"] = session;
+  headers["x-opencode-session-id"] ??= session;
+  headers["x-session-affinity"] ??= session;
+  headers["b3"] ??= `${traceId}-${spanId}-1-${parentSpanId}`;
+  headers["traceparent"] ??= `00-${traceId}-${spanId}-01`;
   if (withRequestHeader) headers["x-opencode-request"] = generateRequestId();
   return headers;
 }
@@ -211,9 +345,28 @@ function transformOpencodeBody(
   return { body, responsesPath: false };
 }
 
+const OPENCODE_ENV_BLOCK = "<env>\nWorking directory: /tmp\n</env>";
+
+// Zen free-tier gate verifies that the prompt originates from an OpenCode session by checking for the `<env>` block.
+function ensureOpencodeSystemPrompt(body: Record<string, unknown>): void {
+  if (!Array.isArray(body.messages) || body.messages.length === 0) return;
+  const messages = body.messages as Array<Record<string, unknown>>;
+  const sysIdx = messages.findIndex((m) => m && m.role === "system");
+  if (sysIdx !== -1) {
+    const sysMsg = messages[sysIdx]!;
+    const content = typeof sysMsg.content === "string" ? sysMsg.content : "";
+    if (!content.includes("</env>")) {
+      sysMsg.content = `${content}\n\n${OPENCODE_ENV_BLOCK}`.trim();
+    }
+  } else if (messages[1]?.role !== "assistant") {
+    messages.unshift({ role: "system", content: OPENCODE_ENV_BLOCK });
+  }
+}
+
 function transformOpencodeBodyChat(body: Record<string, unknown>): Record<string, unknown> {
   body.stream = true;
   ensureChatFingerprintTools(body);
+  ensureOpencodeSystemPrompt(body);
   return body;
 }
 
@@ -391,7 +544,7 @@ export const zenUpstream: Upstream = {
       const [indexRes, listRes] = await Promise.all([
         fetch(MODELS_DEV_URL, { signal: AbortSignal.timeout(10_000) }).catch(() => null),
         fetch(`${ZEN_MODELS_URL}/models`, {
-          headers: opencodeHeaders(true),
+          headers: opencodeHeaders(undefined, true),
           signal: AbortSignal.timeout(6_000),
         }),
       ]);
@@ -449,11 +602,13 @@ export const zenUpstream: Upstream = {
                   }
                 : {
                     model: m.id,
-                    messages: [{ role: "user", content: "ping" }],
+                    messages: [
+                      { role: "system", content: OPENCODE_ENV_BLOCK },
+                      { role: "user", content: "ping" },
+                    ],
                     max_tokens: 4,
                     stream: true,
                     tools: OPENCODE_EXACT_TOOLS,
-                    tool_choice: "none",
                   },
             ),
             signal: AbortSignal.timeout(15_000),
@@ -469,8 +624,11 @@ export const zenUpstream: Upstream = {
     }
   },
 
-  requestHeaders(_model?: ModelDef): Record<string, string> {
-    return opencodeHeaders();
+  requestHeaders(
+    _model?: ModelDef,
+    callerHeaders?: Record<string, string | string[] | undefined>,
+  ): Record<string, string> {
+    return opencodeHeaders(callerHeaders);
   },
 
   transformRequestBody(body: Record<string, unknown>, model: ModelDef): Record<string, unknown> {

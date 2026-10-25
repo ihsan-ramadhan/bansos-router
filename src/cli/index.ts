@@ -1,7 +1,21 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+
+// Zen uses Cloudflare JA4 fingerprinting: Node.js (OpenSSL) is flagged as a 3rd-party scraper, while Bun (BoringSSL) matches the official OpenCode runtime, so re-exec under Bun when available.
+if (!("Bun" in globalThis) && !process.env.BANSOS_NO_BUN && !process.env._BANSOS_BUN_REEXEC) {
+  try {
+    const bunCheck = spawnSync("bun", ["--version"], { stdio: "ignore", timeout: 1000 });
+    if (bunCheck.status === 0) {
+      const res = spawnSync("bun", process.argv.slice(1), {
+        stdio: "inherit",
+        env: { ...process.env, _BANSOS_BUN_REEXEC: "1" },
+      });
+      process.exit(res.status ?? 0);
+    }
+  } catch {}
+}
 import { runAutostart } from "./autostart";
 import { runDoctor } from "./doctor";
 import { runPing } from "./ping";

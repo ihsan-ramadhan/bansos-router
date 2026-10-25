@@ -1180,7 +1180,7 @@ async function runChatForward(
 
     const headers = new Headers({
       "content-type": "application/json",
-      ...currentUpstream.requestHeaders(current),
+      ...currentUpstream.requestHeaders(current, req.headers as Record<string, string | string[] | undefined>),
     });
     // responses-wire model: body/reply translated at the edges so the pipeline only sees chat
     const responsesWire = current.wireApi === "responses" && !!currentUpstream.responsesUrl;

@@ -1,6 +1,6 @@
 import { useState, useMemo } from "preact/hooks";
 import type { ModelItem, PingResult } from "../../types";
-import { ArrowUpDown, ArrowUp, ArrowDown, Zap } from "lucide-preact";
+import { ArrowUpDown, ArrowUp, ArrowDown, Zap, Info } from "lucide-preact";
 import {
   filterAndSortModels,
   type CapabilityFilter,
@@ -240,6 +240,18 @@ export function ModelCatalog({
         refreshing={refreshing}
         onRefreshCatalog={onRefreshCatalog}
       />
+      {selectedProvider.toLowerCase() === "zen" && (
+        <div className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-lg border border-blue-500/20 bg-blue-500/5 text-xs text-[#a1a1aa]">
+          <Info className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <div className="font-medium text-blue-300">OpenCode Zen Requirement</div>
+            <div>
+              Zen free-tier models verify Cloudflare JA4 TLS fingerprints and session affinity. Make sure OpenCode CLI (or Bun runtime) is installed. The router auto-starts OpenCode service in background if installed, and automatically fails over to Kilo/LLM7/OVH when Zen is unreachable.
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* Capability filter chips */}
       <CapabilityFilterChips

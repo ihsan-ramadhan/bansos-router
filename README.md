@@ -138,6 +138,7 @@ With `mode: "strict"`:
 
 - One local daemon on `127.0.0.1:17070`, started with `bansos start`. It speaks three wire protocols: OpenAI Chat Completions, Anthropic Messages, and OpenAI Responses (Codex CLI).
 - Keyless free upstreams only: OpenCode Zen, KiloCode gateway, LLM7, and OVHcloud AI Endpoints (anonymous tier).
+  - *OpenCode Zen note*: Zen uses Cloudflare JA4 TLS fingerprinting and session affinity. It requires either Bun runtime or an OpenCode installation (installed via `curl -fsSL https://opencode.ai/v2/install | bash`, package managers, or `npm i -g @opencode/cli`). When OpenCode is installed, bansos-router automatically launches its background service. If neither is available, requests to Zen models transparently fail over to Kilo/LLM7/OVH free models.
 - `bansos setup <harness>` writes config for Claude Code, Aider, OpenCode, Codex, Hermes, Goose, OpenClaw, Antigravity, JCode, 9Router, Continue, Cline, Roo Code, and OMP.
 - Web UI dashboard served at `http://127.0.0.1:17070/`. The catalog shows per-model capabilities (Think / Vision badges) and live latency; the activity tab tracks requests, tokens, latency, and error rate; the settings tab edits `~/.bansos/config.json` and restarts the daemon.
 - The pi extension ([`pi-bansos-router`](extensions/pi/README.md)) registers the `bansosr` provider, so every free model shows up in pi's `/model` picker. There is also a `/bansosr` command for status. If the daemon is not running when pi starts, the extension starts it and stops it again on exit.
