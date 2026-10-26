@@ -333,7 +333,7 @@ bansos-router/
 │   ├── harnesses.md
 │   └── upstreams.md
 ├── README.md
-└── LICENSE                 # MIT
+└── LICENSE                 # GPL-3.0
 ```
 
 ## 9. Milestones

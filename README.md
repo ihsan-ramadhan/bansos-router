@@ -196,4 +196,4 @@ npm run dev:ui     # run Vite dev server for Web UI
 
 ## License
 
-MIT
+GPL-3.0-only. See [LICENSE](LICENSE).
