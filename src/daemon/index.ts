@@ -340,25 +340,36 @@ export async function runDaemon(argv: string[]): Promise<void> {
 
 export function ensureOpenCodeService(log?: Logger): void {
   let opencodePath = "";
+  const whichCmd = process.platform === "win32" ? "where" : "which";
   try {
-    const check = spawnSync("which", ["opencode"], { encoding: "utf-8", timeout: 1000 });
+    const check = spawnSync(whichCmd, ["opencode"], { encoding: "utf-8", timeout: 1000 });
     if (check.status === 0 && check.stdout.trim()) {
-      opencodePath = check.stdout.trim();
+      opencodePath = check.stdout.trim().split(/\r?\n/)[0]?.trim() ?? "";
     }
   } catch {}
 
   if (!opencodePath) return;
 
-  const servicePath = path.join(os.homedir(), ".local", "state", "opencode", "service.json");
-  try {
-    if (fs.existsSync(servicePath)) {
-      const data = JSON.parse(fs.readFileSync(servicePath, "utf-8")) as { pid?: number };
-      if (typeof data?.pid === "number") {
-        process.kill(data.pid, 0);
-        return;
+  const home = os.homedir();
+  const serviceCandidates = [
+    path.join(home, ".local", "state", "opencode", "service.json"),
+    path.join(home, "Library", "Application Support", "opencode", "service.json"),
+  ];
+  if (process.env.LOCALAPPDATA) {
+    serviceCandidates.push(path.join(process.env.LOCALAPPDATA, "opencode", "service.json"));
+  }
+
+  for (const servicePath of serviceCandidates) {
+    try {
+      if (fs.existsSync(servicePath)) {
+        const raw = JSON.parse(fs.readFileSync(servicePath, "utf-8")) as unknown;
+        if (raw && typeof raw === "object" && "pid" in raw && typeof raw.pid === "number") {
+          process.kill(raw.pid, 0);
+          return;
+        }
       }
-    }
-  } catch {}
+    } catch {}
+  }
 
   try {
     const child = spawn(opencodePath, ["serve", "--service"], {

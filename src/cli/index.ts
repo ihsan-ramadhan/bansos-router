@@ -1,20 +1,40 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 
 // Zen uses Cloudflare JA4 fingerprinting: Node.js (OpenSSL) is flagged as a 3rd-party scraper, while Bun (BoringSSL) matches the official OpenCode runtime, so re-exec under Bun when available.
-if (!("Bun" in globalThis) && !process.env.BANSOS_NO_BUN && !process.env._BANSOS_BUN_REEXEC) {
+function resolveBunExecutable(): string | null {
   try {
-    const bunCheck = spawnSync("bun", ["--version"], { stdio: "ignore", timeout: 1000 });
-    if (bunCheck.status === 0) {
-      const res = spawnSync("bun", process.argv.slice(1), {
-        stdio: "inherit",
-        env: { ...process.env, _BANSOS_BUN_REEXEC: "1" },
-      });
-      process.exit(res.status ?? 0);
-    }
+    const check = spawnSync("bun", ["--version"], { stdio: "ignore", timeout: 1000 });
+    if (check.status === 0) return "bun";
   } catch {}
+  const home = os.homedir();
+  const candidates = [
+    path.join(home, ".bun", "bin", "bun"),
+    "/usr/local/bin/bun",
+    "/usr/bin/bun",
+  ];
+  for (const c of candidates) {
+    try {
+      if (fs.existsSync(c)) return c;
+    } catch {}
+  }
+  return null;
+}
+
+if (!("Bun" in globalThis) && !process.env.BANSOS_NO_BUN && !process.env._BANSOS_BUN_REEXEC) {
+  const bunPath = resolveBunExecutable();
+  if (bunPath) {
+    const bunDir = path.dirname(path.resolve(bunPath));
+    const pathEnv = process.env.PATH ? `${bunDir}:${process.env.PATH}` : bunDir;
+    const res = spawnSync(bunPath, process.argv.slice(1), {
+      stdio: "inherit",
+      env: { ...process.env, PATH: pathEnv, _BANSOS_BUN_REEXEC: "1" },
+    });
+    process.exit(res.status ?? 0);
+  }
 }
 import { runAutostart } from "./autostart";
 import { runDoctor } from "./doctor";

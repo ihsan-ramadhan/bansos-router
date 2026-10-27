@@ -66,9 +66,50 @@ let cachedZenIdentity: PersistentZenIdentity | null = null;
 let lastIdentityLookup = 0;
 const IDENTITY_CACHE_TTL_MS = 30_000;
 
-function findLocalOpenCodeIdentity(): PersistentZenIdentity | null {
-  const dbPath = path.join(os.homedir(), ".local", "share", "opencode", "opencode.db");
-  if (!fs.existsSync(dbPath)) return null;
+function extractIdentityFromRow(row: unknown): PersistentZenIdentity | null {
+  if (
+    row &&
+    typeof row === "object" &&
+    "id" in row &&
+    "project_id" in row &&
+    typeof row.id === "string" &&
+    typeof row.project_id === "string"
+  ) {
+    return { session: row.id, project: row.project_id };
+  }
+  return null;
+}
+
+function queryDbDirect(dbPath: string): PersistentZenIdentity | null {
+  if ("Bun" in globalThis) {
+    try {
+      const bunSqlite = require("bun:sqlite") as { Database: new (p: string, opt?: { readonly?: boolean }) => { query: (q: string) => { get: () => unknown }; close: () => void } };
+      const db = new bunSqlite.Database(dbPath, { readonly: true });
+      try {
+        const row2 = extractIdentityFromRow(db.query("SELECT id, project_id FROM session_v2 ORDER BY time_updated DESC LIMIT 1").get());
+        if (row2) return row2;
+        const row1 = extractIdentityFromRow(db.query("SELECT id, project_id FROM session ORDER BY time_created DESC LIMIT 1").get());
+        if (row1) return row1;
+      } finally {
+        db.close();
+      }
+    } catch {}
+  }
+
+  try {
+    const nodeSqlite = require("node:sqlite") as { DatabaseSync: new (p: string, opt?: { readOnly?: boolean }) => { prepare: (q: string) => { get: () => unknown }; close: () => void } };
+    const db = new nodeSqlite.DatabaseSync(dbPath, { readOnly: true });
+    try {
+      const row2 = extractIdentityFromRow(db.prepare("SELECT id, project_id FROM session_v2 ORDER BY time_updated DESC LIMIT 1").get());
+      if (row2) return row2;
+      const row1 = extractIdentityFromRow(db.prepare("SELECT id, project_id FROM session ORDER BY time_created DESC LIMIT 1").get());
+      if (row1) return row1;
+    } finally {
+      db.close();
+    }
+  } catch {}
+
+  const whichCmd = process.platform === "win32" ? "where" : "which";
   try {
     const res = spawnSync("sqlite3", [
       dbPath,
@@ -93,6 +134,24 @@ function findLocalOpenCodeIdentity(): PersistentZenIdentity | null {
       }
     }
   } catch {}
+  return null;
+}
+
+function findLocalOpenCodeIdentity(): PersistentZenIdentity | null {
+  const home = os.homedir();
+  const dbCandidates = [
+    path.join(home, ".local", "share", "opencode", "opencode.db"),
+    path.join(home, "Library", "Application Support", "opencode", "opencode.db"),
+  ];
+  if (process.env.LOCALAPPDATA) {
+    dbCandidates.push(path.join(process.env.LOCALAPPDATA, "opencode", "opencode.db"));
+  }
+  for (const dbPath of dbCandidates) {
+    if (fs.existsSync(dbPath)) {
+      const id = queryDbDirect(dbPath);
+      if (id) return id;
+    }
+  }
   return null;
 }
 
