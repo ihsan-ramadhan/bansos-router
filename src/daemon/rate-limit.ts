@@ -4,6 +4,16 @@ export interface RateLimiterOptions {
   windowMs: number;
 }
 
+export const DEFAULT_RATE_LIMIT = 300;
+
+// BANSOS_RATE_LIMIT: unset, blank, invalid or negative -> default; "0" disables
+export function parseRateLimit(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return DEFAULT_RATE_LIMIT;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return DEFAULT_RATE_LIMIT;
+  return Math.floor(n);
+}
+
 export class RateLimiter {
   private readonly hits = new Map<string, number[]>();
 

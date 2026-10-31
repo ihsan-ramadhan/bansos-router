@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { BANSOS_DIR, ensureBansosDir, writeJsonAtomic } from "./state";
+import { BANSOS_DIR, writeTextAtomicAsync, writeTextAtomicSync } from "./state";
 
 export type ActivityKind = "chat" | "responses" | "anthropic";
 export type ActivityStatus = "ok" | "error";
@@ -62,6 +62,10 @@ export class ActivityStore {
   private nextId = 1;
   private readonly cap: number;
   private saveTimeout: NodeJS.Timeout | null = null;
+  private writing: Promise<void> | null = null;
+  private pendingWrite: Promise<void> | null = null;
+  private dirty = false;
+  private syncGen = 0;
 
   constructor(cap = 5000) {
     this.cap = cap;
@@ -93,17 +97,49 @@ export class ActivityStore {
     if (this.saveTimeout) return;
     this.saveTimeout = setTimeout(() => {
       this.saveTimeout = null;
-      this.flushToDisk();
+      void this.flushToDisk();
     }, 2000);
   }
 
-  public flushToDisk(): void {
-    try {
-      ensureBansosDir();
-      writeJsonAtomic(ACTIVITY_FILE, {
-        updatedAt: Date.now(),
-        events: this.events,
+  private snapshot(): string {
+    this.dirty = false;
+    return JSON.stringify({ updatedAt: Date.now(), events: this.events });
+  }
+
+  // compact async write; a flush requested while one is in flight runs once after it
+  public flushToDisk(): Promise<void> {
+    if (this.writing) {
+      this.pendingWrite ??= this.writing.then(() => {
+        this.pendingWrite = null;
+        return this.flushToDisk();
       });
+      return this.pendingWrite;
+    }
+    const gen = this.syncGen;
+    this.writing = (async () => {
+      try {
+        await writeTextAtomicAsync(ACTIVITY_FILE, this.snapshot(), () => gen === this.syncGen);
+      } catch {
+        // ignore persistence error
+      } finally {
+        this.writing = null;
+      }
+    })();
+    return this.writing;
+  }
+
+  // shutdown flush: synchronous, and any in-flight async write is dropped so it cannot overwrite this one.
+  // known gap (accepted): an async rename already handed to the threadpool cannot be recalled, so it may land
+  // after this write and restore a snapshot missing the events recorded during that write (microsecond window).
+  public flushToDiskSync(): void {
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+    if (!this.dirty && !this.writing) return;
+    this.syncGen++;
+    try {
+      writeTextAtomicSync(ACTIVITY_FILE, this.snapshot());
     } catch {
       // ignore persistence error
     }
@@ -117,12 +153,13 @@ export class ActivityStore {
       ...input,
     };
     this.events.push(event);
+    this.dirty = true;
 
-    // enforce the 60-day window and the max cap
-    this.events = this.events.filter((e) => now - e.timestamp <= MAX_RETENTION_MS);
-    if (this.events.length > this.cap) {
-      this.events = this.events.slice(-this.cap);
-    }
+    // enforce the 60-day window and the max cap; events are appended in time order, so expired ones sit at the front
+    let expired = 0;
+    while (expired < this.events.length && now - this.events[expired]!.timestamp > MAX_RETENTION_MS) expired++;
+    if (expired > 0) this.events.splice(0, expired);
+    if (this.events.length > this.cap) this.events.splice(0, this.events.length - this.cap);
 
     this.scheduleSave();
   }

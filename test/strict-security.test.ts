@@ -121,6 +121,7 @@ async function createTestDaemon(
     port: 0,
     log,
     startedAt: Date.now(),
+    apiKey: null,
     security,
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

@@ -13,8 +13,10 @@
 | `POST /v1/responses` | OpenAI Responses | Codex CLI (≥0.122, `wire_api = "responses"`) |
 | `GET /v1/models` | OpenAI (list) | model pickers; returns **only alive curated models** (strict mode: only allowlisted upstreams; `?all=1` adds the blocked ones for the dashboard) |
 | `GET /` | Web UI | browser dashboard |
-| `GET /healthz` | bansos JSON | daemon health |
-| `GET /bansos/status` | bansos JSON | CLI status payload, provider counts, security in force |
+| `GET /healthz` | bansos JSON | liveness probe, no key needed; the body is only `{"status":"ok"}` |
+| `POST /bansos/login` | bansos JSON | dashboard sign-in: body `{"key":"<api key>"}`, answers `{"ok":true}` + session cookie |
+| `POST /bansos/logout` | bansos JSON | dashboard sign-out: revokes and clears the session cookie |
+| `GET /bansos/status` | bansos JSON | CLI status payload, provider counts, security in force, `auth.required` |
 | `POST /bansos/refresh` | bansos JSON | re-run upstream health checks now |
 | `GET /bansos/adapters` | bansos JSON | list harness adapters for the Web UI |
 | `GET /bansos/adapters/render` | bansos JSON | render a harness config snippet |
@@ -31,6 +33,52 @@
 | `GET/POST /bansos/autostart` | bansos JSON | start-at-login status and toggle (admin) |
 
 Admin routes answer loopback peers only (see `architecture.md` §3.1).
+
+### 1.1 Authentication
+
+Every route needs the router API key, unknown paths included (so a 401 does
+not reveal which routes exist). Accepted credentials, any one of them:
+
+- `Authorization: Bearer <key>` (the scheme is case-insensitive)
+- `x-api-key: <key>` (what Anthropic SDKs send)
+- the dashboard session cookie `bansos_session_<port>` set by `/bansos/login`,
+  only on same-origin requests (`Origin` absent or equal to the `Host`, and
+  `Sec-Fetch-Site` absent, `same-origin` or `none`)
+
+No key is needed for: CORS preflight (`OPTIONS`; `Access-Control-Allow-Headers`
+lists `authorization` and `x-api-key`), `GET /healthz`, the static UI files
+(`/`, `/index.html`, `/assets/*`, favicons, `/manifest.json`, `/robots.txt`),
+and `POST /bansos/login` / `POST /bansos/logout`.
+
+A missing and a wrong key get the same 401, with
+`WWW-Authenticate: Bearer realm="bansos"`:
+
+```json
+{"error":{"message":"invalid or missing API key","type":"authentication_error","code":"invalid_api_key"}}
+```
+
+`/v1/messages` and `/messages` use the Anthropic shape instead:
+`{"type":"error","error":{"type":"authentication_error","message":"invalid or missing API key"}}`.
+
+A client IP that sent 20 distinct wrong credentials within 10 minutes gets
+429 with `Retry-After: <seconds>` on every route that needs auth (and on
+`/bansos/login`) until the window passes, even with the right key:
+`{"error":{"message":"too many failed authentication attempts","type":"rate_limit_error"}}`
+(Anthropic shape on the messages routes). Requests without any credential do
+not count, and repeating the same wrong key counts once.
+
+`/bansos/login` answers 200 `{"ok":true}` with
+`Set-Cookie: bansos_session_<port>=<token>; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800`
+(plus `Secure` over TLS or when the first `X-Forwarded-Proto` is `https`), 401
+for a wrong key, 400 for a body that is not `{"key": "..."}`, 413 above 4 KB,
+and 429 while blocked. The token is an HMAC derived from the key, never the
+key itself. An invalid or expired cookie gets a clearing `Set-Cookie` on its
+401.
+
+The daemon never forwards client credentials: `authorization`, `x-api-key`,
+`proxy-authorization`, `cookie` and `x-goog-api-key` are removed before the
+upstream request is built. With `BANSOS_AUTH=off` (loopback binds only) every
+route is open and `/bansos/status` reports `auth.required: false`.
 
 ## 2. Internal normalized model
 

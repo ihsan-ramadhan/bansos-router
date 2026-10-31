@@ -1,7 +1,9 @@
-import { useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import type { NavTab } from "./components/common/AppHeader";
 import { AppHeader } from "./components/common/AppHeader";
 import { OfflineBanner } from "./components/common/OfflineBanner";
+import { LoginScreen } from "./components/common/LoginScreen";
+import { UNAUTHORIZED_EVENT } from "./services/api";
 import { MetricCards } from "./components/common/MetricCards";
 import { ModelCatalog } from "./components/models/ModelCatalog";
 import { AgentSetup } from "./components/agent/AgentSetup";
@@ -16,6 +18,13 @@ import { ExternalLink } from "lucide-preact";
 
 export function App() {
   const [activeTab, setActiveTab] = useState<NavTab>("models");
+  const [needsLogin, setNeedsLogin] = useState(false);
+
+  useEffect(() => {
+    const onUnauthorized = () => setNeedsLogin(true);
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+  }, []);
 
   const {
     status,
@@ -60,77 +69,89 @@ export function App() {
         loadingStatus={loadingStatus}
         daemonAddress={daemonAddress}
         isConnected={isConnected}
+        onSignedOut={() => setNeedsLogin(true)}
       />
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-29 sm:pt-32 pb-6 sm:pb-8 space-y-4 sm:space-y-6">
-        {/* Offline Alert Banner */}
-        {!isConnected && !isConnecting && (
-          <OfflineBanner
-            daemonAddress={daemonAddress}
-            loadingStatus={loadingStatus}
-            onRetry={() => loadStatus(true)}
+        {needsLogin ? (
+          <LoginScreen
+            onSuccess={() => {
+              setNeedsLogin(false);
+              void loadStatus(true);
+            }}
           />
+        ) : (
+          <>
+          {/* Offline Alert Banner */}
+          {!isConnected && !isConnecting && (
+            <OfflineBanner
+              daemonAddress={daemonAddress}
+              loadingStatus={loadingStatus}
+              onRetry={() => loadStatus(true)}
+            />
+          )}
+
+          {/* Global Metric Cards */}
+          <MetricCards status={status} loading={loadingStatus} daemonAddress={daemonAddress} />
+
+          {/* Tab 1: Model Catalog */}
+          <div className={activeTab === "models" ? "block" : "hidden"}>
+            <ModelCatalog
+              models={models}
+              blockedSources={blockedSources}
+              loading={loadingModels}
+              onRefreshCatalog={handleRefreshCatalog}
+              refreshing={refreshingCatalog}
+              pingResults={pingResults}
+              isPingingAll={isPingingAll}
+              pingProgress={pingProgress}
+              onPingModel={pingSingle}
+              onPingAll={pingAll}
+              onCancelPing={cancelPing}
+              onClearPings={clearPingResults}
+            />
+          </div>
+
+          {/* Tab 2: Agent Setup */}
+          <div className={activeTab === "agent" ? "block" : "hidden"}>
+            <AgentSetup
+              models={usableModels}
+              daemonPort={daemonPort}
+              onCatalogStale={() => void loadStatus()}
+            />
+          </div>
+
+          {/* Tab 3: Relay Proxy */}
+          <div className={activeTab === "relay" ? "block" : "hidden"}>
+            <RelayManager
+              daemonPort={daemonPort}
+              onStateChange={loadStatus}
+            />
+          </div>
+
+          {/* Tab 4: Playground */}
+          <div className={activeTab === "playground" ? "block" : "hidden"}>
+            <Playground
+              models={usableModels}
+              daemonPort={daemonPort}
+            />
+          </div>
+
+          {/* Tab 5: Activity & Usage */}
+          <div className={activeTab === "activity" ? "block" : "hidden"}>
+            <ActivityView />
+          </div>
+
+          <div className={activeTab === "logs" ? "block" : "hidden"}>
+            <LogsView active={activeTab === "logs"} />
+          </div>
+
+          <div className={activeTab === "settings" ? "block" : "hidden"}>
+            <SettingsView active={activeTab === "settings"} onApplied={() => void loadStatus()} />
+          </div>
+          </>
         )}
-
-        {/* Global Metric Cards */}
-        <MetricCards status={status} loading={loadingStatus} daemonAddress={daemonAddress} />
-
-        {/* Tab 1: Model Catalog */}
-        <div className={activeTab === "models" ? "block" : "hidden"}>
-          <ModelCatalog
-            models={models}
-            blockedSources={blockedSources}
-            loading={loadingModels}
-            onRefreshCatalog={handleRefreshCatalog}
-            refreshing={refreshingCatalog}
-            pingResults={pingResults}
-            isPingingAll={isPingingAll}
-            pingProgress={pingProgress}
-            onPingModel={pingSingle}
-            onPingAll={pingAll}
-            onCancelPing={cancelPing}
-            onClearPings={clearPingResults}
-          />
-        </div>
-
-        {/* Tab 2: Agent Setup */}
-        <div className={activeTab === "agent" ? "block" : "hidden"}>
-          <AgentSetup
-            models={usableModels}
-            daemonPort={daemonPort}
-            onCatalogStale={() => void loadStatus()}
-          />
-        </div>
-
-        {/* Tab 3: Relay Proxy */}
-        <div className={activeTab === "relay" ? "block" : "hidden"}>
-          <RelayManager
-            daemonPort={daemonPort}
-            onStateChange={loadStatus}
-          />
-        </div>
-
-        {/* Tab 4: Playground */}
-        <div className={activeTab === "playground" ? "block" : "hidden"}>
-          <Playground
-            models={usableModels}
-            daemonPort={daemonPort}
-          />
-        </div>
-
-        {/* Tab 5: Activity & Usage */}
-        <div className={activeTab === "activity" ? "block" : "hidden"}>
-          <ActivityView />
-        </div>
-
-        <div className={activeTab === "logs" ? "block" : "hidden"}>
-          <LogsView active={activeTab === "logs"} />
-        </div>
-
-        <div className={activeTab === "settings" ? "block" : "hidden"}>
-          <SettingsView active={activeTab === "settings"} onApplied={() => void loadStatus()} />
-        </div>
       </main>
 
       {/* Footer */}

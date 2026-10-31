@@ -38,6 +38,15 @@ import {
 import { ADAPTERS, buildSetupContext, findAdapter } from "../adapters";
 import { harnessStatuses } from "../cli/doctor";
 import { ADMIN_PATHS, handleAdmin, type AdminOptions } from "./admin";
+import {
+  AUTH_BLOCKED_MESSAGE,
+  AUTH_ERROR_MESSAGE,
+  AUTH_KEY_PLACEHOLDER,
+  AuthGate,
+  authErrorBody,
+  stripCredentialHeaders,
+  type AuthDecision,
+} from "./auth";
 import { createSseFrameSplitter, readSseStream } from "../protocols/stream";
 import { callerToolsFromBody, type CallerTools, type Translator } from "../protocols/tool-bridge";
 import type { RuntimeCatalog } from "./catalog";
@@ -59,6 +68,7 @@ export interface StatusPayload {
     allowedUpstreams: string[];
     allowCrossProviderFailover: boolean;
   };
+  auth: { required: boolean };
 }
 
 function providerCounts(
@@ -78,7 +88,13 @@ export interface ServerOptions {
   startedAt: number;
   security?: SecurityConfig;
   activity?: ActivityStore;
-  admin?: Partial<Omit<AdminOptions, "security" | "catalog" | "port">>;
+  admin?: Partial<Omit<AdminOptions, "security" | "catalog" | "port" | "apiKey">>;
+  // required so no caller can forget it; null means auth off (only the daemon decides that)
+  apiKey: string | null;
+  authFailLimit?: number;
+  authFailWindowMs?: number;
+  trustProxy?: boolean;
+  sessionTtlMs?: number;
 }
 
 const ALLOWED_METHODS = new Set(["GET", "POST", "OPTIONS"]);
@@ -146,6 +162,10 @@ const STATIC_ROOT_FILES = new Set([
 const API_EXACT_PATHS = new Set([
   "/healthz",
   "/healthz/",
+  "/bansos/login",
+  "/bansos/login/",
+  "/bansos/logout",
+  "/bansos/logout/",
   "/bansos/status",
   "/bansos/status/",
   "/bansos/refresh",
@@ -188,6 +208,25 @@ function isAllowedInboundPath(pathname: string): boolean {
   return pathname.startsWith("/assets/") && /^[\w.-]+$/.test(pathname.slice(8));
 }
 
+// dashboard polling reads; cheap and bounded, so they do not spend the per-IP budget.
+// on-demand reads (config, adapters, autostart, relay) do sync fs/process work and stay counted.
+const RATE_LIMIT_EXEMPT_READS = new Set([
+  "/healthz",
+  "/bansos/status",
+  "/bansos/events",
+  "/bansos/usage",
+  "/bansos/logs",
+]);
+
+// only inference/API and mutating requests count toward the limiter
+export function countsTowardRateLimit(method: string, rawUrl: string): boolean {
+  if (method === "OPTIONS") return false;
+  if (method !== "GET") return true;
+  const pathname = (rawUrl.split("?")[0] ?? "/").replace(/\/+$/, "") || "/";
+  if (RATE_LIMIT_EXEMPT_READS.has(pathname) || STATIC_ROOT_FILES.has(pathname)) return false;
+  return !pathname.startsWith("/assets/");
+}
+
 // fallback models to try after the primary is rejected; total attempts = 1 + this
 const MAX_FAILOVER_RETRIES = 2;
 
@@ -204,7 +243,8 @@ function corsHeadersForOrigin(originHeader: string | undefined): Record<string, 
   return {
     "access-control-allow-origin": originHeader,
     "access-control-allow-methods": "GET, POST, OPTIONS",
-    "access-control-allow-headers": "*",
+    // per the fetch spec "*" never covers authorization, so it is listed explicitly
+    "access-control-allow-headers": "authorization, x-api-key, *",
     "access-control-max-age": "86400",
     vary: "Origin",
   };
@@ -477,12 +517,14 @@ function sendJson(
   res: http.ServerResponse,
   status: number,
   body: unknown,
+  extraHeaders?: Record<string, string>,
 ): void {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
     "content-type": "application/json",
     "content-length": Buffer.byteLength(payload),
     ...corsFor(res),
+    ...extraHeaders,
   });
   res.end(payload);
 }
@@ -1180,7 +1222,8 @@ async function runChatForward(
 
     const headers = new Headers({
       "content-type": "application/json",
-      ...currentUpstream.requestHeaders(current, req.headers as Record<string, string | string[] | undefined>),
+      // the router key (and any other caller credential) never leaves the daemon
+      ...currentUpstream.requestHeaders(current, stripCredentialHeaders(req.headers)),
     });
     // responses-wire model: body/reply translated at the edges so the pipeline only sees chat
     const responsesWire = current.wireApi === "responses" && !!currentUpstream.responsesUrl;
@@ -1949,22 +1992,54 @@ function sendAnthropicError(
   status: number,
   message: string,
   secretTypes?: SecretType[],
+  extraHeaders?: Record<string, string>,
 ): void {
-  sendJson(res, status, {
-    type: "error",
-    error: { type: anthropicErrorType(status), message },
-    ...(secretTypes ? { secret_types: secretTypes } : {}),
-  });
+  sendJson(
+    res,
+    status,
+    {
+      type: "error",
+      error: { type: anthropicErrorType(status), message },
+      ...(secretTypes ? { secret_types: secretTypes } : {}),
+    },
+    extraHeaders,
+  );
+}
+
+// same body for a missing and a wrong key; anthropic routes get their own error shape
+function sendAuthFailure(res: http.ServerResponse, url: string, decision: Exclude<AuthDecision, { ok: true }>): void {
+  const anthropic = url === "/v1/messages" || url === "/messages";
+  if (decision.status === 429) {
+    const headers = { "retry-after": String(decision.retryAfterSec) };
+    if (anthropic) sendAnthropicError(res, 429, AUTH_BLOCKED_MESSAGE, undefined, headers);
+    else sendJson(res, 429, { error: { message: AUTH_BLOCKED_MESSAGE, type: "rate_limit_error" } }, headers);
+    return;
+  }
+  const headers: Record<string, string> = { "www-authenticate": 'Bearer realm="bansos"' };
+  if (decision.clearCookie) headers["set-cookie"] = decision.clearCookie;
+  if (anthropic) sendAnthropicError(res, 401, AUTH_ERROR_MESSAGE, undefined, headers);
+  else sendJson(res, 401, authErrorBody(), headers);
 }
 
 export function createServer(opts: ServerOptions): http.Server {
   const { catalog, rateLimiter, port, log, startedAt } = opts;
   const security = opts.security ?? DEFAULT_SECURITY_CONFIG;
   activity = opts.activity ?? new ActivityStore();
+  const apiKey = opts.apiKey;
+  const gate = new AuthGate({
+    apiKey,
+    port,
+    failLimit: opts.authFailLimit,
+    failWindowMs: opts.authFailWindowMs,
+    trustProxy: opts.trustProxy,
+    sessionTtlMs: opts.sessionTtlMs,
+  });
   const adminOptions: AdminOptions = {
     bind: "127.0.0.1",
     refreshIntervalMs: 0,
+    authEnabled: apiKey !== null,
     ...opts.admin,
+    apiKey,
     security,
     catalog,
     port,
@@ -1983,10 +2058,10 @@ export function createServer(opts: ServerOptions): http.Server {
   return http.createServer((req, res) => {
     (res as CorsAwareResponse).bansosCors = corsHeadersForOrigin(req.headers.origin);
     const clientSignal = clientDisconnectSignal(res);
-    const ip = req.socket.remoteAddress ?? "unknown";
+    const ip = gate.clientIp(req);
     const method = req.method ?? "";
 
-    if (!rateLimiter.check(ip)) {
+    if (countsTowardRateLimit(method, req.url ?? "/") && !rateLimiter.check(ip)) {
       log.warn("rate limit exceeded", { ip });
       sendJson(res, 429, { error: { message: "rate limit exceeded" } });
       return;
@@ -2023,6 +2098,61 @@ export function createServer(opts: ServerOptions): http.Server {
     const cleanUrl = rawUrl.split("?")[0] ?? "/";
     const url = cleanUrl.replace(/\/+$/, "");
 
+    // open liveness probe; anything more (models, relay, security) is behind auth
+    if (url === "/healthz") {
+      sendJson(res, 200, { status: "ok" });
+      return;
+    }
+
+    // static ui stays open so the login screen can load
+    if (
+      method === "GET" &&
+      (url === "" ||
+        url === "/index.html" ||
+        cleanUrl.startsWith("/assets/") ||
+        url === "/favicon.ico" ||
+        url === "/favicon.svg" ||
+        url === "/favicon.png" ||
+        url === "/apple-touch-icon.png" ||
+        url === "/manifest.json" ||
+        url === "/robots.txt")
+    ) {
+      serveStaticUi(res, cleanUrl);
+      return;
+    }
+
+    if (method === "POST" && url === "/bansos/login") {
+      void runRequest(
+        readBody(req, 4096).then(
+          (bodyText) => {
+            const result = gate.login(req, bodyText);
+            const headers: Record<string, string> = {};
+            if (result.setCookie) headers["set-cookie"] = result.setCookie;
+            if (result.retryAfterSec !== undefined) headers["retry-after"] = String(result.retryAfterSec);
+            sendJson(res, result.status, result.body, headers);
+          },
+          () => sendJson(res, 413, { error: { message: "request body too large" } }),
+        ),
+        res,
+        log,
+        "login",
+      );
+      return;
+    }
+
+    if (method === "POST" && url === "/bansos/logout") {
+      sendJson(res, 200, { ok: true }, { "set-cookie": gate.logout(req).setCookie });
+      return;
+    }
+
+    // everything below needs the api key (or a dashboard session); unknown paths too, so routes do not leak
+    const decision = gate.authenticate(req);
+    if (!decision.ok) {
+      if (decision.status === 429) log.warn("auth failure limit reached", { status: 429 });
+      sendAuthFailure(res, url, decision);
+      return;
+    }
+
     if (method === "GET" && (url === "/v1/models" || url === "/models")) {
       const listAll = new URL(rawUrl, "http://127.0.0.1").searchParams.has("all");
       sendJson(res, 200, {
@@ -2046,22 +2176,6 @@ export function createServer(opts: ServerOptions): http.Server {
       return;
     }
 
-    if (url === "/healthz") {
-      const relay = visibleRelayState();
-      sendJson(res, 200, {
-        status: "ok",
-        uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
-        modelCount: catalog.servableModels.length,
-        relay: { enabled: relay.enabled, url: relay.url },
-        security: {
-          mode: security.mode,
-          allowedUpstreams: security.allowedUpstreams,
-          allowCrossProviderFailover: security.allowCrossProviderFailover,
-        },
-      });
-      return;
-    }
-
     if (url === "/bansos/status") {
       const relay = visibleRelayState();
       const payload: StatusPayload = {
@@ -2078,6 +2192,7 @@ export function createServer(opts: ServerOptions): http.Server {
           allowedUpstreams: security.allowedUpstreams,
           allowCrossProviderFailover: security.allowCrossProviderFailover,
         },
+        auth: { required: apiKey !== null },
       };
       sendJson(res, 200, payload);
       return;
@@ -2101,7 +2216,7 @@ export function createServer(opts: ServerOptions): http.Server {
 
 
     if (method === "GET" && (url === "/bansos/adapters")) {
-      const statuses = harnessStatuses();
+      const statuses = harnessStatuses(apiKey ?? undefined);
       sendJson(
         res,
         200,
@@ -2133,11 +2248,17 @@ export function createServer(opts: ServerOptions): http.Server {
       const reqHost = req.headers.host || `127.0.0.1:${port}`;
       const isHttps = Boolean((req.socket as import("node:tls").TLSSocket)?.encrypted);
       const proto = isHttps ? "https" : "http";
-      const ctx = buildSetupContext(`${proto}://${reqHost}/v1`, catalog.servableModels, {
-        model,
-        models: parsedUrl.searchParams.getAll("models"),
-        upstreams: parsedUrl.searchParams.getAll("upstream"),
-      });
+      // preview/copy never shows the real key; Apply writes it server-side
+      const ctx = buildSetupContext(
+        `${proto}://${reqHost}/v1`,
+        catalog.servableModels,
+        {
+          model,
+          models: parsedUrl.searchParams.getAll("models"),
+          upstreams: parsedUrl.searchParams.getAll("upstream"),
+        },
+        AUTH_KEY_PLACEHOLDER,
+      );
       if ("error" in ctx) {
         sendJson(res, 400, { error: { message: ctx.error } });
         return;
@@ -2287,22 +2408,6 @@ export function createServer(opts: ServerOptions): http.Server {
         log,
         "relay mutation",
       );
-      return;
-    }
-
-    if (
-      method === "GET" &&
-      (url === "" ||
-        url === "/index.html" ||
-        cleanUrl.startsWith("/assets/") ||
-        url === "/favicon.ico" ||
-        url === "/favicon.svg" ||
-        url === "/favicon.png" ||
-        url === "/apple-touch-icon.png" ||
-        url === "/manifest.json" ||
-        url === "/robots.txt")
-    ) {
-      serveStaticUi(res, cleanUrl);
       return;
     }
 

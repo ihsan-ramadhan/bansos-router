@@ -1,6 +1,38 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { RateLimiter } from "../src/daemon/rate-limit";
+import { RateLimiter, parseRateLimit } from "../src/daemon/rate-limit";
+import { countsTowardRateLimit } from "../src/daemon/server";
+
+test("parseRateLimit: unset or invalid gives the default, 0 disables", () => {
+  for (const raw of [undefined, "", "  ", "abc", "-5"]) assert.equal(parseRateLimit(raw), 300);
+  assert.equal(parseRateLimit("0"), 0);
+  assert.equal(parseRateLimit("50"), 50);
+  assert.equal(parseRateLimit("12.7"), 12);
+});
+
+test("countsTowardRateLimit skips dashboard reads and counts API and mutations", () => {
+  for (const [method, url] of [
+    ["GET", "/bansos/status"],
+    ["GET", "/bansos/events?limit=5"],
+    ["GET", "/bansos/logs"],
+    ["GET", "/healthz/"],
+    ["GET", "/"],
+    ["GET", "/assets/index-abc.js"],
+    ["OPTIONS", "/v1/chat/completions"],
+  ]) assert.equal(countsTowardRateLimit(method!, url!), false, `${method} ${url}`);
+  for (const [method, url] of [
+    ["POST", "/v1/chat/completions"],
+    ["GET", "/v1/models"],
+    ["GET", "/models"],
+    ["POST", "/bansos/config"],
+    ["GET", "/bansos/doctor"],
+    ["GET", "/bansos/config"],
+    ["GET", "/bansos/adapters"],
+    ["GET", "/bansos/autostart"],
+    ["GET", "/bansos/relay"],
+    ["GET", "/nope"],
+  ]) assert.equal(countsTowardRateLimit(method!, url!), true, `${method} ${url}`);
+});
 
 test("RateLimiter allows up to the limit within a window", () => {
   const rl = new RateLimiter({ limit: 3, windowMs: 60_000 });

@@ -106,6 +106,9 @@ export function AgentConfigViewer({
 
       {/* Tips */}
       <div className="bg-[#121215] border-t border-[#23232a] px-3 sm:px-4 py-2.5 text-[10px] sm:text-[11px] text-[#9393a0] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1">
+        <span>
+          The preview shows <code>&lt;BANSOS_API_KEY&gt;</code>; Apply writes the real key, and <code>bansos key</code> prints it.
+        </span>
         <span>Undo it any time with <code>bansos setup {selectedAdapterId} --undo</code>.</span>
       </div>
     </div>

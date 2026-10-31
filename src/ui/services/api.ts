@@ -17,26 +17,53 @@ import type {
 
 const BASE_URL = "";
 
+export const UNAUTHORIZED_EVENT = "bansos:unauthorized";
+
+// every daemon call goes through here so an auth-gate 401 anywhere brings up the login screen.
+// only the gate sets www-authenticate; an upstream refusing a model is also a 401 but keeps the session
+export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const res = await fetch(input, init);
+  if (res.status === 401 && res.headers.has("www-authenticate")) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  return res;
+}
+
+export async function login(key: string): Promise<{ ok: boolean }> {
+  // plain fetch: a wrong key must show an error, not re-trigger the login screen
+  const res = await fetch(`${BASE_URL}/bansos/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key }),
+  });
+  if (res.status === 401) throw new Error("Invalid API key");
+  if (res.status === 429) throw new Error("Too many attempts, try again later");
+  if (!res.ok) throw new Error(await errorMessage(res, `HTTP ${res.status}: Login failed`));
+  return res.json();
+}
+
+export async function logout(): Promise<void> {
+  await fetch(`${BASE_URL}/bansos/logout`, { method: "POST" });
+}
+
 export async function fetchStatus(): Promise<DaemonStatus> {
-  const res = await fetch(`${BASE_URL}/bansos/status`);
+  const res = await apiFetch(`${BASE_URL}/bansos/status`);
   if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch status`);
   return res.json();
 }
 
 export async function fetchModels(): Promise<ModelsResponse> {
-  const res = await fetch(`${BASE_URL}/v1/models?all=1`);
+  const res = await apiFetch(`${BASE_URL}/v1/models?all=1`);
   if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch models`);
   return res.json();
 }
 
 export async function refreshCatalog(): Promise<{ refreshed: boolean; modelCount: number; alive: string[] }> {
-  const res = await fetch(`${BASE_URL}/bansos/refresh`, { method: "POST" });
+  const res = await apiFetch(`${BASE_URL}/bansos/refresh`, { method: "POST" });
   if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to refresh catalog`);
   return res.json();
 }
 
 export async function fetchAdapters(): Promise<AdapterSummary[]> {
-  const res = await fetch(`${BASE_URL}/bansos/adapters`);
+  const res = await apiFetch(`${BASE_URL}/bansos/adapters`);
   if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch adapters`);
   return res.json();
 }
@@ -47,19 +74,19 @@ export async function renderAdapter(id: string, pick: ModelPick = {}): Promise<A
   if (pick.model) url.searchParams.set("model", pick.model);
   for (const m of pick.models ?? []) url.searchParams.append("models", m);
   for (const u of pick.upstreams ?? []) url.searchParams.append("upstream", u);
-  const res = await fetch(url.toString());
+  const res = await apiFetch(url.toString());
   if (!res.ok) throw new Error(await errorMessage(res, `HTTP ${res.status}: Failed to render the ${id} config`));
   return res.json();
 }
 
 export async function fetchRelayState(): Promise<RelayStateResponse> {
-  const res = await fetch(`${BASE_URL}/bansos/relay`);
+  const res = await apiFetch(`${BASE_URL}/bansos/relay`);
   if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch relay state`);
   return res.json();
 }
 
 export async function probeRelay(url?: string): Promise<{ ok: boolean; status?: number; latencyMs?: number; error?: string }> {
-  const res = await fetch(`${BASE_URL}/bansos/relay/probe`, {
+  const res = await apiFetch(`${BASE_URL}/bansos/relay/probe`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(url ? { url } : {}),
@@ -69,7 +96,7 @@ export async function probeRelay(url?: string): Promise<{ ok: boolean; status?: 
 }
 
 export async function updateRelayState(payload: RelayUpdatePayload): Promise<RelayStateResponse> {
-  const res = await fetch(`${BASE_URL}/bansos/relay`, {
+  const res = await apiFetch(`${BASE_URL}/bansos/relay`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -86,7 +113,7 @@ export async function pingModel(
   // clamp the probe to at least 16 tokens (some upstreams reject less), never above the cap
   const probeTokens = maxTokens && maxTokens >= 16 ? maxTokens : 16;
   try {
-    const res = await fetch(`${BASE_URL}/v1/chat/completions`, {
+    const res = await apiFetch(`${BASE_URL}/v1/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -107,13 +134,13 @@ export async function pingModel(
 }
 
 export async function fetchUsage(window: "today" | "7d" | "30d" | "60d" | "all" = "all"): Promise<UsageStats> {
-  const res = await fetch(`${BASE_URL}/bansos/usage?window=${window}`);
+  const res = await apiFetch(`${BASE_URL}/bansos/usage?window=${window}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch usage`);
   return res.json();
 }
 
 export async function fetchEvents(limit = 100, window: "today" | "7d" | "30d" | "60d" | "all" = "all"): Promise<ActivityEvent[]> {
-  const res = await fetch(`${BASE_URL}/bansos/events?limit=${limit}&window=${window}`);
+  const res = await apiFetch(`${BASE_URL}/bansos/events?limit=${limit}&window=${window}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch events`);
   const body = (await res.json()) as { events: ActivityEvent[] };
   return body.events;
@@ -129,13 +156,13 @@ async function errorMessage(res: Response, fallback: string): Promise<string> {
 }
 
 export async function fetchConfig(): Promise<ConfigState> {
-  const res = await fetch(`${BASE_URL}/bansos/config`);
+  const res = await apiFetch(`${BASE_URL}/bansos/config`);
   if (!res.ok) throw new Error(await errorMessage(res, `HTTP ${res.status}: Failed to load settings`));
   return res.json();
 }
 
 export async function saveConfig(patch: Partial<DaemonSettings>): Promise<ConfigState> {
-  const res = await fetch(`${BASE_URL}/bansos/config`, {
+  const res = await apiFetch(`${BASE_URL}/bansos/config`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),
@@ -145,25 +172,25 @@ export async function saveConfig(patch: Partial<DaemonSettings>): Promise<Config
 }
 
 export async function restartDaemon(): Promise<{ restarting: boolean; port: number; bind: string }> {
-  const res = await fetch(`${BASE_URL}/bansos/restart`, { method: "POST" });
+  const res = await apiFetch(`${BASE_URL}/bansos/restart`, { method: "POST" });
   if (!res.ok) throw new Error(await errorMessage(res, `HTTP ${res.status}: Failed to restart`));
   return res.json();
 }
 
 export async function fetchLogs(lines = 200): Promise<{ path: string; lines: string[] }> {
-  const res = await fetch(`${BASE_URL}/bansos/logs?lines=${lines}`);
+  const res = await apiFetch(`${BASE_URL}/bansos/logs?lines=${lines}`);
   if (!res.ok) throw new Error(await errorMessage(res, `HTTP ${res.status}: Failed to load logs`));
   return res.json();
 }
 
 export async function fetchDoctor(): Promise<DoctorReport> {
-  const res = await fetch(`${BASE_URL}/bansos/doctor`);
+  const res = await apiFetch(`${BASE_URL}/bansos/doctor`);
   if (!res.ok) throw new Error(await errorMessage(res, `HTTP ${res.status}: Failed to run health check`));
   return res.json();
 }
 
 export async function applyHarness(id: string, options: ModelPick & { undo?: boolean } = {}): Promise<SetupResult> {
-  const res = await fetch(`${BASE_URL}/bansos/adapters/apply`, {
+  const res = await apiFetch(`${BASE_URL}/bansos/adapters/apply`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id, ...options }),
@@ -173,13 +200,13 @@ export async function applyHarness(id: string, options: ModelPick & { undo?: boo
 }
 
 export async function fetchAutostart(): Promise<AutostartState> {
-  const res = await fetch(`${BASE_URL}/bansos/autostart`);
+  const res = await apiFetch(`${BASE_URL}/bansos/autostart`);
   if (!res.ok) throw new Error(await errorMessage(res, `HTTP ${res.status}: Failed to read start-at-login`));
   return res.json();
 }
 
 export async function setAutostart(enabled: boolean): Promise<AutostartState> {
-  const res = await fetch(`${BASE_URL}/bansos/autostart`, {
+  const res = await apiFetch(`${BASE_URL}/bansos/autostart`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled }),

@@ -1,8 +1,30 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { zenUpstream, ZEN_MODELS } from "../src/upstreams/zen";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { refreshZenIdentity, zenUpstream, ZEN_MODELS } from "../src/upstreams/zen";
 
-test("zenUpstream requestHeaders generates valid OpenCode v2 spoofing headers", () => {
+// point the opencode DB lookup at an empty home so the machine's own opencode identity never leaks in
+async function withEmptyHome(fn: () => void | Promise<void>): Promise<void> {
+  const keys = ["HOME", "USERPROFILE", "LOCALAPPDATA"] as const;
+  const saved = keys.map((k) => process.env[k]);
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "bansos-home-"));
+  for (const k of keys) process.env[k] = home;
+  try {
+    await fn();
+  } finally {
+    keys.forEach((k, i) => {
+      if (saved[i] === undefined) delete process.env[k];
+      else process.env[k] = saved[i];
+    });
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+}
+
+test("zenUpstream requestHeaders generates valid OpenCode v2 spoofing headers", () => withEmptyHome(async () => {
+  // settle the DB lookup first (finds nothing), so the headers use the synthetic identity deterministically
+  await refreshZenIdentity();
   const model = ZEN_MODELS[0]!;
   const headers = zenUpstream.requestHeaders(model);
 
@@ -19,6 +41,20 @@ test("zenUpstream requestHeaders generates valid OpenCode v2 spoofing headers", 
   assert.match(headers["x-opencode-project"] ?? "", /^[0-9a-f]{40}$/);
   assert.ok(headers["b3"]);
   assert.ok(headers["traceparent"]);
+}));
+
+test("caller opencode session headers win, and the background identity refresh never throws", async () => {
+  const model = ZEN_MODELS[0]!;
+  const caller = {
+    "x-opencode-session": "ses_0123456789abABCDEFGHIJKLMN",
+    "x-opencode-project": "0123456789abcdef0123456789abcdef01234567",
+  };
+  for (let i = 0; i < 2; i++) {
+    const headers = zenUpstream.requestHeaders(model, caller);
+    assert.equal(headers["x-opencode-session"], caller["x-opencode-session"]);
+    assert.equal(headers["x-opencode-project"], caller["x-opencode-project"]);
+  }
+  await refreshZenIdentity();
 });
 
 test("zenUpstream transformRequestBody enforces streaming and injects required tools for chat wire", () => {

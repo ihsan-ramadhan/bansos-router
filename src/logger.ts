@@ -54,8 +54,25 @@ const SECRET_TYPES = new Set<SecretType>([
   "aws_access_key",
   "private_key",
   "ssh_private_key",
+  "bansos_api_key",
   "credential_assignment",
 ]);
+
+// exact secrets (the daemon's api key) scrubbed from every written line, whatever pattern they have
+const logSecrets = new Set<string>();
+const LOG_SECRET_MARKER = "[REDACTED:bansos_api_key]";
+
+export function registerLogSecret(secret: string): void {
+  if (secret) logSecrets.add(secret);
+}
+
+function scrubSecrets(line: string): string {
+  let out = line;
+  for (const secret of logSecrets) {
+    if (out.includes(secret)) out = out.split(secret).join(LOG_SECRET_MARKER);
+  }
+  return out;
+}
 
 function validatedSecretTypes(value: unknown): SecretType[] {
   const values = Array.isArray(value) ? value : [value];
@@ -103,11 +120,11 @@ export function createLogger(opts: LoggerOptions = {}): Logger {
     const filteredFields = safeFields(fields, messageScan.secretTypes);
     if (json) {
       out.write(
-        `${JSON.stringify({ timestamp: new Date().toISOString(), level: lvl, msg: safeMessage, ...filteredFields })}\n`,
+        scrubSecrets(`${JSON.stringify({ timestamp: new Date().toISOString(), level: lvl, msg: safeMessage, ...filteredFields })}\n`),
       );
     } else {
       const tag = lvl === "error" ? "✗" : lvl === "warn" ? "⚠" : lvl === "debug" ? "·" : "✓";
-      out.write(`${tag} ${line}${renderFields(filteredFields)}\n`);
+      out.write(scrubSecrets(`${tag} ${line}${renderFields(filteredFields)}\n`));
     }
   };
 

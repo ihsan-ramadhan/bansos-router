@@ -1,4 +1,5 @@
 import { effectiveBind, effectivePort } from "../daemon/state";
+import { ClientKeyError, KEY_REJECTED_HINT, daemonFetch } from "./daemon-fetch";
 
 interface PingResult {
   id: string;
@@ -11,11 +12,10 @@ interface PingResult {
 async function pingModel(base: string, modelId: string): Promise<PingResult> {
   const start = Date.now();
   try {
-    const res = await fetch(`${base}/v1/chat/completions`, {
+    const res = await daemonFetch(`${base}/v1/chat/completions`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        authorization: "Bearer bansos",
         // probe the model itself: daemon skips failover for this request
         "x-bansos-no-failover": "1",
       },
@@ -63,13 +63,18 @@ export async function runPing(argv: string[]): Promise<number> {
   // fetch available models from daemon
   let models: Array<{ id: string }> = [];
   try {
-    const res = await fetch(`${base}/v1/models`, { signal: AbortSignal.timeout(2000) });
+    const res = await daemonFetch(`${base}/v1/models`, { signal: AbortSignal.timeout(2000) });
+    if (res.status === 401) {
+      console.error(`bansos ping: the daemon rejected the API key (${KEY_REJECTED_HINT})`);
+      return 1;
+    }
     if (res.ok) {
       const data = (await res.json()) as { data?: Array<{ id: string }> };
       models = data.data ?? [];
     }
-  } catch {
-    console.error(`bansos: daemon not reachable at ${base} (run "bansos start" first)`);
+  } catch (err) {
+    if (err instanceof ClientKeyError) console.error(`bansos ping: ${err.message}`);
+    else console.error(`bansos: daemon not reachable at ${base} (run "bansos start" first)`);
     return 1;
   }
 

@@ -45,6 +45,7 @@ test("llm7 chat request is forwarded through the configured relay", async () => 
     port: 0,
     log,
     startedAt: Date.now(),
+    apiKey: null,
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const baseUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`;

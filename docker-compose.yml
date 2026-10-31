@@ -5,10 +5,14 @@ services:
     container_name: bansos
     restart: unless-stopped
     ports:
+      # use "127.0.0.1:17070:17070" to keep it reachable from this machine only
       - "17070:17070"
+    environment:
+      # every request must send this key; compose refuses to start without it
+      BANSOS_API_KEY: ${BANSOS_API_KEY:?set BANSOS_API_KEY (e.g. openssl rand -base64 32)}
     volumes:
-      # persist state.json, relay-state.json, logs across restarts
-      - bansos-data:/root/.bansos
+      # persist state.json, relay-state.json, logs across restarts (the image runs as `node`)
+      - bansos-data:/home/node/.bansos
     # override port/bind here if needed; bind must stay 0.0.0.0 inside the container
     # command: ["node", "dist/cli/index.js", "daemon", "--bind", "0.0.0.0", "--port", "17070"]
 

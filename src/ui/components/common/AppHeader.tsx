@@ -1,5 +1,6 @@
-import { Cpu, Wrench, Shield, MessageSquare, Activity, ScrollText, Settings } from "lucide-preact";
+import { Cpu, Wrench, Shield, MessageSquare, Activity, ScrollText, Settings, LogOut } from "lucide-preact";
 import type { DaemonStatus } from "../../types";
+import { logout } from "../../services/api";
 
 export type NavTab = "models" | "agent" | "relay" | "playground" | "activity" | "logs" | "settings";
 
@@ -10,6 +11,7 @@ interface AppHeaderProps {
   loadingStatus: boolean;
   daemonAddress: string;
   isConnected: boolean;
+  onSignedOut: () => void;
 }
 
 export function AppHeader({
@@ -19,7 +21,16 @@ export function AppHeader({
   loadingStatus,
   daemonAddress,
   isConnected,
+  onSignedOut,
 }: AppHeaderProps) {
+  async function handleSignOut() {
+    try {
+      await logout();
+    } finally {
+      onSignedOut();
+    }
+  }
+
   let statusColor = "bg-[#71717a]";
   let statusPingColor = "bg-[#71717a]";
   let statusTextColor = "text-[#a1a1aa]";
@@ -78,6 +89,17 @@ export function AppHeader({
                 </span>
               </span>
             </div>
+            {status?.auth?.required && (
+              <button
+                type="button"
+                onClick={handleSignOut}
+                title="Sign out"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-[#1a1a20] border border-[#282832] text-xs text-[#a1a1aa] hover:text-white hover:bg-[#202028] shadow-xs transition cursor-pointer"
+              >
+                <LogOut className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden sm:inline">Sign out</span>
+              </button>
+            )}
           </div>
         </div>
 

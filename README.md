@@ -4,7 +4,7 @@
 
 # bansos-router
 
-Free, keyless coding models for every coding harness, through one local daemon. Works without accounts or API keys.
+Free, keyless coding models for every coding harness, through one local daemon. Works without accounts or upstream API keys.
 
 </div>
 
@@ -30,6 +30,8 @@ Start the daemon and point your coding harness at it:
 bansos start --bg       # detached daemon on 127.0.0.1:17070
 bansos setup opencode   # configure any supported harness
 ```
+
+The daemon requires an API key on every request. It creates one in `~/.bansos/api-key` on first start, and `bansos setup` writes it into the harness config for you. `bansos key` prints it, for example to paste into the dashboard's sign-in screen. See [API key (authentication)](#api-key-authentication).
 
 For **[pi](https://github.com/earendil-works/pi)**, install the companion extension ([`extensions/pi`](extensions/pi/README.md)):
 
@@ -60,9 +62,55 @@ The daemon then starts whenever you log in, through the system's own service man
 
 These hold in every mode (not just strict):
 
+- **API key required**: every request needs the router key, on loopback too (see below). Brute force is capped per client IP, and the key is never forwarded upstream, logged, or returned by any route.
 - **CORS only for loopback origins**: a page served from a non-loopback origin gets no CORS headers, so it can neither read nor write the daemon.
 - **Host header validated**: loopback clients must present a loopback (or own-interface) Host header; anything else gets 403. This blocks DNS rebinding where a hostile page resolves to `127.0.0.1`.
 - **Relay probe & mutation are SSRF-guarded**: probes may only target the active/saved relay or a public `https://` host; literal loopback, private, and link-local IPs (e.g. `169.254.x` metadata) are rejected unless explicitly saved. Relay URLs must be `http(s)://` without credentials.
+
+## API key (authentication)
+
+bansos needs no upstream keys, but the daemon itself requires its own API key, so that nothing else on your machine or network can use it. This holds whether it listens on `127.0.0.1` or on a public address.
+
+**Where the key comes from**, first match wins:
+
+1. `BANSOS_API_KEY` in the daemon's environment. It must be 16 to 512 characters from `A-Z a-z 0-9 . _ ~ + / = -` (for example `openssl rand -base64 32`). A set but invalid value, including an empty one, stops the daemon from starting.
+2. The file `~/.bansos/api-key` (or `$BANSOS_DIR/api-key`), mode 0600. On Windows the file inherits your user profile's permissions.
+3. Neither exists: the daemon (or `bansos key`, or `bansos setup`) generates `bansos-<43 random characters>` and saves it to that file.
+
+A key file with invalid content also stops the daemon; fix or delete the file, or run `bansos key --rotate`. When `BANSOS_API_KEY` is set, the daemon does not write the file. The daemon started by `bansos autostart on` does not inherit `BANSOS_API_KEY` from your shell and always uses the key file; `bansos autostart on` warns when the two differ.
+
+`bansos setup` writes the key into each harness config. It creates a new config file with mode 0600; a file that already exists keeps its permissions.
+
+**Sending the key.** Any one of these is accepted:
+
+- `Authorization: Bearer <key>` (what OpenAI SDKs send)
+- `x-api-key: <key>` (what Anthropic SDKs send)
+- the dashboard's session cookie
+
+```bash
+curl -H "Authorization: Bearer $(bansos key)" http://127.0.0.1:17070/v1/models
+```
+
+Without a key, or with a wrong one, every route answers `401` (`{"error":{"type":"authentication_error","code":"invalid_api_key",...}}`, Anthropic's error shape on `/v1/messages`). Only `GET /healthz` (which returns just `{"status":"ok"}`), the dashboard's static files, and the sign-in/sign-out routes are open. A client IP that tries 20 different wrong keys within 10 minutes gets `429` with `Retry-After` until the window passes, even with the right key. Repeating the same stale key does not add up, so an old harness config cannot lock you out. The bansos CLI and the pi extension send the key on their own, from `BANSOS_API_KEY` or the key file.
+
+**`bansos key`** prints the key on stdout and its source on stderr, so `export BANSOS_API_KEY=$(bansos key)` works. `--json` prints `{"key","source","file"}`. `bansos key --rotate` writes a new key to the file. After a rotation, restart the daemon (`bansos stop; bansos start --bg`, or Settings > Restart in the dashboard) and re-run `bansos setup <harness>` for each configured harness; `bansos doctor` lists the stale ones. `--rotate` refuses while `BANSOS_API_KEY` is set; change the variable instead.
+
+**Dashboard.** When the daemon's key check answers `401` (an upstream refusing a model does not count), the dashboard shows a sign-in screen; paste the output of `bansos key`. The daemon then sets an HttpOnly, `SameSite=Strict` session cookie, valid for 7 days. The cookie holds a signed token, not the key. The header's Sign out button revokes it. Rotating the key signs every browser out, and sign-outs are forgotten when the daemon process restarts (the token itself still expires). The Agent Setup preview shows `<BANSOS_API_KEY>` in place of the key; Apply writes the real one.
+
+**Turning auth off.** `BANSOS_AUTH=off` disables the key check, but only on a loopback bind; with any other bind the daemon refuses to start, and the dashboard refuses to save a non-loopback bind. The daemon logs a warning on every start, and harness configs written from the dashboard get the placeholder `bansos`. Any `BANSOS_AUTH` value other than `on` or `off` stops the daemon.
+
+**Behind a reverse proxy.** Set `BANSOS_TRUST_PROXY=1` when a proxy on the same host forwards to bansos. The daemon then takes the client IP for the wrong-key limit and the rate limiter from the right-most `X-Forwarded-For` entry. Without it, every client shares the proxy's IP, so one attacker guessing keys would get everyone blocked. The setting only applies to connections from loopback.
+
+### Public deployment
+
+- The daemon speaks plain HTTP, so on a LAN or public address **the key travels in cleartext**. Terminate TLS in front of it (Caddy, nginx, a cloud load balancer) or reach it through an SSH tunnel: `ssh -L 17070:127.0.0.1:17070 you@server`.
+- A reverse proxy should forward to `http://127.0.0.1:17070` and leave the `Host` header as the upstream address (nginx's default), because the DNS-rebinding guard refuses other hosts from a loopback peer. Clients send the key as usual.
+- The dashboard's POSTs, sign-in included, are refused through such a proxy (the cross-site guard sees a foreign origin). Open the dashboard through an SSH tunnel instead.
+- With Docker, publish `127.0.0.1:17070:17070` instead of `17070:17070` when only this machine should reach it.
+
+### Upgrading from a version without the API key
+
+Harness configs written by older versions carry the placeholder key `bansos`, which the daemon now rejects with `401`. After upgrading, re-run `bansos setup <harness>` for each harness you use; `bansos doctor` lists the ones whose key does not match. Goose reads the key from the environment, so export `BANSOS_API_KEY` where goose runs (`export BANSOS_API_KEY=$(bansos key)`, or `$env:BANSOS_API_KEY = (bansos key)` in PowerShell). Scripts that call the daemon need the header too, and `/healthz` now returns only `{"status":"ok"}` (model count and relay moved behind the key, in `/bansos/status`).
 
 ## Docker
 
@@ -70,20 +118,23 @@ Run the daemon in a container instead of installing globally:
 
 ```bash
 docker build -t bansos-router .
-docker run -d --name bansos -p 17070:17070 -v bansos-data:/home/node/.bansos bansos-router
+export BANSOS_API_KEY="$(openssl rand -base64 32)"   # keep it: clients send this key
+docker run -d --name bansos -p 17070:17070 -e BANSOS_API_KEY -v bansos-data:/home/node/.bansos bansos-router
 ```
 
-The container runs as the non-root `node` user (uid 1000); state lives in `/home/node/.bansos` inside the container, which is what the volume above mounts.
+The container runs as the non-root `node` user (uid 1000); state lives in `/home/node/.bansos` inside the container, which is what the volume above mounts. Without `-e BANSOS_API_KEY` the daemon generates a key into the volume; read it with `docker exec bansos node dist/cli/index.js key`.
 
-Or with compose:
+Or with compose, which refuses to start until `BANSOS_API_KEY` is set (in the shell or in a `.env` file next to `docker-compose.yml`):
 
 ```bash
+export BANSOS_API_KEY="$(openssl rand -base64 32)"
 docker compose up -d
 ```
 
 - Image is a multi-stage build on node:22-alpine (~58 MB compressed), CLI + daemon + Web UI included, zero runtime dependencies.
 - The container runs the daemon in the foreground (Docker owns the lifecycle) bound to `0.0.0.0`, with tini for correct signal forwarding and a healthcheck on `/healthz`.
-- State persists across restarts in the `bansos-data` volume; point your harnesses at `http://127.0.0.1:17070` as usual.
+- State persists across restarts in the `bansos-data` volume; point your harnesses at `http://127.0.0.1:17070` as usual. Run `bansos setup` on the host with the same `BANSOS_API_KEY` exported, so the harness configs carry the container's key.
+- The healthcheck uses `/healthz`, which needs no key.
 - `docker compose logs -f` replaces `bansos logs` inside the container.
 
 ## CLI reference
@@ -101,7 +152,8 @@ docker compose up -d
 | `bansos setup <harness...> [--model <id> \| --models <id,...> --upstream <id,...>] [--dry-run] [--undo]` | Write, update, or undo harness configs |
 | `bansos relay <on\|off\|status\|url\|use\|list\|remove>` | Manage relay egress |
 | `bansos autostart <on\|off\|status> [--json]` | Start the daemon when you log in (systemd / launchd / Startup folder) |
-| `bansos doctor` | Diagnose daemon reachability and harness config validity |
+| `bansos key [--rotate] [--json]` | Print the daemon's API key (creating it if none exists); `--rotate` writes a new one |
+| `bansos doctor` | Diagnose daemon reachability, the API key, and harness config validity (including stale keys) |
 | `bansos --version` | Print version |
 | `bansos <command> --help` / `bansos help <command>` | Per-command usage, defaults, exit codes, examples |
 | `bansosd` | Alias for the daemon (e.g. `bansosd --bg`) |

@@ -330,8 +330,9 @@ export function removeKeys(obj: Record<string, unknown>, keys: string[]): void {
   }
 }
 
-export function writeConfig(p: string, content: string): void {
+// mode only applies when the file is created; an existing file keeps its permissions
+export function writeConfig(p: string, content: string, mode?: number): void {
   const full = expandHome(p);
   fs.mkdirSync(path.dirname(full), { recursive: true });
-  fs.writeFileSync(full, content);
+  fs.writeFileSync(full, content, mode === undefined ? undefined : { mode });
 }

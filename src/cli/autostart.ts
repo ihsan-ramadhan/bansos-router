@@ -2,7 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
-import { runningDaemonUrl } from "../daemon/state";
+import { readStoredApiKey } from "../daemon/auth";
+import { API_KEY_FILE, runningDaemonUrl } from "../daemon/state";
 
 export type AutostartManager = "systemd" | "launchd" | "startup-folder";
 
@@ -207,6 +208,23 @@ export function disableAutostart(env: AutostartEnv = defaultAutostartEnv()): Aut
   return autostartStatus(env);
 }
 
+// the login-time daemon only gets PATH, so a key exported in this shell never reaches it;
+// no warning when the exported key is the file key (export BANSOS_API_KEY=$(bansos key))
+export function autostartKeyWarning(env: NodeJS.ProcessEnv = process.env, file = API_KEY_FILE): string | null {
+  if (env.BANSOS_API_KEY === undefined) return null;
+  let stored: string | null = null;
+  try {
+    stored = readStoredApiKey(file);
+  } catch {
+    // a corrupt key file is reported by the daemon itself
+  }
+  if (stored !== null && env.BANSOS_API_KEY.trim() === stored) return null;
+  return [
+    `warning: BANSOS_API_KEY is set in this shell, but the daemon started at login does not see it and uses the key in ${file} instead.`,
+    `  harness configs written with BANSOS_API_KEY will get 401 from that daemon; unset BANSOS_API_KEY and run "bansos setup <harness>" again so they use the file key.`,
+  ].join("\n");
+}
+
 function printStatus(s: AutostartStatus): void {
   if (!s.supported) {
     console.log(`autostart: unsupported (${s.reason})`);
@@ -230,6 +248,8 @@ export async function runAutostart(argv: string[], json = false): Promise<number
     if (cmd === "on") {
       const running = (await runningDaemonUrl()) !== null;
       const s = enableAutostart(!running);
+      const keyWarning = autostartKeyWarning();
+      if (keyWarning) console.error(keyWarning);
       if (json) {
         console.log(JSON.stringify(s, null, 2));
         return 0;

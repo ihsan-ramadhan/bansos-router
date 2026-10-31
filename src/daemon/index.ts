@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import stream from "node:stream";
-import { spawn, spawnSync } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import {
   loadConfig,
   loadConfigWarnings,
@@ -15,12 +15,13 @@ import {
   LOG_FILE,
   type BansosConfig,
 } from "./state";
-import { createLogger, type Logger } from "../logger";
+import { createLogger, registerLogSecret, type Logger } from "../logger";
+import { resolveDaemonAuth, type DaemonAuth } from "./auth";
 import { assertBindAllowed } from "../security/policy";
 import { buildUpstreams, SEEDED_MODELS } from "../upstreams";
 import { VERSION } from "../update";
 import { RuntimeCatalog } from "./catalog";
-import { RateLimiter } from "./rate-limit";
+import { RateLimiter, parseRateLimit } from "./rate-limit";
 import { ActivityStore } from "./activity";
 import { createServer } from "./server";
 
@@ -100,6 +101,12 @@ Options:
   --unsafe-allow-non-loopback
               override strict-mode loopback protection (unsafe)
   -h, --help  show this help
+
+Environment:
+  BANSOS_API_KEY      API key clients must send (default: ~/.bansos/api-key, generated on first start; print it with "bansos key")
+  BANSOS_AUTH=off     disable API key auth (refused unless the bind address is loopback)
+  BANSOS_TRUST_PROXY=1
+              behind a same-host reverse proxy: take the client IP from the last X-Forwarded-For entry
 `);
       process.exit(0);
     }
@@ -129,6 +136,7 @@ function startServer(
   activity: ActivityStore,
   flags: DaemonFlags,
   restart: () => void,
+  auth: DaemonAuth,
 ): Promise<Running> {
   const upstreams = buildUpstreams(config.localUpstreams);
   const catalog = new RuntimeCatalog(upstreams, log, config.security);
@@ -138,7 +146,7 @@ function startServer(
 
   const startedAt = Date.now();
   const rateLimiter = new RateLimiter({
-    limit: Number(process.env.BANSOS_RATE_LIMIT) || 300,
+    limit: parseRateLimit(process.env.BANSOS_RATE_LIMIT),
     windowMs: 60_000,
   });
 
@@ -150,14 +158,23 @@ function startServer(
     startedAt,
     security: config.security,
     activity,
-    admin: { requestedPort, bind, refreshIntervalMs: config.refreshIntervalMs, flags, restart },
+    apiKey: auth.mode === "key" ? auth.key : null,
+    trustProxy: process.env.BANSOS_TRUST_PROXY === "1",
+    admin: {
+      requestedPort,
+      bind,
+      refreshIntervalMs: config.refreshIntervalMs,
+      flags,
+      restart,
+      authEnabled: auth.mode === "key",
+    },
   });
 
   return new Promise((resolve, reject) => {
     server.once("error", (err: NodeJS.ErrnoException) => {
       if (err.code === "EADDRINUSE" && port < MAX_PORT) {
         log.warn(`port ${port} busy - trying ${port + 1}`);
-        resolve(startServer(port + 1, requestedPort, bind, config, log, activity, flags, restart));
+        resolve(startServer(port + 1, requestedPort, bind, config, log, activity, flags, restart, auth));
         return;
       }
       reject(err);
@@ -212,6 +229,17 @@ async function main(argv: string[]): Promise<void> {
   const out = createTeeStream(process.stdout, fileRef);
   const log = createLogger({ prefix: "bansosd", out });
 
+  // fail closed: an invalid key or BANSOS_AUTH=off on a public bind never starts a server
+  let auth: DaemonAuth;
+  try {
+    auth = resolveDaemonAuth(bind);
+  } catch (err) {
+    log.error(String((err as Error)?.message ?? err));
+    process.exitCode = 1;
+    return;
+  }
+  logAuth(log, auth);
+
   try {
     assertBindAllowed(bind, config.security, args.unsafeAllowNonLoopback);
   } catch (err) {
@@ -251,19 +279,20 @@ async function main(argv: string[]): Promise<void> {
     bind: args.bind !== undefined,
     unsafeAllowNonLoopback: args.unsafeAllowNonLoopback,
   };
-  let current: (Running & { config: BansosConfig }) | null = null;
+  let current: (Running & { config: BansosConfig; auth: DaemonAuth }) | null = null;
   let restarting = false;
 
-  const boot = async (cfg: BansosConfig): Promise<void> => {
+  // re-resolved per boot so `bansos key --rotate` + restart picks up the new key
+  const boot = async (cfg: BansosConfig, knownAuth?: DaemonAuth): Promise<void> => {
     const wantPort = args.port ?? cfg.port ?? DEFAULT_PORT;
     const wantBind = args.bind ?? cfg.bind;
+    const bootAuth = knownAuth ?? resolveDaemonAuth(wantBind);
+    if (!knownAuth) logAuth(log, bootAuth);
     assertBindAllowed(wantBind, cfg.security, args.unsafeAllowNonLoopback);
-    const running = await startServer(wantPort, wantPort, wantBind, cfg, log, activity, flags, () => void restart());
-    current = { ...running, config: cfg };
+    const running = await startServer(wantPort, wantPort, wantBind, cfg, log, activity, flags, () => void restart(), bootAuth);
+    current = { ...running, config: cfg, auth: bootAuth };
     const actualPort = running.port;
     log.info(`bansosd listening on http://${wantBind}:${actualPort}`);
-    // auto-start local opencode service if installed so Zen session integration is immediate
-    ensureOpenCodeService(log);
 
     // publish the bound port before the first refresh; the --bg parent polls state.json for only 5s
     writeJsonAtomic(STATE_FILE, {
@@ -278,9 +307,13 @@ async function main(argv: string[]): Promise<void> {
       out.write(
         `\n● bansosd online (port ${actualPort})\n` +
         `  ├── Web UI   : http://${wantBind}:${actualPort}\n` +
-        `  └── API Base : http://${wantBind}:${actualPort}/v1\n\n`
+        `  ├── API Base : http://${wantBind}:${actualPort}/v1\n` +
+        `  └── Auth     : ${bootAuth.mode === "key" ? "API key required (bansos key)" : "OFF (BANSOS_AUTH=off, loopback only)"}\n\n`
       );
     }
+
+    // auto-start local opencode service if installed so Zen session integration is immediate; not awaited
+    void ensureOpenCodeService(log).catch(() => {});
 
     // not awaited: a restart counts as done once the server listens, so the next one is not dropped
     void running.catalog.refresh().then(() => {
@@ -312,7 +345,7 @@ async function main(argv: string[]): Promise<void> {
     } catch (err) {
       log.error(`restart failed: ${String((err as Error)?.message ?? err)}; starting again with the previous settings`);
       try {
-        await boot(previous.config);
+        await boot(previous.config, previous.auth);
       } catch (fallbackErr) {
         log.error(`could not start again: ${String((fallbackErr as Error)?.message ?? fallbackErr)}`);
         process.exit(1);
@@ -323,10 +356,11 @@ async function main(argv: string[]): Promise<void> {
   };
 
   for (const warning of loadConfigWarnings()) log.warn(warning);
-  await boot(config);
+  await boot(config, auth);
 
   const shutdown = () => {
     log.info("shutting down");
+    activity.flushToDiskSync();
     if (!current) process.exit(0);
     current.server.close(() => process.exit(0));
   };
@@ -334,19 +368,38 @@ async function main(argv: string[]): Promise<void> {
   process.on("SIGTERM", shutdown);
 }
 
+// names the source and file, never the key itself
+function logAuth(log: Logger, auth: DaemonAuth): void {
+  if (auth.mode === "off") {
+    log.warn("API key auth is OFF (BANSOS_AUTH=off): any local process can use this daemon without a key");
+    return;
+  }
+  registerLogSecret(auth.key);
+  if (auth.source === "generated") log.info(`generated a new API key in ${auth.file}; print it with "bansos key"`);
+  else if (auth.source === "env") log.info("API key from BANSOS_API_KEY");
+  else log.info(`API key from ${auth.file}`);
+}
+
 export async function runDaemon(argv: string[]): Promise<void> {
   await main(argv);
 }
 
-export function ensureOpenCodeService(log?: Logger): void {
-  let opencodePath = "";
+// async lookup so the first requests after listen are not stuck behind `where`/`which`
+function whichOpenCode(): Promise<string> {
   const whichCmd = process.platform === "win32" ? "where" : "which";
-  try {
-    const check = spawnSync(whichCmd, ["opencode"], { encoding: "utf-8", timeout: 1000 });
-    if (check.status === 0 && check.stdout.trim()) {
-      opencodePath = check.stdout.trim().split(/\r?\n/)[0]?.trim() ?? "";
+  return new Promise((resolve) => {
+    try {
+      execFile(whichCmd, ["opencode"], { encoding: "utf-8", timeout: 1000, windowsHide: true }, (err, stdout) => {
+        resolve(!err && stdout.trim() ? (stdout.trim().split(/\r?\n/)[0]?.trim() ?? "") : "");
+      });
+    } catch {
+      resolve("");
     }
-  } catch {}
+  });
+}
+
+export async function ensureOpenCodeService(log?: Logger): Promise<void> {
+  const opencodePath = await whichOpenCode();
 
   if (!opencodePath) return;
 

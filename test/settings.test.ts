@@ -50,6 +50,7 @@ async function startDaemon(config: unknown, opts: { bind?: string; restart?: boo
     port: opts.port ?? 17070,
     log,
     startedAt: Date.now(),
+    apiKey: null,
     security,
     admin: {
       requestedPort: opts.requestedPort,

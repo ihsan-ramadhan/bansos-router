@@ -16,6 +16,8 @@ export const STATE_FILE = path.join(BANSOS_DIR, "state.json");
 export const RELAY_STATE_FILE = path.join(BANSOS_DIR, "relay-state.json");
 export const LOG_DIR = path.join(BANSOS_DIR, "logs");
 export const LOG_FILE = path.join(LOG_DIR, "bansosd.log");
+// own 0600 file so the key never flows through config.json reads, merges or the settings UI
+export const API_KEY_FILE = path.join(BANSOS_DIR, "api-key");
 
 export interface BansosConfig {
   port: number;
@@ -102,6 +104,45 @@ export function writeJsonAtomic(file: string, data: unknown): void {
   const tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
   fs.renameSync(tmp, file);
+}
+
+let tmpSeq = 0;
+
+// async atomic text write; each call gets its own temp name so overlapping writes never share one
+// shouldCommit lets a caller drop a write that went stale while it was in flight
+export async function writeTextAtomicAsync(
+  file: string,
+  text: string,
+  shouldCommit: () => boolean = () => true,
+): Promise<void> {
+  await fs.promises.mkdir(BANSOS_DIR, { recursive: true });
+  const tmp = `${file}.${process.pid}.${++tmpSeq}.tmp`;
+  try {
+    await fs.promises.writeFile(tmp, text, { mode: 0o600 });
+    if (!shouldCommit()) {
+      await fs.promises.rm(tmp, { force: true });
+      return;
+    }
+    await fs.promises.rename(tmp, file);
+  } catch (err) {
+    await fs.promises.rm(tmp, { force: true }).catch(() => {});
+    throw err;
+  }
+}
+
+// sync twin for the shutdown flush
+export function writeTextAtomicSync(file: string, text: string): void {
+  ensureBansosDir();
+  const tmp = `${file}.${process.pid}.${++tmpSeq}.tmp`;
+  try {
+    fs.writeFileSync(tmp, text, { mode: 0o600 });
+    fs.renameSync(tmp, file);
+  } catch (err) {
+    try {
+      fs.rmSync(tmp, { force: true });
+    } catch {}
+    throw err;
+  }
 }
 
 export function readJson<T>(file: string): T | null {

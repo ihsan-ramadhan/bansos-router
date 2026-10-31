@@ -13,8 +13,9 @@ local endpoint speaking the three major wire protocols**, and ships a
 one-command setup for every major agent harness (pi, Claude Code, Aider,
 OpenCode, Codex, Hermes, OpenClaw, Goose, Antigravity, JCode, ...).
 
-Core promise: **no accounts, no API keys, no cost: one local port, every
-harness.**
+Core promise: **no accounts, no upstream API keys, no cost: one local port,
+every harness.** The only key is bansos's own router key (§3.1), which
+`bansos setup` writes into each harness for you.
 
 ```
 ┌─────────────────────────────── agent harnesses ───────────────────────────────┐
@@ -95,12 +96,13 @@ The core server, run via `bansos start` (foreground or `--bg`) or the
 | Concern | Design |
 |---|---|
 | HTTP server | Node `http`, bound to `127.0.0.1`, port `17070`, auto-bump to next free port up to `17090` (proven pattern from pi-bansos); port/bind configurable via `~/.bansos/config.json` |
-| Inbound routes | Inference: `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1/responses`, `GET /v1/models`. Control (Web UI + CLI): `GET /healthz`, `GET /bansos/status`, `POST /bansos/refresh`, `GET /bansos/adapters[/render]`, `GET/POST /bansos/relay`, `POST /bansos/relay/probe`, `GET /bansos/usage`, `GET /bansos/events` |
+| Inbound routes | Inference: `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1/responses`, `GET /v1/models`. Control (Web UI + CLI): `GET /healthz`, `GET /bansos/status`, `POST /bansos/refresh`, `GET /bansos/adapters[/render]`, `GET/POST /bansos/relay`, `POST /bansos/relay/probe`, `GET /bansos/usage`, `GET /bansos/events`. Dashboard session: `POST /bansos/login`, `POST /bansos/logout` |
+| Authentication | Every route needs the router's API key (`src/daemon/auth.ts`), sent as `Authorization: Bearer <key>` or `x-api-key: <key>`, or a dashboard session cookie from `/bansos/login`. Open without a key: CORS preflight, `GET /healthz` (body `{"status":"ok"}` only), the static UI files, and login/logout. Key source: `BANSOS_API_KEY` > `~/.bansos/api-key` > generated on first start. `BANSOS_AUTH=off` turns auth off on a loopback bind only. Wrong keys are counted per client IP (20 distinct wrong keys in 10 minutes -> 429). Credential headers are stripped before a request goes upstream |
 | Admin routes | `GET/POST /bansos/config`, `POST /bansos/restart`, `GET /bansos/logs`, `GET /bansos/doctor`, `POST /bansos/adapters/apply`, `GET/POST /bansos/autostart` (`src/daemon/admin.ts`): answered only for loopback peers, and POSTs need a loopback Origin or none |
 | Catalog | Runtime catalog = static registry ∪ dynamic snapshots (Kilo, LLM7, OVH, and Zen via models.dev; local gateways join in M5), filtered by liveness; served by `/v1/models` (strict mode leaves out upstreams outside the allowlist); **never forwarded upstream** (prevents paid-model leakage, see §6) |
 | Health checker | At startup: fetch each upstream catalog, mark models alive/dead. Periodic refresh (configurable, e.g. every 30 min) + manual refresh via CLI |
 | Protocol translation | Inbound wire -> internal normalized turn -> upstream Chat Completions. See `docs/protocols.md` |
-| Rate limiter | Local per-IP limit (protects against accidental LAN exposure; upstreams have their own limits) |
+| Rate limiter | Local per-IP limit; dashboard polling reads and UI assets are exempt (protects against accidental LAN exposure; upstreams have their own limits) |
 | Relay egress | When enabled, upstream calls go through a user-owned relay via `x-relay-target` / `x-relay-path` headers (proven pattern). See `docs/upstreams.md` §7 |
 | Request logging | Text or JSON lines (`BANSOS_LOG=json`) to stdout and always to `~/.bansos/logs/bansosd.log`, rotated past 5 MB; secrets and raw upstream errors are kept out in strict mode |
 
@@ -122,10 +124,14 @@ The core server, run via `bansos start` (foreground or `--bg`) or the
 | `bansos logs [--activity]` | Tail the daemon log, or the request feed |
 | `bansos usage [--json]` | Request and token totals over the last 60 days |
 | `bansos autostart on/off/status` | Start the daemon at login via a systemd user service, a LaunchAgent, or the Windows Startup folder |
+| `bansos key [--rotate] [--json]` | Print the router API key (stdout only, so `$(bansos key)` works), creating it if none exists; `--rotate` writes a new one |
 | `bansosd` | Alias bin for the daemon (same entry file as `bansos`) |
 
 The CLI **does not require the daemon to be running** for setup/doctor
 operations: it writes configs that point at `http://127.0.0.1:17070/v1`.
+Every CLI call to the daemon sends `Authorization: Bearer <key>`, with the key
+read from `BANSOS_API_KEY` or `~/.bansos/api-key` (clients never generate
+one). `bansos setup` writes the same key into each harness config.
 
 ### 3.3 Harness adapters
 
@@ -177,16 +183,24 @@ never wipe it):
 ├── relay-state.json   # saved relays + active relay + enabled flag
 ├── pi-models.json     # last catalog the pi extension saw (offline fallback)
 ├── update-check.json  # npm version check cache (24 h)
+├── api-key            # the router API key (mode 0600), unless BANSOS_API_KEY is set
 └── logs/              # daemon log (bansosd.log, rotated)
 ```
 
-State files are plain JSON, never secret-bearing (keyless design).
+State files are plain JSON. The one secret is `api-key`: the key the daemon
+requires from its clients, never an upstream credential. It is kept out of
+`config.json` so that no config route or dashboard form can read it. The file
+is created exclusively with mode 0600 (on Windows it inherits the user
+profile's ACL instead) and rotated with a temp file + rename. When
+`BANSOS_API_KEY` is set the daemon uses it and does not write the file.
 
 ## 6. Security model
 
 | Threat | Mitigation |
 |---|---|
-| Remote abuse | Bind `127.0.0.1` by default; loopback-only opt-in |
+| Remote abuse | Bind `127.0.0.1` by default; every request needs the router API key, also on loopback; `BANSOS_AUTH=off` is refused on a non-loopback bind |
+| Brute force on the key | Per client IP, 20 distinct wrong keys within 10 minutes block that IP with 429 + `Retry-After`, before credentials are checked; repeats of one stale key do not count twice. `BANSOS_TRUST_PROXY=1` takes the client IP from `X-Forwarded-For` when the peer is a loopback proxy |
+| Dashboard session theft / CSRF | Login sets an HttpOnly, `SameSite=Strict` cookie holding an HMAC token derived from the key (never the key itself), accepted only on same-origin requests; logout revokes it, rotating the key invalidates all of them |
 | Browser drive-by abuse | CORS headers are emitted **only for loopback origins**: hostile websites can neither read nor write the daemon |
 | DNS rebinding | Host header validation: loopback clients must present a loopback (or own-interface) Host; other Hosts get 403 |
 | Paid-model leakage | `/v1/models` serves **only the curated alive catalog**, never the upstream catalog (OpenCode Zen returns ~60 models incl. paid) |
@@ -196,9 +210,9 @@ State files are plain JSON, never secret-bearing (keyless design).
 | Relay state tampering | Relay URLs are validated on write (`http(s)`, no credentials, bounded length, unknown fields dropped) |
 | Settings tampering | Admin routes answer loopback peers only; POSTs from a non-loopback Origin are refused |
 | Pasted secrets leaving the machine | Strict mode (`security.mode: "strict"`): only allowlisted upstreams, no relay, no cross-provider failover, and DLP redacts (or blocks, `dlp: "block"`) API keys, tokens and private keys before a request leaves |
-| Secret handling | No keys stored |
+| Secret handling | No upstream keys stored. The router key lives in `~/.bansos/api-key` (0600) or `BANSOS_API_KEY`; it is compared in constant time, redacted from every log line, never returned by any route (the dashboard preview shows `<BANSOS_API_KEY>`), and stripped from the request (`authorization`, `x-api-key`, `proxy-authorization`, `cookie`, `x-goog-api-key`) before it goes upstream. Only `bansos key` prints it |
 | Local abuse | Per-IP rate limit on the daemon itself |
-| Local socket | No TLS needed (loopback); upstream calls are HTTPS |
+| Local socket / TLS | The daemon speaks plain HTTP. On loopback that is fine; on a LAN or public bind the key travels in cleartext, so put a TLS reverse proxy or an SSH tunnel in front. Upstream calls are HTTPS |
 
 ## 7. Technology decisions (best practice)
 
@@ -290,11 +304,14 @@ bansos-router/
 │   │   ├── relay.ts
 │   │   ├── ping.ts
 │   │   ├── autostart.ts    # start at login (systemd, launchd, Startup folder)
+│   │   ├── key.ts          # bansos key [--rotate]
+│   │   ├── daemon-fetch.ts # fetch to the daemon with the API key
 │   │   └── doctor.ts
 │   ├── daemon/             # bansosd server
 │   │   ├── index.ts        # entry, port bump, lifecycle, in-place restart
 │   │   ├── server.ts       # http server + routing + static UI serving
 │   │   ├── admin.ts        # settings, restart, logs, doctor, setup apply
+│   │   ├── auth.ts         # API key, session cookie, wrong-key limiter
 │   │   ├── activity.ts     # request feed + usage (activity.json)
 │   │   ├── catalog.ts      # model registry + liveness + cooldowns
 │   │   ├── rate-limit.ts

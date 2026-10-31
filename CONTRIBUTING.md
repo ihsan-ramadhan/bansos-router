@@ -74,7 +74,7 @@ test/             node:test suites
 
 ## Architecture in one minute
 
-- The **daemon** (`src/daemon`) is a long running HTTP server bound to `127.0.0.1:17070` (auto bumps to `17090` if busy). It exposes `/v1/chat/completions`, `/v1/messages`, `/v1/responses`, `/v1/models`, the `/healthz` and `/bansos/*` control routes, and the Web UI dashboard on `/` (full list in `docs/protocols.md` §1).
+- The **daemon** (`src/daemon`) is a long running HTTP server bound to `127.0.0.1:17070` (auto bumps to `17090` if busy). It exposes `/v1/chat/completions`, `/v1/messages`, `/v1/responses`, `/v1/models`, the `/healthz` and `/bansos/*` control routes, and the Web UI dashboard on `/` (full list in `docs/protocols.md` §1). Every route except `/healthz`, the static UI and login/logout requires the router API key (`src/daemon/auth.ts`, `docs/protocols.md` §1.1); tests that build `createServer` pass `apiKey: null` unless they test auth.
 - The **Web UI** (`src/ui`) provides a browser dashboard for exploring models, probing latency, generating and applying harness configs, managing relay egress, testing completions, following activity and logs, and editing settings.
 - Inbound requests are translated to OpenAI Chat Completions (or Responses, for models that only serve it) and forwarded to a keyless upstream (OpenCode Zen, KiloCode, LLM7, or OVHcloud). The upstream reply is translated back to the caller's wire format.
 - The **catalog** (`src/daemon/catalog.ts`) holds the live model registry. `resolve(id)` tolerates bare aliases (e.g. `laguna-xs-2.1:free` resolves to `poolside/laguna-xs-2.1:free`).
@@ -96,10 +96,13 @@ test/             node:test suites
    - `configPaths` (first existing wins, or created)
    - `render(ctx)` returns `ConfigWrite[]` (mode `merge` for JSON, or `overwrite-block` for TOML/YAML with `START_MARKER`/`END_MARKER`)
    - `undoKeys` for JSON merge adapters (exactly the keys bansos added)
+   - `keyEnv` only when the harness reads its key from an environment variable instead of the file (Goose: `BANSOS_API_KEY`)
 3. Append it to the `ADAPTERS` array.
-4. Add a test in `test/setup.test.ts` covering both the all models and `--model` cases.
+4. Add a test in `test/setup.test.ts` covering both the all models and `--model` cases. The `ADAPTERS` loop there also checks that every rendered config contains `ctx.apiKey`.
 
-`ctx` carries `baseUrl`, `defaultModel`, `models` (the live catalog, minus upstreams strict mode blocks), and `specificModel` (true when the user passed `--model`). Adapters that need an explicit model list (`opencode`, `goose`, `openclaw`, `continue`) should register all `ctx.models` unless `ctx.specificModel` is set.
+`ctx` carries `baseUrl`, `defaultModel`, `models` (the live catalog, minus upstreams strict mode blocks), `specificModel` (true when the user passed `--model`), and `apiKey`. Adapters that need an explicit model list (`opencode`, `goose`, `openclaw`, `continue`) should register all `ctx.models` unless `ctx.specificModel` is set.
+
+`ctx.apiKey` is the router key the daemon requires. Write it wherever the harness takes its API key or bearer token, never a hard-coded placeholder. It is the real key for `bansos setup` and the dashboard's Apply, and `<BANSOS_API_KEY>` for `--dry-run`, `--undo` and the dashboard preview. The key is limited to `[A-Za-z0-9._~+/=-]`, so it is safe inside quoted TOML/YAML strings and env lines; quote it in YAML/TOML anyway.
 
 ## Adding an upstream
 

@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  autostartKeyWarning,
   autostartStatus,
   disableAutostart,
   enableAutostart,
@@ -145,6 +146,23 @@ test("windows drops a start --bg script into the Startup folder", () => {
     assert.equal(disableAutostart(f.env).enabled, false);
   } finally {
     f.cleanup();
+  }
+});
+
+test("autostart warns when BANSOS_API_KEY differs from the key file the login daemon will use", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bansos-autostart-key-"));
+  const file = path.join(dir, "api-key");
+  try {
+    assert.equal(autostartKeyWarning({}, file), null);
+    const missing = autostartKeyWarning({ BANSOS_API_KEY: "env-key-0123456789abcdef" }, file);
+    assert.match(missing ?? "", /BANSOS_API_KEY is set/);
+    assert.ok(missing!.includes(file));
+    assert.ok(!missing!.includes("env-key-0123456789abcdef"), "the key itself is never printed");
+    fs.writeFileSync(file, "file-key-0123456789abcdef\n");
+    assert.match(autostartKeyWarning({ BANSOS_API_KEY: "env-key-0123456789abcdef" }, file) ?? "", /bansos setup/);
+    assert.equal(autostartKeyWarning({ BANSOS_API_KEY: " file-key-0123456789abcdef " }, file), null);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 

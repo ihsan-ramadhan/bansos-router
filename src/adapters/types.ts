@@ -6,6 +6,8 @@ export interface SetupContext {
   defaultModel: string;
   models: ModelDef[];
   specificModel?: boolean;
+  // router key written into the harness config (a placeholder in previews and dry runs)
+  apiKey: string;
 }
 
 export interface ConfigWrite {
@@ -35,6 +37,8 @@ export interface HarnessAdapter {
   undo(ctx: SetupContext): string[]; // paths that would be touched
   // for merge-mode writes: dotted keys that --undo removes
   undoKeys?: string[];
+  // harness reads the key from this env var instead of its config file
+  keyEnv?: string;
 }
 
 // standard marker pair used by every adapter

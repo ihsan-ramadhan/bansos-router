@@ -1,6 +1,7 @@
 # bansos-router daemon container
 # build:  docker build -t bansos-router .
-# run:    docker run -d --name bansos -p 17070:17070 -v bansos-data:/root/.bansos bansos-router
+# run:    export BANSOS_API_KEY="$(openssl rand -base64 32)"   # clients send this key
+#         docker run -d --name bansos -p 17070:17070 -e BANSOS_API_KEY -v bansos-data:/home/node/.bansos bansos-router
 
 # stage 1: build the zero-dependency bundle
 FROM node:22-alpine AS build

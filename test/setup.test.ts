@@ -1,11 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { findAdapter } from "../src/adapters";
+import { ADAPTERS, buildSetupContext, findAdapter } from "../src/adapters";
+import { applyAdapter } from "../src/cli/setup";
 import { applyMergeWrite, applyTomlBlockWrite, applyYamlBlockWrite, expandHome, parseJsonc, removeBlock, removeKeys, removeTomlBlock } from "../src/cli/write";
 import { SEEDED_MODELS } from "../src/upstreams";
 import { START_MARKER, END_MARKER } from "../src/adapters/types";
+
+const TEST_KEY = "test-key-0123456789abcdef";
 
 test("expandHome uses os.homedir cross-platform", () => {
   const home = os.homedir();
@@ -78,7 +82,7 @@ test("opencode adapter populates all models by default or single model when spec
 
   // default: all models
   const allWrites = adapter.render({
-    baseUrl: "http://127.0.0.1:17070/v1",
+    baseUrl: "http://127.0.0.1:17070/v1", apiKey: TEST_KEY,
     defaultModel: "mimo-v2.6-flash-free",
     models: SEEDED_MODELS,
     specificModel: false,
@@ -91,7 +95,7 @@ test("opencode adapter populates all models by default or single model when spec
 
   // specific model
   const specificWrites = adapter.render({
-    baseUrl: "http://127.0.0.1:17070/v1",
+    baseUrl: "http://127.0.0.1:17070/v1", apiKey: TEST_KEY,
     defaultModel: "mimo-v2.6-flash-free",
     models: SEEDED_MODELS,
     specificModel: true,
@@ -103,7 +107,7 @@ test("opencode adapter populates all models by default or single model when spec
 test("goose and openclaw adapters populate all models by default or single model when specified", () => {
   const goose = findAdapter("goose")!;
   const gooseAll = goose.render({
-    baseUrl: "http://127.0.0.1:17070/v1",
+    baseUrl: "http://127.0.0.1:17070/v1", apiKey: TEST_KEY,
     defaultModel: "deepseek-v4-flash-free",
     models: SEEDED_MODELS,
     specificModel: false,
@@ -113,7 +117,7 @@ test("goose and openclaw adapters populate all models by default or single model
 
   const openclaw = findAdapter("openclaw")!;
   const openclawAll = openclaw.render({
-    baseUrl: "http://127.0.0.1:17070/v1",
+    baseUrl: "http://127.0.0.1:17070/v1", apiKey: TEST_KEY,
     defaultModel: "deepseek-v4-flash-free",
     models: SEEDED_MODELS,
     specificModel: false,
@@ -130,7 +134,7 @@ test("findAdapter resolves 9router adapter", () => {
   assert.deepEqual(adapter.configPaths, ["~/.9router/db.json", "~/.9router/db/data.sqlite"]);
 
   const writes = adapter.render({
-    baseUrl: "http://127.0.0.1:17070/v1",
+    baseUrl: "http://127.0.0.1:17070/v1", apiKey: TEST_KEY,
     defaultModel: "deepseek-v4-flash-free",
     models: [],
   });
@@ -157,7 +161,7 @@ test("9router merge and undo preserve other providers in db.json", () => {
 
   const adapter = findAdapter("9router")!;
   const writes = adapter.render({
-    baseUrl: "http://127.0.0.1:17070/v1",
+    baseUrl: "http://127.0.0.1:17070/v1", apiKey: TEST_KEY,
     defaultModel: "deepseek-v4-flash-free",
     models: [],
   });
@@ -192,7 +196,7 @@ test("continue adapter populates models array and supports merge", () => {
   });
 
   const writes = adapter.render({
-    baseUrl: "http://127.0.0.1:17070/v1",
+    baseUrl: "http://127.0.0.1:17070/v1", apiKey: TEST_KEY,
     defaultModel: "mimo-v2.6-flash-free",
     models: SEEDED_MODELS,
     specificModel: false,
@@ -214,7 +218,7 @@ test("cline and roo adapters render valid openai-compatible configs and support 
     assert.ok(adapter, `findAdapter("${id}")`);
 
     const writes = adapter.render({
-      baseUrl: "http://127.0.0.1:17070/v1",
+      baseUrl: "http://127.0.0.1:17070/v1", apiKey: TEST_KEY,
       defaultModel: "mimo-v2.6-flash-free",
       models: SEEDED_MODELS,
       specificModel: true,
@@ -226,7 +230,7 @@ test("cline and roo adapters render valid openai-compatible configs and support 
     const parsed = JSON.parse(writes[0]!.content);
     assert.equal(parsed.apiProvider, "openai-compatible");
     assert.equal(parsed.openAiBaseUrl, "http://127.0.0.1:17070/v1");
-    assert.equal(parsed.openAiApiKey, "bansos");
+    assert.equal(parsed.openAiApiKey, TEST_KEY);
     assert.equal(parsed.openAiModelId, "mimo-v2.6-flash-free");
 
     const merged = applyMergeWrite(JSON.stringify({ customSetting: true }), writes[0]!.content);
@@ -259,7 +263,7 @@ test("jcode toml-block patches existing [providers.openai-compatible] without du
 
   const adapter = findAdapter("jcode")!;
   const write = adapter.render({
-    baseUrl: "http://127.0.0.1:17070/v1",
+    baseUrl: "http://127.0.0.1:17070/v1", apiKey: TEST_KEY,
     defaultModel: "mimo-v2.6-flash-free",
     models: SEEDED_MODELS,
     specificModel: true,
@@ -293,7 +297,7 @@ test("jcode toml-block patches existing [providers.openai-compatible] without du
 test("jcode toml-block on fresh file keeps root keys at top and single table", () => {
   const adapter = findAdapter("jcode")!;
   const write = adapter.render({
-    baseUrl: "http://127.0.0.1:17070/v1",
+    baseUrl: "http://127.0.0.1:17070/v1", apiKey: TEST_KEY,
     defaultModel: "mimo-v2.6-flash-free",
     models: SEEDED_MODELS,
     specificModel: true,
@@ -312,14 +316,14 @@ test("claude-code adapter maps smart tiers in auto mode and pinned model in spec
 
   // auto mode, seeded with both reasoning and non-reasoning models
   const autoWrites = adapter.render({
-    baseUrl: "http://127.0.0.1:17070/v1",
+    baseUrl: "http://127.0.0.1:17070/v1", apiKey: TEST_KEY,
     defaultModel: "mimo-v2.6-flash-free",
     models: SEEDED_MODELS,
     specificModel: false,
   });
   const autoParsed = JSON.parse(autoWrites[0]!.content);
   assert.equal(autoParsed.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:17070");
-  assert.equal(autoParsed.env.ANTHROPIC_AUTH_TOKEN, "bansos");
+  assert.equal(autoParsed.env.ANTHROPIC_AUTH_TOKEN, TEST_KEY);
   // haiku takes the non-reasoning tier
   const haikuDef = SEEDED_MODELS.find((m) => m.id === autoParsed.env.ANTHROPIC_DEFAULT_HAIKU_MODEL);
   assert.ok(haikuDef && !haikuDef.reasoning);
@@ -331,7 +335,7 @@ test("claude-code adapter maps smart tiers in auto mode and pinned model in spec
 
   // pinned mode overrides every tier
   const pinnedWrites = adapter.render({
-    baseUrl: "http://127.0.0.1:17070/v1",
+    baseUrl: "http://127.0.0.1:17070/v1", apiKey: TEST_KEY,
     defaultModel: "custom-pinned-model",
     models: SEEDED_MODELS,
     specificModel: true,
@@ -342,7 +346,7 @@ test("claude-code adapter maps smart tiers in auto mode and pinned model in spec
   assert.equal(pinnedParsed.env.ANTHROPIC_DEFAULT_OPUS_MODEL, "custom-pinned-model");
 });
 const OMP_CTX = {
-  baseUrl: "http://127.0.0.1:17070/v1",
+  baseUrl: "http://127.0.0.1:17070/v1", apiKey: TEST_KEY,
   defaultModel: "mimo-v2.6-flash-free",
   models: SEEDED_MODELS,
   specificModel: false,
@@ -370,7 +374,7 @@ test("omp on a fresh file creates providers: and nests bansos under it", () => {
       `providers:\n` +
       `  bansos:\n` +
       `    baseUrl: "http://127.0.0.1:17070/v1"\n` +
-      `    apiKey: bansos\n` +
+      `    apiKey: "${TEST_KEY}"\n` +
       `    api: openai-completions\n` +
       `    discovery:\n` +
       `      type: openai-models-list\n` +
@@ -392,7 +396,7 @@ test("omp nests under an existing providers: that is not the last key", () => {
       `  # ${START_MARKER}\n` +
       `  bansos:\n` +
       `    baseUrl: "http://127.0.0.1:17070/v1"\n` +
-      `    apiKey: bansos\n` +
+      `    apiKey: "${TEST_KEY}"\n` +
       `    api: openai-completions\n` +
       `    discovery:\n` +
       `      type: openai-models-list\n` +
@@ -427,7 +431,7 @@ test("omp refuses a flow-style providers: instead of corrupting it", () => {
 
 function codexWrite(model = "mimo-v2.6-flash-free") {
   return findAdapter("codex")!.render({
-    baseUrl: "http://127.0.0.1:17070/v1",
+    baseUrl: "http://127.0.0.1:17070/v1", apiKey: TEST_KEY,
     defaultModel: model,
     models: SEEDED_MODELS,
     specificModel: true,
@@ -474,7 +478,7 @@ test("jsonc trailing-comma cleanup never rewrites string contents", () => {
 
 function renderAll(id: string, models: Array<{ id: string; name?: string; contextWindow?: number }>) {
   return findAdapter(id)!.render({
-    baseUrl: "http://127.0.0.1:17070/v1",
+    baseUrl: "http://127.0.0.1:17070/v1", apiKey: TEST_KEY,
     defaultModel: models[0]!.id,
     models: models as any,
     specificModel: false,
@@ -497,9 +501,80 @@ test("rerunning setup drops models that left the catalog instead of piling them 
   }
 });
 
+test("every adapter writes the router key (goose names the env var instead)", () => {
+  const ctx = {
+    baseUrl: "http://127.0.0.1:17070/v1",
+    apiKey: TEST_KEY,
+    defaultModel: "mimo-v2.6-flash-free",
+    models: SEEDED_MODELS,
+    specificModel: false,
+  };
+  for (const adapter of ADAPTERS) {
+    const content = adapter.render(ctx).map((w) => w.content).join("\n");
+    if (adapter.id === "goose") {
+      assert.match(content, /"api_key_env": "BANSOS_API_KEY"/);
+      assert.equal(content.includes(TEST_KEY), false, "goose json never holds the key");
+      assert.equal(adapter.keyEnv, "BANSOS_API_KEY");
+      assert.ok(adapter.undoKeys?.includes("api_key_env"));
+    } else {
+      assert.ok(content.includes(TEST_KEY), `${adapter.id} writes the key`);
+    }
+  }
+});
+
+test("opencode, openclaw and hermes now carry the key", () => {
+  const ctx = { baseUrl: "http://127.0.0.1:17070/v1", apiKey: TEST_KEY, defaultModel: "keep", models: [], specificModel: true };
+  const opencode = JSON.parse(findAdapter("opencode")!.render(ctx)[0]!.content);
+  assert.equal(opencode.provider.bansos.options.apiKey, TEST_KEY);
+  const openclaw = JSON.parse(findAdapter("openclaw")!.render(ctx)[0]!.content);
+  assert.equal(openclaw.models.providers.bansos.apiKey, TEST_KEY);
+  const hermes = findAdapter("hermes")!.render(ctx)[0]!.content;
+  assert.match(hermes, new RegExp(`^model:\\n(?:  .*\\n)*  api_key: "${TEST_KEY}"$`, "m"));
+});
+
+test("buildSetupContext puts the key into every context it returns", () => {
+  const all = buildSetupContext("http://127.0.0.1:17070/v1", SEEDED_MODELS, {}, TEST_KEY);
+  const pinned = buildSetupContext("http://127.0.0.1:17070/v1", SEEDED_MODELS, { model: "x" }, TEST_KEY);
+  const picked = buildSetupContext("http://127.0.0.1:17070/v1", SEEDED_MODELS, { models: [SEEDED_MODELS[0]!.id] }, TEST_KEY);
+  for (const ctx of [all, pinned, picked]) {
+    assert.ok(!("error" in ctx));
+    assert.equal(ctx.apiKey, TEST_KEY);
+  }
+});
+
 test("continue undo removes every bansos entry and keeps the user's", () => {
   const w = renderAll("continue", [{ id: "a", name: "A" }, { id: "b", name: "B" }]);
   const merged = JSON.parse(applyMergeWrite('{"models":[{"title":"Mine","model":"x"}]}', w.content, w.replace));
   removeKeys(merged, findAdapter("continue")!.undoKeys!);
   assert.deepEqual(merged.models.map((m: any) => m.title), ["Mine"]);
+});
+
+// os.homedir() reads USERPROFILE on windows and HOME elsewhere; mode bits are only checked off windows
+test("setup creates a new harness file holding the key owner-only and keeps an existing file's mode", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "bansos-home-"));
+  const real = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+  process.env.HOME = home;
+  process.env.USERPROFILE = home;
+  try {
+    const ctx = buildSetupContext("http://127.0.0.1:17070/v1", SEEDED_MODELS, {}, TEST_KEY);
+    assert.ok(!("error" in ctx));
+    const aider = findAdapter("aider")!;
+    const file = path.join(home, ".aider.conf.yml");
+
+    assert.equal(applyAdapter(aider, ctx, () => {}), 0);
+    assert.ok(fs.readFileSync(file, "utf8").includes(TEST_KEY));
+    if (process.platform !== "win32") assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+
+    fs.writeFileSync(file, "# mine\n");
+    if (process.platform !== "win32") fs.chmodSync(file, 0o644);
+    assert.equal(applyAdapter(aider, ctx, () => {}), 0);
+    assert.ok(fs.readFileSync(file, "utf8").includes(TEST_KEY));
+    if (process.platform !== "win32") assert.equal(fs.statSync(file).mode & 0o777, 0o644);
+  } finally {
+    for (const [k, v] of Object.entries(real)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    fs.rmSync(home, { recursive: true, force: true });
+  }
 });

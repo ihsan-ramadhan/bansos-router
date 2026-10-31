@@ -12,6 +12,7 @@ import {
   type SecurityConfig,
 } from "../security/policy";
 import { checkUpdate, VERSION } from "../update";
+import { AUTH_OFF_KEY } from "./auth";
 import type { RuntimeCatalog } from "./catalog";
 import { CONFIG_FILE, LOG_FILE, loadConfig, loadConfigWarnings, readRawConfig, writeJsonAtomic } from "./state";
 
@@ -27,6 +28,9 @@ export interface AdminOptions {
   configFile?: string;
   logFile?: string;
   autostartEnv?: AutostartEnv;
+  // the running daemon's key (null: auth off); Apply writes it into harness configs
+  apiKey?: string | null;
+  authEnabled?: boolean;
 }
 
 export interface AdminResult {
@@ -187,6 +191,13 @@ function saveConfig(opts: AdminOptions, body: unknown): AdminResult {
   } catch (err) {
     return { status: 400, body: { error: { message: (err as Error).message } } };
   }
+  // the restarted daemon would refuse to boot: BANSOS_AUTH=off is loopback-only
+  if (opts.authEnabled === false && !isLoopbackBind(nextBind)) {
+    return {
+      status: 400,
+      body: { error: { message: `auth is off (BANSOS_AUTH=off), so bind "${nextBind}" is refused; enable auth before binding a non-loopback address` } },
+    };
+  }
 
   writeJsonAtomic(file, merged);
 
@@ -241,7 +252,12 @@ function applySetup(opts: AdminOptions, body: unknown): AdminResult {
   const ids = list(body.models);
   const upstreams = list(body.upstreams);
   if (!ids || !upstreams) return { status: 400, body: { error: { message: "models and upstreams must be lists of ids" } } };
-  const ctx = buildSetupContext(setupBaseUrl(opts.bind, opts.port), opts.catalog.servableModels, { model, models: ids, upstreams });
+  const ctx = buildSetupContext(
+    setupBaseUrl(opts.bind, opts.port),
+    opts.catalog.servableModels,
+    { model, models: ids, upstreams },
+    opts.apiKey ?? AUTH_OFF_KEY,
+  );
   if ("error" in ctx) return { status: 400, body: { error: { message: ctx.error } } };
   const lines: SetupLine[] = [];
   const report = (line: SetupLine) => lines.push(line);
@@ -253,7 +269,7 @@ function applySetup(opts: AdminOptions, body: unknown): AdminResult {
     lines.push({ kind: "error", text: (err as Error).message });
     failed++;
   }
-  const status = harnessStatuses().find((h) => h.id === adapter.id);
+  const status = harnessStatuses(opts.apiKey ?? undefined).find((h) => h.id === adapter.id);
   return { status: 200, body: { ok: failed === 0, lines, harness: status } };
 }
 
@@ -322,7 +338,7 @@ export async function handleAdmin(
         update: await checkUpdate(),
         configWarnings: loadConfigWarnings(opts.configFile ?? CONFIG_FILE),
         security: securityView(opts.security),
-        harnesses: harnessStatuses(),
+        harnesses: harnessStatuses(opts.apiKey ?? undefined),
       },
     };
   }

@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { createRequire } from "node:module";
 import { BANSOS_DIR } from "../daemon/state";
 import { restoreBridgedCalls } from "../protocols/tool-bridge";
 import { modelDef, type ModelDef, type Upstream } from "./types";
@@ -61,10 +62,17 @@ interface PersistentZenIdentity {
   project: string;
 }
 
+// a bare require is esbuild's throwing shim in the ESM bundle, so node:sqlite never loaded
+const nodeRequire = createRequire(import.meta.url);
+
 const ZEN_IDENTITY_FILE = path.join(BANSOS_DIR, "zen-identity.json");
 let cachedZenIdentity: PersistentZenIdentity | null = null;
 let lastIdentityLookup = 0;
 const IDENTITY_CACHE_TTL_MS = 30_000;
+let identityRefresh: Promise<void> | null = null;
+let lastSavedIdentityJson: string | null = null;
+let queuedIdentityJson: string | null = null;
+let identityWrite: Promise<void> | null = null;
 
 function extractIdentityFromRow(row: unknown): PersistentZenIdentity | null {
   if (
@@ -80,16 +88,33 @@ function extractIdentityFromRow(row: unknown): PersistentZenIdentity | null {
   return null;
 }
 
-function queryDbDirect(dbPath: string): PersistentZenIdentity | null {
+const IDENTITY_SQL_V2 = "SELECT id, project_id FROM session_v2 ORDER BY time_updated DESC LIMIT 1";
+const IDENTITY_SQL_V1 = "SELECT id, project_id FROM session ORDER BY time_created DESC LIMIT 1";
+
+// each query on its own: older opencode dbs have no session_v2 table, newer ones may have no rows in session
+function queryIdentity(get: (sql: string) => unknown): { row: PersistentZenIdentity | null; answered: boolean } {
+  let answered = false;
+  for (const sql of [IDENTITY_SQL_V2, IDENTITY_SQL_V1]) {
+    try {
+      const row = extractIdentityFromRow(get(sql));
+      answered = true;
+      if (row) return { row, answered };
+    } catch {}
+  }
+  return { row: null, answered };
+}
+
+// undefined: no in-process sqlite answered (module missing or every query threw), so the caller tries the sqlite3 CLI
+function queryDbInProcess(dbPath: string): PersistentZenIdentity | null | undefined {
+  let answered = false;
   if ("Bun" in globalThis) {
     try {
-      const bunSqlite = require("bun:sqlite") as { Database: new (p: string, opt?: { readonly?: boolean }) => { query: (q: string) => { get: () => unknown }; close: () => void } };
+      const bunSqlite = nodeRequire("bun:sqlite") as { Database: new (p: string, opt?: { readonly?: boolean }) => { query: (q: string) => { get: () => unknown }; close: () => void } };
       const db = new bunSqlite.Database(dbPath, { readonly: true });
       try {
-        const row2 = extractIdentityFromRow(db.query("SELECT id, project_id FROM session_v2 ORDER BY time_updated DESC LIMIT 1").get());
-        if (row2) return row2;
-        const row1 = extractIdentityFromRow(db.query("SELECT id, project_id FROM session ORDER BY time_created DESC LIMIT 1").get());
-        if (row1) return row1;
+        const result = queryIdentity((sql) => db.query(sql).get());
+        if (result.row) return result.row;
+        answered ||= result.answered;
       } finally {
         db.close();
       }
@@ -97,47 +122,40 @@ function queryDbDirect(dbPath: string): PersistentZenIdentity | null {
   }
 
   try {
-    const nodeSqlite = require("node:sqlite") as { DatabaseSync: new (p: string, opt?: { readOnly?: boolean }) => { prepare: (q: string) => { get: () => unknown }; close: () => void } };
+    const nodeSqlite = nodeRequire("node:sqlite") as { DatabaseSync: new (p: string, opt?: { readOnly?: boolean }) => { prepare: (q: string) => { get: () => unknown }; close: () => void } };
     const db = new nodeSqlite.DatabaseSync(dbPath, { readOnly: true });
     try {
-      const row2 = extractIdentityFromRow(db.prepare("SELECT id, project_id FROM session_v2 ORDER BY time_updated DESC LIMIT 1").get());
-      if (row2) return row2;
-      const row1 = extractIdentityFromRow(db.prepare("SELECT id, project_id FROM session ORDER BY time_created DESC LIMIT 1").get());
-      if (row1) return row1;
+      const result = queryIdentity((sql) => db.prepare(sql).get());
+      if (result.row) return result.row;
+      answered ||= result.answered;
     } finally {
       db.close();
     }
   } catch {}
 
-  const whichCmd = process.platform === "win32" ? "where" : "which";
-  try {
-    const res = spawnSync("sqlite3", [
-      dbPath,
-      "SELECT id, project_id FROM session_v2 ORDER BY time_updated DESC LIMIT 1;",
-    ], { encoding: "utf-8", timeout: 1500 });
-    if (res.status === 0 && res.stdout.trim()) {
-      const parts = res.stdout.trim().split("|");
-      if (parts.length >= 2 && parts[0] && parts[1]) {
-        return { session: parts[0], project: parts[1] };
-      }
-    }
-  } catch {}
-  try {
-    const res = spawnSync("sqlite3", [
-      dbPath,
-      "SELECT id, project_id FROM session ORDER BY time_created DESC LIMIT 1;",
-    ], { encoding: "utf-8", timeout: 1500 });
-    if (res.status === 0 && res.stdout.trim()) {
-      const parts = res.stdout.trim().split("|");
-      if (parts.length >= 2 && parts[0] && parts[1]) {
-        return { session: parts[0], project: parts[1] };
-      }
-    }
-  } catch {}
-  return null;
+  return answered ? null : undefined;
 }
 
-function findLocalOpenCodeIdentity(): PersistentZenIdentity | null {
+function sqlite3Query(dbPath: string, sql: string): Promise<PersistentZenIdentity | null> {
+  return new Promise((resolve) => {
+    try {
+      execFile("sqlite3", [dbPath, `${sql};`], { encoding: "utf-8", timeout: 1500, windowsHide: true }, (err, stdout) => {
+        const out = err ? "" : stdout.trim();
+        const parts = out.split("|");
+        resolve(out && parts.length >= 2 && parts[0] && parts[1] ? { session: parts[0], project: parts[1] } : null);
+      });
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+// fallback for runtimes without an in-process sqlite module; async so it never blocks the event loop
+async function queryDbWithCli(dbPath: string): Promise<PersistentZenIdentity | null> {
+  return (await sqlite3Query(dbPath, IDENTITY_SQL_V2)) ?? (await sqlite3Query(dbPath, IDENTITY_SQL_V1));
+}
+
+async function findLocalOpenCodeIdentity(): Promise<PersistentZenIdentity | null> {
   const home = os.homedir();
   const dbCandidates = [
     path.join(home, ".local", "share", "opencode", "opencode.db"),
@@ -148,28 +166,42 @@ function findLocalOpenCodeIdentity(): PersistentZenIdentity | null {
   }
   for (const dbPath of dbCandidates) {
     if (fs.existsSync(dbPath)) {
-      const id = queryDbDirect(dbPath);
+      const direct = queryDbInProcess(dbPath);
+      const id = direct === undefined ? await queryDbWithCli(dbPath) : direct;
       if (id) return id;
     }
   }
   return null;
 }
 
+// single-flight DB lookup; a hit replaces the cached identity (DB beats the saved file and the synthetic one)
+export function refreshZenIdentity(): Promise<void> {
+  identityRefresh ??= (async () => {
+    lastIdentityLookup = Date.now();
+    try {
+      // the in-process query is sync; run it after the current request's tick
+      await new Promise<void>((r) => setImmediate(r));
+      const local = await findLocalOpenCodeIdentity();
+      if (local) saveZenIdentity(local);
+    } catch {
+      // keep the cached identity
+    } finally {
+      identityRefresh = null;
+    }
+  })();
+  return identityRefresh;
+}
+
+// never blocks on the DB: serve the cache and refresh it in the background once it is older than the TTL
 function loadZenIdentity(): PersistentZenIdentity {
-  const now = Date.now();
-  if (cachedZenIdentity && now - lastIdentityLookup < IDENTITY_CACHE_TTL_MS) {
+  const stale = Date.now() - lastIdentityLookup >= IDENTITY_CACHE_TTL_MS;
+  if (cachedZenIdentity) {
+    if (stale) void refreshZenIdentity();
     return cachedZenIdentity;
   }
-  lastIdentityLookup = now;
+  if (stale) void refreshZenIdentity();
 
-  // 1. prefer reading latest active session from local OpenCode database
-  const local = findLocalOpenCodeIdentity();
-  if (local) {
-    saveZenIdentity(local);
-    return local;
-  }
-
-  // 2. read existing saved identity from disk
+  // no cache yet: the saved identity from disk, until the DB lookup lands
   try {
     if (fs.existsSync(ZEN_IDENTITY_FILE)) {
       const data = JSON.parse(fs.readFileSync(ZEN_IDENTITY_FILE, "utf-8")) as unknown;
@@ -183,12 +215,13 @@ function loadZenIdentity(): PersistentZenIdentity {
       ) {
         const parsed: PersistentZenIdentity = { session: data.session, project: data.project };
         cachedZenIdentity = parsed;
+        lastSavedIdentityJson = JSON.stringify(parsed, null, 2);
         return parsed;
       }
     }
   } catch {}
 
-  // 3. fallback to synthetic
+  // fallback to synthetic
   const fallback: PersistentZenIdentity = {
     session: generateSessionId(),
     project: randomBytes(20).toString("hex"),
@@ -197,12 +230,32 @@ function loadZenIdentity(): PersistentZenIdentity {
   return fallback;
 }
 
+// writes only when the content changed, asynchronously; a change during a write is written right after it
 function saveZenIdentity(identity: PersistentZenIdentity): void {
   cachedZenIdentity = identity;
+  const json = JSON.stringify(identity, null, 2);
+  if (json === lastSavedIdentityJson) return;
+  lastSavedIdentityJson = json;
+  queuedIdentityJson = json;
+  identityWrite ??= drainIdentityWrites();
+}
+
+async function drainIdentityWrites(): Promise<void> {
   try {
-    fs.mkdirSync(BANSOS_DIR, { recursive: true });
-    fs.writeFileSync(ZEN_IDENTITY_FILE, JSON.stringify(identity, null, 2), "utf-8");
-  } catch {}
+    while (queuedIdentityJson !== null) {
+      const json = queuedIdentityJson;
+      queuedIdentityJson = null;
+      try {
+        await fs.promises.mkdir(BANSOS_DIR, { recursive: true });
+        await fs.promises.writeFile(ZEN_IDENTITY_FILE, json, "utf-8");
+      } catch {
+        // retry on the next save
+        if (lastSavedIdentityJson === json) lastSavedIdentityJson = null;
+      }
+    }
+  } finally {
+    identityWrite = null;
+  }
 }
 
 const OPENCODE_SESSION_RE = /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
@@ -600,6 +653,8 @@ export const zenUpstream: Upstream = {
 
   async fetchCatalog(): Promise<ModelDef[] | null> {
     try {
+      // the catalog and probe headers use the DB identity, as the old synchronous lookup did
+      await refreshZenIdentity();
       const [indexRes, listRes] = await Promise.all([
         fetch(MODELS_DEV_URL, { signal: AbortSignal.timeout(10_000) }).catch(() => null),
         fetch(`${ZEN_MODELS_URL}/models`, {

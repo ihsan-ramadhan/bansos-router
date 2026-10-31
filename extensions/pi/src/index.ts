@@ -4,6 +4,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { readApiKey } from "./auth.js";
 import {
   chooseModels,
   FETCH_TIMEOUT_MS,
@@ -50,6 +51,12 @@ let endpoint: DaemonEndpoint = { host: "127.0.0.1", port: DEFAULT_PORT };
 const baseUrl = (e: DaemonEndpoint = endpoint) => `http://${e.host}:${e.port}/v1`;
 const healthzUrl = (e: DaemonEndpoint = endpoint) => `http://${e.host}:${e.port}/healthz`;
 const modelsUrl = (e: DaemonEndpoint = endpoint) => `http://${e.host}:${e.port}/v1/models`;
+const statusUrl = (e: DaemonEndpoint = endpoint) => `http://${e.host}:${e.port}/bansos/status`;
+const KEY_REJECTED = "bansos daemon rejected the API key (set BANSOS_API_KEY or run bansos key)";
+
+// read after ensureDaemonRunning(): a daemon this extension spawned creates the key file on first start
+let apiKey: string | null = null;
+const authHeaders = (): Record<string, string> => (apiKey ? { authorization: `Bearer ${apiKey}` } : {});
 const EXTENSION_VERSION = "0.5.1";
 
 function isNewer(current: string, latest: string): boolean {
@@ -123,7 +130,7 @@ async function ensureDaemonRunning(): Promise<boolean> {
 
 async function fetchModelsOnce(e: DaemonEndpoint = endpoint): Promise<ModelItem[]> {
   try {
-    const res = await fetch(modelsUrl(e), { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    const res = await fetch(modelsUrl(e), { headers: authHeaders(), signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok) return [];
     const json = (await res.json()) as { data?: ModelItem[] };
     return json.data ?? [];
@@ -143,6 +150,7 @@ async function fetchModels(e: DaemonEndpoint = endpoint): Promise<ModelItem[]> {
 
 export default async function (pi: ExtensionAPI) {
   const daemonReady = await ensureDaemonRunning();
+  apiKey = readApiKey();
 
   const live = daemonReady ? await fetchModels() : [];
   if (live.length > 0) writeCachedModels(live);
@@ -153,7 +161,7 @@ export default async function (pi: ExtensionAPI) {
 
   pi.registerProvider("bansosr", {
     baseUrl: baseUrl(registeredEndpoint),
-    apiKey: "bansos",
+    apiKey: apiKey ?? "bansos",
     api: "openai-completions",
     models: models.map(toProviderModel),
   });
@@ -174,10 +182,17 @@ export default async function (pi: ExtensionAPI) {
         ctx.ui.notify("bansos daemon is NOT running. Try: bansos start", "error");
         return;
       }
-      const liveModels = await fetchModels(registeredEndpoint);
       let relayInfo = "";
       try {
-        const res = await fetch(healthzUrl(registeredEndpoint), { signal: AbortSignal.timeout(1000) });
+        // /healthz is minimal now; relay info needs the authenticated status route
+        const res = await fetch(statusUrl(registeredEndpoint), {
+          headers: authHeaders(),
+          signal: AbortSignal.timeout(1000),
+        });
+        if (res.status === 401) {
+          ctx.ui.notify(KEY_REJECTED, "error");
+          return;
+        }
         if (res.ok) {
           const body = (await res.json()) as { relay?: { enabled: boolean; url: string } };
           if (body.relay?.enabled && body.relay.url) {
@@ -189,6 +204,7 @@ export default async function (pi: ExtensionAPI) {
       } catch {
         // ignore
       }
+      const liveModels = await fetchModels(registeredEndpoint);
       ctx.ui.notify(`pi-bansos-router v${EXTENSION_VERSION} · daemon online (${liveModels.length} models${relayInfo})`, "info");
 
       const update = await checkExtensionUpdate();

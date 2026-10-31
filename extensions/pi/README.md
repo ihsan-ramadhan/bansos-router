@@ -39,3 +39,21 @@ omp plugin install pi-bansos-router
   session registered, and mentions a newer extension version on npm.
 - In strict mode only models from allowlisted upstreams are registered, since
   the daemon's `/v1/models` leaves the others out.
+
+## API key
+
+The daemon requires an API key on every request. The extension finds it the
+same way the `bansos` CLI does, after it has made sure the daemon is running:
+
+1. `BANSOS_API_KEY` from the environment (trimmed; empty or blank is ignored)
+2. the key file `api-key` in `BANSOS_DIR` (default `~/.bansos/api-key`), which
+   the daemon creates on its first start
+
+It registers the provider with that key and sends it as
+`Authorization: Bearer <key>` on `/v1/models` and on the `/bansosr` status
+check (`/bansos/status`). The extension never generates a key itself; with no
+key found it falls back to the old `bansos` placeholder, which the daemon
+rejects unless it runs with `BANSOS_AUTH=off`. When the daemon answers 401,
+`/bansosr` says so: set `BANSOS_API_KEY` to the daemon's key, or run
+`bansos key` to see it. After `bansos key --rotate`, restart pi so the
+provider picks up the new key.

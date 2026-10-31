@@ -72,6 +72,7 @@ async function startDaemon(chatUrl: string): Promise<{
     port: 0,
     log,
     startedAt: Date.now(),
+    apiKey: null,
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const addr = server.address() as { port: number };

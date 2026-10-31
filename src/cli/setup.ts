@@ -3,8 +3,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { ADAPTERS, buildSetupContext, findAdapter } from "../adapters";
 import type { HarnessAdapter, SetupContext } from "../adapters/types";
+import { AUTH_KEY_PLACEHOLDER, AUTH_OFF_KEY, resolveApiKey } from "../daemon/auth";
 import { effectiveBind, effectivePort } from "../daemon/state";
 import { SEEDED_MODELS } from "../upstreams";
+import { ClientKeyError, daemonFetch } from "./daemon-fetch";
+import { KEY_EXPORT_HINT } from "./key";
 import { modelDef, type ModelDef } from "../upstreams/types";
 import {
   applyBlockWrite,
@@ -59,15 +62,19 @@ function resolveTargetFile(adapter: HarnessAdapter, defaultPath: string): string
   return defaultPath;
 }
 
-async function getSetupModels(baseUrl: string): Promise<{ models: ModelDef[]; fromDaemon: boolean }> {
+async function getSetupModels(
+  baseUrl: string,
+): Promise<{ models: ModelDef[]; fromDaemon: boolean; keyRejected: boolean }> {
   try {
-    const res = await fetch(`${baseUrl}/models`, { signal: AbortSignal.timeout(800) });
+    const res = await daemonFetch(`${baseUrl}/models`, { signal: AbortSignal.timeout(800) });
+    // a running daemon refusing this key: harnesses written with it would get the same 401
+    if (res.status === 401) return { models: SEEDED_MODELS, fromDaemon: false, keyRejected: true };
     if (res.ok) {
       const json = (await res.json()) as {
         data?: Array<{ id: string; source?: string; context_window?: number; max_tokens?: number; reasoning?: boolean; name?: string }>;
       };
       if (Array.isArray(json.data) && json.data.length > 0) {
-        return { fromDaemon: true, models: json.data.map((m) => {
+        return { fromDaemon: true, keyRejected: false, models: json.data.map((m) => {
           const known = SEEDED_MODELS.find((s) => s.id === m.id);
           if (known) return known;
           return modelDef({
@@ -83,10 +90,11 @@ async function getSetupModels(baseUrl: string): Promise<{ models: ModelDef[]; fr
         }) };
       }
     }
-  } catch {
+  } catch (err) {
+    if (err instanceof ClientKeyError) throw err;
     // daemon offline or unreachable, fall back to seeded offline list
   }
-  return { models: SEEDED_MODELS, fromDaemon: false };
+  return { models: SEEDED_MODELS, fromDaemon: false, keyRejected: false };
 }
 
 function update9RouterSqlite(dbPath: string, ctx: SetupContext): boolean {
@@ -100,7 +108,7 @@ function update9RouterSqlite(dbPath: string, ctx: SetupContext): boolean {
   });
   const connId = "bansos-default";
   const connData = JSON.stringify({
-    apiKey: "bansos",
+    apiKey: ctx.apiKey,
     prefix: "bansos",
     apiType: "chat",
     baseUrl: ctx.baseUrl,
@@ -209,7 +217,9 @@ export function applyAdapter(adapter: HarnessAdapter, ctx: SetupContext, report:
     } else {
       content = applyBlockWrite(existing ?? "", write.content, write.markers!);
     }
-    writeConfig(targetPath, content);
+    // a new file that holds the router key is created owner-only, like the api-key file
+    const holdsKey = ctx.apiKey !== AUTH_OFF_KEY && ctx.apiKey !== AUTH_KEY_PLACEHOLDER && content.includes(ctx.apiKey);
+    writeConfig(targetPath, content, holdsKey ? 0o600 : undefined);
     report({ kind: "ok", text: `wrote ${targetPath}` });
   }
 
@@ -286,12 +296,42 @@ export async function runSetup(argv: string[]): Promise<number> {
   }
 
   const baseUrl = `http://${effectiveBind()}:${effectivePort()}/v1`;
-  const { models, fromDaemon } = await getSetupModels(baseUrl);
+  // dry runs and undo never need (or show) the real key; resolved before the model fetch so both use the same key
+  const writes = !args.dryRun && !args.undo;
+  let apiKey = AUTH_KEY_PLACEHOLDER;
+  let keyLine = "";
+  if (writes) {
+    try {
+      const resolved = resolveApiKey({ generate: true })!;
+      apiKey = resolved.key;
+      keyLine = resolved.source === "env"
+        ? "API key: from BANSOS_API_KEY"
+        : `API key: ${resolved.file} (show it with: bansos key)`;
+    } catch (err) {
+      console.error(`bansos setup: ${(err as Error).message}`);
+      return 1;
+    }
+  }
+  let setupModels: Awaited<ReturnType<typeof getSetupModels>>;
+  try {
+    setupModels = await getSetupModels(baseUrl);
+  } catch (err) {
+    console.error(`bansos setup: ${(err as Error).message}`);
+    return 1;
+  }
+  const { models, fromDaemon, keyRejected } = setupModels;
   const pinned = args.model;
   if (pinned && fromDaemon && !models.some((m) => m.id === pinned || m.id.endsWith(`/${pinned}`))) {
     console.warn(`bansos setup: "${pinned}" is not served by the daemon right now (not alive, or blocked by strict mode); writing it anyway`);
   }
-  const ctx = buildSetupContext(baseUrl, models, { model: pinned, models: args.models, upstreams: args.upstreams });
+  if (keyLine) console.log(keyLine);
+  if (writes && keyRejected) {
+    console.warn(
+      `bansos setup: warning: the daemon at ${baseUrl.replace(/\/v1$/, "")} rejects this API key, so harnesses set up now will get 401 ` +
+        `(set BANSOS_API_KEY to the daemon's key, or restart the daemon: bansos stop; bansos start --bg)`,
+    );
+  }
+  const ctx = buildSetupContext(baseUrl, models, { model: pinned, models: args.models, upstreams: args.upstreams }, apiKey);
   if ("error" in ctx) {
     console.error(`bansos setup: ${ctx.error}`);
     return 1;
@@ -316,6 +356,9 @@ export async function runSetup(argv: string[]): Promise<number> {
       }
     } else {
       failed += applyAdapter(adapter, ctx);
+    }
+    if (!args.undo && adapter.keyEnv) {
+      console.log(`  · ${adapter.name} reads the key from ${adapter.keyEnv}; export it where ${adapter.id} runs: ${KEY_EXPORT_HINT}`);
     }
   }
 

@@ -5,6 +5,7 @@ export type SecretType =
   | "aws_access_key"
   | "private_key"
   | "ssh_private_key"
+  | "bansos_api_key"
   | "credential_assignment";
 
 export interface SecretScanResult {
@@ -31,6 +32,10 @@ const KNOWN_SECRET_PATTERNS: ReadonlyArray<{
   {
     type: "aws_access_key",
     pattern: /\b(?:AKIA|ASIA|AIDA|AROA|AIPA|ANPA|ANVA|ASCA)[A-Z0-9]{16}\b/,
+  },
+  {
+    type: "bansos_api_key",
+    pattern: /\bbansos-[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/,
   },
   {
     type: "ssh_private_key",

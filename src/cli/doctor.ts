@@ -3,7 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { ADAPTERS } from "../adapters";
-import { effectiveBind, effectivePort, loadConfig, loadConfigWarnings } from "../daemon/state";
+import { readClientApiKey } from "../daemon/auth";
+import { API_KEY_FILE, effectiveBind, effectivePort, loadConfig, loadConfigWarnings } from "../daemon/state";
+import { daemonFetch } from "./daemon-fetch";
+import { KEY_EXPORT_HINT } from "./key";
 import { START_MARKER } from "../adapters/types";
 import { expandHome, parseJsonc } from "./write";
 import { checkUpdate } from "../update";
@@ -13,19 +16,63 @@ export async function runDoctor(_argv: string[]): Promise<number> {
   const base = `http://${effectiveBind()}:${effectivePort()}`;
   let failures = 0;
 
-  // 1. daemon reachable?
+  // the key harness configs are compared against; unset when it cannot be trusted
+  let clientKey: string | undefined;
+  let keyError: string | null = null;
   try {
-    const res = await fetch(`${base}/healthz`, { signal: AbortSignal.timeout(2000) });
-    const body = (await res.json()) as { modelCount?: number; relay?: { enabled: boolean; url: string } };
-    console.log(`✓ daemon      ok at ${base} (${body.modelCount ?? "?"} models)`);
-    if (body.relay?.enabled && body.relay.url) {
-      console.log(`✓ relay       on (${body.relay.url})`);
-    } else {
-      console.log(`· relay       disabled (direct)`);
-    }
+    clientKey = readClientApiKey() ?? undefined;
+  } catch (err) {
+    keyError = (err as Error).message;
+  }
+
+  // 1. daemon reachable? /healthz needs no key, /bansos/status does
+  let reachable = false;
+  try {
+    reachable = (await fetch(`${base}/healthz`, { signal: AbortSignal.timeout(2000) })).ok;
   } catch {
+    // reported below
+  }
+  if (!reachable) {
     console.error(`✗ daemon      not reachable at ${base}`);
     console.error(`  fix: run "bansos start" (or "bansosd") in another terminal`);
+    failures++;
+  } else if (keyError) {
+    console.log(`✓ daemon      ok at ${base}`);
+  } else {
+    try {
+      const res = await daemonFetch(`${base}/bansos/status`, { signal: AbortSignal.timeout(2000) });
+      if (res.status === 401) {
+        console.log(`✓ daemon      ok at ${base}`);
+        console.error(`✗ auth        the daemon rejected this machine's API key`);
+        console.error(`  fix: set BANSOS_API_KEY to the daemon's key, or restart the daemon so it uses ${API_KEY_FILE} (bansos stop; bansos start --bg)`);
+        failures++;
+        clientKey = undefined;
+      } else {
+        const body = (await res.json()) as {
+          modelCount?: number;
+          relay?: { enabled: boolean; url: string };
+          auth?: { required: boolean };
+        };
+        console.log(`✓ daemon      ok at ${base} (${body.modelCount ?? "?"} models)`);
+        if (body.auth?.required === false) {
+          console.log(`· auth        off (BANSOS_AUTH=off, loopback only)`);
+          // harnesses hold the placeholder key then, which is fine
+          clientKey = undefined;
+        } else {
+          console.log(`✓ auth        API key accepted`);
+        }
+        if (body.relay?.enabled && body.relay.url) {
+          console.log(`✓ relay       on (${body.relay.url})`);
+        } else {
+          console.log(`· relay       disabled (direct)`);
+        }
+      }
+    } catch {
+      console.log(`✓ daemon      ok at ${base} (status unavailable)`);
+    }
+  }
+  if (keyError) {
+    console.error(`✗ auth        ${keyError}`);
     failures++;
   }
 
@@ -75,9 +122,17 @@ export async function runDoctor(_argv: string[]): Promise<number> {
 
 
   // 2. per-harness config files.
-  for (const h of harnessStatuses()) {
+  for (const h of harnessStatuses(clientKey)) {
     if (h.status === "missing") {
       console.log(`· ${h.id.padEnd(12)} not configured (bansos setup ${h.id})`);
+    } else if (h.status === "configured" && h.key === "stale") {
+      console.error(`✗ ${h.id.padEnd(12)} configured but its API key does not match the daemon's (fix: bansos setup ${h.id})`);
+      failures++;
+    } else if (h.status === "configured" && h.key === "env") {
+      console.log(`✓ ${h.id.padEnd(12)} configured (reads BANSOS_API_KEY from the environment)`);
+      if (process.env.BANSOS_API_KEY === undefined) {
+        console.log(`  hint: BANSOS_API_KEY is not set in this shell; export it where ${h.id} runs: ${KEY_EXPORT_HINT}`);
+      }
     } else if (h.status === "configured") {
       console.log(`✓ ${h.id.padEnd(12)} configured (${h.path})`);
     } else {
@@ -94,12 +149,18 @@ export async function runDoctor(_argv: string[]): Promise<number> {
   return failures > 0 ? 1 : 0;
 }
 
-export type HarnessStatus = { id: string; status: "configured" | "unconfigured" | "missing"; path?: string };
+export type HarnessStatus = {
+  id: string;
+  status: "configured" | "unconfigured" | "missing";
+  path?: string;
+  // configured text configs only: does the file hold the daemon's current key (env: harness reads it from env)
+  key?: "ok" | "stale" | "env";
+};
 
 // a status check reads the whole file on the event loop, so anything bigger is not a config
 const MAX_TEXT_CONFIG_BYTES = 8 << 20;
 
-export function harnessStatuses(): HarnessStatus[] {
+export function harnessStatuses(apiKey?: string): HarnessStatus[] {
   return ADAPTERS.map((adapter) => {
     const found = adapter.configPaths.map(expandHome).find((p) => fs.existsSync(p));
     if (!found) return { id: adapter.id, status: "missing" };
@@ -122,7 +183,25 @@ export function harnessStatuses(): HarnessStatus[] {
       return { id: adapter.id, status: "unconfigured", path: found };
     }
     const configured = adapter.undoKeys ? hasKeys(content, adapter.undoKeys) : content.includes(START_MARKER);
-    return { id: adapter.id, status: configured ? "configured" : "unconfigured", path: found };
+    if (!configured) return { id: adapter.id, status: "unconfigured", path: found };
+    if (apiKey === undefined) return { id: adapter.id, status: "configured", path: found };
+    const key = adapter.keyEnv ? "env" : holdsKey(adapter.configPaths, found, content, apiKey) ? "ok" : "stale";
+    return { id: adapter.id, status: "configured", path: found, key };
+  });
+}
+
+// the key can sit in a sibling file bansos also wrote (jcode keeps it in its .env, not config.toml)
+function holdsKey(configPaths: string[], found: string, content: string, apiKey: string): boolean {
+  if (content.includes(apiKey)) return true;
+  return configPaths.map(expandHome).some((p) => {
+    if (p === found || p.endsWith(".sqlite")) return false;
+    try {
+      if (!fs.existsSync(p) || fs.statSync(p).size > MAX_TEXT_CONFIG_BYTES) return false;
+      const sibling = fs.readFileSync(p, "utf8");
+      return sibling.includes(START_MARKER) && sibling.includes(apiKey);
+    } catch {
+      return false;
+    }
   });
 }
 

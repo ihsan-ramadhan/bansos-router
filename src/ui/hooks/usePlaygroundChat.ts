@@ -9,6 +9,7 @@ import {
   calculateCompletionMetrics,
   dataFromSseFrame,
 } from "../utils/playground";
+import { apiFetch } from "../services/api";
 
 interface UsePlaygroundChatProps {
   models: ModelItem[];
@@ -240,7 +241,7 @@ export function usePlaygroundChat({
         headers["x-bansos-no-failover"] = "1";
       }
 
-      const res = await fetch(endpoint, {
+      const res = await apiFetch(endpoint, {
         method: "POST",
         headers,
         body: JSON.stringify(payload),

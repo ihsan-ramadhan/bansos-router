@@ -51,7 +51,7 @@ function claudeCodeAdapter(): HarnessAdapter {
 
       const env = {
         ANTHROPIC_BASE_URL: ctx.baseUrl.replace(/\/v1$/, ""),
-        ANTHROPIC_AUTH_TOKEN: "bansos",
+        ANTHROPIC_AUTH_TOKEN: ctx.apiKey,
         ANTHROPIC_DEFAULT_HAIKU_MODEL: haikuModel,
         ANTHROPIC_DEFAULT_SONNET_MODEL: sonnetModel,
         ANTHROPIC_DEFAULT_OPUS_MODEL: opusModel,
@@ -91,7 +91,7 @@ function aiderAdapter(): HarnessAdapter {
       const lines = [
         `# ${START_MARKER}`,
         `openai_api_base: ${ctx.baseUrl}`,
-        `openai_api_key: bansos`,
+        `openai_api_key: "${ctx.apiKey}"`,
         `model: ${ctx.defaultModel}`,
         `# ${END_MARKER}`,
       ];
@@ -135,7 +135,7 @@ function opencodeAdapter(): HarnessAdapter {
       const provider = {
         bansos: {
           npm: "@ai-sdk/openai-compatible",
-          options: { baseURL: ctx.baseUrl },
+          options: { baseURL: ctx.baseUrl, apiKey: ctx.apiKey },
           models: modelEntries,
         },
       };
@@ -175,7 +175,7 @@ function codexAdapter(): HarnessAdapter {
         `[model_providers.bansos]`,
         `name = "Bansos Router"`,
         `base_url = "${ctx.baseUrl}"`,
-        `experimental_bearer_token = "bansos"`,
+        `experimental_bearer_token = "${ctx.apiKey}"`,
         `wire_api = "responses"`,
       ];
       return [
@@ -208,6 +208,7 @@ function hermesAdapter(): HarnessAdapter {
         `  provider: custom`,
         `  default: "${ctx.defaultModel}"`,
         `  base_url: "${ctx.baseUrl}"`,
+        `  api_key: "${ctx.apiKey}"`,
         `# ${END_MARKER}`,
       ];
       return [
@@ -244,6 +245,8 @@ function gooseAdapter(): HarnessAdapter {
         engine: "openai",
         display_name: "Bansos Router",
         base_url: ctx.baseUrl,
+        // goose reads custom-provider keys from this env var, never from the json
+        api_key_env: "BANSOS_API_KEY",
         models,
       };
       return [
@@ -259,7 +262,8 @@ function gooseAdapter(): HarnessAdapter {
       return ["~/.config/goose/custom_providers/bansos.json"];
     },
     // file is dedicated to bansos; undo removes it entirely
-    undoKeys: ["name", "engine", "display_name", "base_url", "models"],
+    undoKeys: ["name", "engine", "display_name", "base_url", "api_key_env", "models"],
+    keyEnv: "BANSOS_API_KEY",
   };
 }
 
@@ -286,6 +290,7 @@ function openclawAdapter(): HarnessAdapter {
           providers: {
             bansos: {
               baseUrl: ctx.baseUrl,
+              apiKey: ctx.apiKey,
               models,
             },
           },
@@ -323,7 +328,7 @@ function antigravityAdapter(): HarnessAdapter {
         `# ${START_MARKER}`,
         `base_url = "${ctx.baseUrl}"`,
         `model = "${ctx.defaultModel}"`,
-        `api_key = "bansos"`,
+        `api_key = "${ctx.apiKey}"`,
         `# ${END_MARKER}`,
       ];
       return [
@@ -364,7 +369,7 @@ function jcodeAdapter(): HarnessAdapter {
       const envLines = [
         `# ${START_MARKER}`,
         `JCODE_OPENAI_COMPAT_API_BASE=${ctx.baseUrl.replace(/\/v1$/, "")}`,
-        `OPENAI_COMPAT_API_KEY=bansos`,
+        `OPENAI_COMPAT_API_KEY=${ctx.apiKey}`,
         `JCODE_OPENAI_COMPAT_LOCAL_ENABLED=1`,
         `# ${END_MARKER}`,
       ];
@@ -417,7 +422,7 @@ function nineRouterAdapter(): HarnessAdapter {
             name: "Bansos Router",
             priority: 1,
             isActive: true,
-            apiKey: "bansos",
+            apiKey: ctx.apiKey,
           },
         ],
       };
@@ -459,7 +464,7 @@ function continueAdapter(): HarnessAdapter {
         provider: "openai",
         model: m.id,
         apiBase: ctx.baseUrl,
-        apiKey: "bansos",
+        apiKey: ctx.apiKey,
       }));
       return [
         {
@@ -492,7 +497,7 @@ function renderOpenAiCompatConfig(ctx: SetupContext, configPath: string): Config
   const cfg = {
     apiProvider: "openai-compatible",
     openAiBaseUrl: ctx.baseUrl,
-    openAiApiKey: "bansos",
+    openAiApiKey: ctx.apiKey,
     openAiModelId: ctx.defaultModel,
     openAiCustomModelInfo: {
       contextWindow: targetModel?.contextWindow || 262144,
@@ -553,7 +558,7 @@ function ompAdapter(): HarnessAdapter {
       const child = [
         `bansos:`,
         `  baseUrl: "${ctx.baseUrl}"`,
-        `  apiKey: bansos`,
+        `  apiKey: "${ctx.apiKey}"`,
         `  api: openai-completions`,
         `  discovery:`,
         `    type: openai-models-list`,
@@ -603,15 +608,20 @@ export interface ModelPick {
 }
 
 // a list or upstream pick narrows the models written; a single model pins one; neither means every model
-export function buildSetupContext(baseUrl: string, pool: ModelDef[], pick: ModelPick): SetupContext | { error: string } {
+export function buildSetupContext(
+  baseUrl: string,
+  pool: ModelDef[],
+  pick: ModelPick,
+  apiKey: string,
+): SetupContext | { error: string } {
   const ids = pick.models ?? [];
   const upstreams = pick.upstreams ?? [];
   if (pick.model) {
     if (ids.length > 0 || upstreams.length > 0) return { error: "pick either one model or a model list, not both" };
-    return { baseUrl, defaultModel: pick.model, models: pool, specificModel: true };
+    return { baseUrl, defaultModel: pick.model, models: pool, specificModel: true, apiKey };
   }
   if (ids.length === 0 && upstreams.length === 0) {
-    return { baseUrl, defaultModel: pickSmartDefaultModel(pool), models: pool, specificModel: false };
+    return { baseUrl, defaultModel: pickSmartDefaultModel(pool), models: pool, specificModel: false, apiKey };
   }
   const known = new Set(pool.map((m) => m.source));
   const badUpstreams = upstreams.filter((u) => !known.has(u as ModelDef["source"]));
@@ -621,5 +631,5 @@ export function buildSetupContext(baseUrl: string, pool: ModelDef[], pick: Model
   if (missing.length > 0) return { error: `unknown or unavailable model: ${missing.join(", ")}` };
   const wanted = new Set(ids.map((id) => find(id)!.id));
   const models = pool.filter((m) => wanted.has(m.id) || upstreams.includes(m.source));
-  return { baseUrl, defaultModel: pickSmartDefaultModel(models), models, specificModel: false };
+  return { baseUrl, defaultModel: pickSmartDefaultModel(models), models, specificModel: false, apiKey };
 }

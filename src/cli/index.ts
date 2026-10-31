@@ -28,7 +28,7 @@ if (!("Bun" in globalThis) && !process.env.BANSOS_NO_BUN && !process.env._BANSOS
   const bunPath = resolveBunExecutable();
   if (bunPath) {
     const bunDir = path.dirname(path.resolve(bunPath));
-    const pathEnv = process.env.PATH ? `${bunDir}:${process.env.PATH}` : bunDir;
+    const pathEnv = process.env.PATH ? `${bunDir}${path.delimiter}${process.env.PATH}` : bunDir;
     const res = spawnSync(bunPath, process.argv.slice(1), {
       stdio: "inherit",
       env: { ...process.env, PATH: pathEnv, _BANSOS_BUN_REEXEC: "1" },
@@ -37,11 +37,14 @@ if (!("Bun" in globalThis) && !process.env.BANSOS_NO_BUN && !process.env._BANSOS
   }
 }
 import { runAutostart } from "./autostart";
+import { ClientKeyError, KEY_REJECTED_HINT, daemonFetch } from "./daemon-fetch";
 import { runDoctor } from "./doctor";
+import { runKey } from "./key";
 import { runPing } from "./ping";
 import { runRelay } from "./relay";
 import { runSetup } from "./setup";
 import { runDaemon, DEFAULT_PORT, MAX_PORT } from "../daemon";
+import { resolveDaemonAuth, type DaemonAuth } from "../daemon/auth";
 import { BANSOS_DIR, STATE_FILE, effectiveBind, effectivePort, readJson, runningDaemonUrl } from "../daemon/state";
 import { VERSION, checkUpdate } from "../update";
 
@@ -62,6 +65,7 @@ Commands:
   logs        tail the daemon log live
   usage       show request usage + token totals (--json)
   relay       manage relay egress
+  key         print the API key clients must send (--rotate for a new one)
   autostart   start the daemon when you log in (on/off/status)
   doctor      diagnose setup
 
@@ -73,7 +77,7 @@ Global flags:
 Defaults:
   port 17070 (auto-bumps to 17090 when busy), bind 127.0.0.1,
   state at ~/.bansos/, config at ~/.bansos/config.json,
-  log at ~/.bansos/logs/bansosd.log
+  log at ~/.bansos/logs/bansosd.log, API key at ~/.bansos/api-key
 
 Exit codes: 0 success, 1 error (daemon unreachable, unknown command/flag/model).
 
@@ -249,6 +253,28 @@ Checks daemon reachability and every harness config file, prints an update
 notice when one exists.
 Exit codes: 0 healthy, 1 any check failed.
 `,
+  key: `bansos key - print the API key every client must send to the daemon
+
+Usage:
+  bansos key [--rotate] [--json]
+
+Flags:
+  --rotate  write a new random key to ~/.bansos/api-key (refused while
+            BANSOS_API_KEY is set)
+  --json    emit { "key", "source", "file" } instead of the bare key
+
+Notes:
+  The key comes from BANSOS_API_KEY when set, else ~/.bansos/api-key; when
+  neither exists a new key is generated into that file. Only the key goes to
+  stdout (source and hints go to stderr), so this works:
+    export BANSOS_API_KEY=$(bansos key)
+  Clients send it as "Authorization: Bearer <key>" or "x-api-key: <key>".
+  After --rotate, restart the daemon (bansos stop; bansos start --bg, or
+  Settings > Restart) and re-run "bansos setup <harness>" for each harness.
+
+Exit codes: 0 success, 1 invalid BANSOS_API_KEY or key file, unknown flag,
+  or --rotate while BANSOS_API_KEY is set.
+`,
   usage: `bansos usage - show request usage and token totals
 
 Usage:
@@ -314,6 +340,8 @@ async function main(): Promise<number> {
       return runUsage(json);
     case "relay":
       return runRelay(args.slice(1));
+    case "key":
+      return runKey(args.slice(1), json);
     case "autostart":
       return runAutostart(args.slice(1), json);
     case "doctor":
@@ -369,6 +397,16 @@ async function runStart(args: string[]): Promise<number> {
     return 0;
   }
 
+  const config = await import("../daemon/state").then((m) => m.loadConfig());
+  // validate (or create) the key here: a bg child's errors would only reach the log file
+  let auth: DaemonAuth;
+  try {
+    auth = resolveDaemonAuth(bind ?? config.bind);
+  } catch (err) {
+    console.error(`bansos start: ${(err as Error).message}`);
+    return 1;
+  }
+
   const logFile = path.join(BANSOS_DIR, "logs", "bansosd.log");
   fs.mkdirSync(path.dirname(logFile), { recursive: true });
   const child = spawn(
@@ -394,7 +432,6 @@ async function runStart(args: string[]): Promise<number> {
     spawnFailed = true;
   });
   // read the actual bound port from state.json (the child may auto-bump a taken port)
-  const config = await import("../daemon/state").then((m) => m.loadConfig());
   let effectivePort = port ?? config.port ?? DEFAULT_PORT;
   let effectiveBind = bind ?? config.bind ?? "127.0.0.1";
   for (let i = 0; i < 100; i++) {
@@ -417,6 +454,7 @@ async function runStart(args: string[]): Promise<number> {
   console.log(`\n● bansosd started in background (pid ${child.pid})`);
   console.log(`  ├── Web UI   : ${baseUrl}`);
   console.log(`  ├── API Base : ${baseUrl}/v1`);
+  console.log(`  ├── Auth     : ${auth.mode === "key" ? "API key required (bansos key)" : "OFF (BANSOS_AUTH=off, loopback only)"}`);
   console.log(`  └── Log file : ${logFile}`);
   console.log(`\nwatch logs live with: bansos logs\n`);
   return 0;
@@ -430,9 +468,14 @@ async function runLogs(args: string[]): Promise<number> {
   if (activity) {
     let res: Response;
     try {
-      res = await fetch(`${base}/bansos/events?limit=100`);
-    } catch {
-      console.error(`bansos logs: daemon not reachable at ${base}. Start it with "bansos start"`);
+      res = await daemonFetch(`${base}/bansos/events?limit=100`);
+    } catch (err) {
+      if (err instanceof ClientKeyError) console.error(`bansos logs: ${err.message}`);
+      else console.error(`bansos logs: daemon not reachable at ${base}. Start it with "bansos start"`);
+      return 1;
+    }
+    if (res.status === 401) {
+      console.error(`bansos logs: the daemon rejected the API key (${KEY_REJECTED_HINT})`);
       return 1;
     }
     if (!res.ok) {
@@ -663,34 +706,61 @@ interface DaemonStatus {
 }
 
 // find daemons across the configured port, state.json's port, and the auto-bump range
-async function probeDaemonPorts(): Promise<DaemonStatus[]> {
+async function probeDaemonPorts(): Promise<{ daemons: DaemonStatus[]; rejected: number[] }> {
   const config = await import("../daemon/state").then((m) => m.loadConfig());
   const state = readJson<{ port?: number }>(STATE_FILE);
   const ports = new Set<number>([config.port]);
   if (state?.port) ports.add(state.port);
   for (let p = DEFAULT_PORT; p <= MAX_PORT; p++) ports.add(p);
 
+  const rejected: number[] = [];
   const results = await Promise.all(
     [...ports].map(async (port) => {
       try {
-        const res = await fetch(`http://127.0.0.1:${port}/bansos/status`, {
+        const res = await daemonFetch(`http://127.0.0.1:${port}/bansos/status`, {
           signal: AbortSignal.timeout(400),
         });
+        if (res.status === 401) rejected.push(port);
         if (!res.ok) return null;
         const body = (await res.json()) as DaemonStatus;
         return body.status === "ok" ? body : null;
-      } catch {
+      } catch (err) {
+        if (err instanceof ClientKeyError) throw err;
         return null;
       }
     }),
   );
-  return results
-    .filter((r): r is DaemonStatus => r !== null)
-    .sort((a, b) => a.port - b.port);
+  return {
+    daemons: results.filter((r): r is DaemonStatus => r !== null).sort((a, b) => a.port - b.port),
+    rejected: rejected.sort((a, b) => a - b),
+  };
 }
 
 async function runStatus(json: boolean): Promise<number> {
-  const daemons = await probeDaemonPorts();
+  let probed: { daemons: DaemonStatus[]; rejected: number[] };
+  try {
+    probed = await probeDaemonPorts();
+  } catch (err) {
+    if (!(err instanceof ClientKeyError)) throw err;
+    if (json) console.log(JSON.stringify({ ok: false, daemons: [], error: err.message }));
+    else console.error(`bansos status: ${err.message}`);
+    return 1;
+  }
+  const { daemons, rejected } = probed;
+  // a daemon that refuses our key is a failure even when another one answers
+  const printRejected = () => {
+    for (const port of rejected) {
+      console.error(`bansos: daemon on port ${port} rejected the API key (${KEY_REJECTED_HINT})`);
+    }
+  };
+  if (rejected.length > 0 && json) {
+    console.log(JSON.stringify({ ok: false, daemons, rejected }));
+    return 1;
+  }
+  if (rejected.length > 0 && daemons.length === 0) {
+    printRejected();
+    return 1;
+  }
   if (daemons.length === 0) {
     if (json) {
       console.log(JSON.stringify({ ok: false, daemons: [] }));
@@ -728,6 +798,10 @@ async function runStatus(json: boolean): Promise<number> {
   if (update.hasUpdate) {
     console.log(`\nUpdate available: ${update.current} -> ${update.latest} (run: npm i -g bansos-router)`);
   }
+  if (rejected.length > 0) {
+    printRejected();
+    return 1;
+  }
   return 0;
 }
 
@@ -748,7 +822,11 @@ async function runUsage(json: boolean): Promise<number> {
 
   let body: UsageCliShape;
   try {
-    const res = await fetch(`${base}/bansos/usage`);
+    const res = await daemonFetch(`${base}/bansos/usage`);
+    if (res.status === 401) {
+      console.error(`bansos usage: the daemon rejected the API key (${KEY_REJECTED_HINT})`);
+      return 1;
+    }
     if (!res.ok) {
       console.error(`bansos usage: daemon returned HTTP ${res.status}`);
       return 1;
@@ -764,8 +842,9 @@ async function runUsage(json: boolean): Promise<number> {
       perModel: Record<string, { requests: number; ok: number; inputTokens: number; outputTokens: number }>;
       perUpstream: Record<string, { requests: number; ok: number }>;
     };
-  } catch {
-    console.error(`bansos usage: daemon not reachable at ${base}. Start it with "bansos start"`);
+  } catch (err) {
+    if (err instanceof ClientKeyError) console.error(`bansos usage: ${err.message}`);
+    else console.error(`bansos usage: daemon not reachable at ${base}. Start it with "bansos start"`);
     return 1;
   }
 
@@ -807,9 +886,16 @@ async function runUsage(json: boolean): Promise<number> {
 async function runStatusOrModels(cmd: "status" | "models" | "refresh", json: boolean): Promise<number> {
   const base = `http://${effectiveBind()}:${effectivePort()}`;
 
+  const rejectedKey = () => {
+    if (json) console.log(JSON.stringify({ ok: false, error: "the daemon rejected the API key" }));
+    else console.error(`bansos ${cmd}: the daemon rejected the API key (${KEY_REJECTED_HINT})`);
+    return 1;
+  };
+
   try {
     if (cmd === "models") {
-      const res = await fetch(`${base}/v1/models`);
+      const res = await daemonFetch(`${base}/v1/models`);
+      if (res.status === 401) return rejectedKey();
       const body = (await res.json()) as { data: Array<{ id: string }> };
       if (json) {
         console.log(JSON.stringify(body));
@@ -818,7 +904,8 @@ async function runStatusOrModels(cmd: "status" | "models" | "refresh", json: boo
       for (const m of body.data) console.log(m.id);
       return 0;
     }
-    const res = await fetch(`${base}/bansos/refresh`, { method: "POST" });
+    const res = await daemonFetch(`${base}/bansos/refresh`, { method: "POST" });
+    if (res.status === 401) return rejectedKey();
     const body = (await res.json()) as { modelCount: number; alive: number };
     if (json) {
       console.log(JSON.stringify(body));
@@ -826,7 +913,12 @@ async function runStatusOrModels(cmd: "status" | "models" | "refresh", json: boo
     }
     console.log(`refreshed: ${body.modelCount} model(s), ${body.alive} alive`);
     return 0;
-  } catch {
+  } catch (err) {
+    if (err instanceof ClientKeyError) {
+      if (json) console.log(JSON.stringify({ ok: false, error: err.message }));
+      else console.error(`bansos ${cmd}: ${err.message}`);
+      return 1;
+    }
     if (json) console.log(JSON.stringify({ ok: false, error: `daemon not reachable at ${base}` }));
     else console.error(`bansos: daemon not reachable at ${base}. Start it with "bansos start"`);
     return 1;

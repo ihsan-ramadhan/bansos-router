@@ -19,6 +19,7 @@ function setupTestServer(): Promise<{ server: http.Server; baseUrl: string; clos
     port: 0,
     log,
     startedAt: Date.now(),
+    apiKey: null,
   });
 
   return new Promise((resolve) => {

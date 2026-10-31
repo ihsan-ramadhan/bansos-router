@@ -1,5 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { readApiKey } from "../extensions/pi/src/auth";
 import { displayName } from "../extensions/pi/src/models";
 
 test("pi model names carry their upstream so /model shows where each one runs", () => {
@@ -30,4 +34,20 @@ test("pi model list prefers live, then the last cached catalog, then the bundled
   const vision = toProviderModel({ id: "v", input: ["text", "image"], reasoning: false });
   assert.deepEqual(vision.input, ["text", "image"]);
   assert.equal(toProviderModel({ id: "deepseek-x" }).reasoning, false, "reasoning comes from the daemon, not the id");
+});
+
+test("pi reads the API key from BANSOS_API_KEY first, then <dir>/api-key, else null", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-key-"));
+  try {
+    assert.equal(readApiKey({}, dir), null, "no env, no file");
+    fs.writeFileSync(path.join(dir, "api-key"), "  file-key-0123456789abcdef \n");
+    assert.equal(readApiKey({}, dir), "file-key-0123456789abcdef", "file is read and trimmed");
+    assert.equal(readApiKey({ BANSOS_API_KEY: " env-key-0123456789abcdef " }, dir), "env-key-0123456789abcdef", "env wins");
+    assert.equal(readApiKey({ BANSOS_API_KEY: "   " }, dir), "file-key-0123456789abcdef", "blank env falls through");
+    assert.equal(readApiKey({ BANSOS_DIR: dir }), "file-key-0123456789abcdef", "dir defaults to BANSOS_DIR");
+    fs.writeFileSync(path.join(dir, "api-key"), "\n");
+    assert.equal(readApiKey({}, dir), null, "an empty file is no key");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

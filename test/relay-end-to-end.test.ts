@@ -88,6 +88,7 @@ function setupTestDaemon(): Promise<{
     port: 0,
     log,
     startedAt: Date.now(),
+    apiKey: null,
   });
 
   return new Promise((resolve) => {

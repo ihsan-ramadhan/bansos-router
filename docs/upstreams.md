@@ -334,8 +334,15 @@ larger winning.
 - Per-IP sliding window on inbound requests, 300 per minute by default:
   protects the loopback socket if the user binds LAN, not a real abuse
   defense for public exposure (which we don't support).
-- Set the limit with the `BANSOS_RATE_LIMIT` env var; `0` or an invalid value
-  falls back to the default.
+- Set the limit with the `BANSOS_RATE_LIMIT` env var; `0` disables the
+  limiter, and an unset or invalid value means the default of 300.
+- The dashboard's polling reads (`GET` on `/healthz`, `/bansos/status`,
+  `/bansos/events`, `/bansos/usage`, `/bansos/logs`) and UI assets do not
+  count. Everything else does: API requests (`/v1/*` and the bare aliases
+  such as `/models` and `/chat/completions`), mutating requests, and the
+  on-demand reads (config, adapters, autostart, relay, doctor). The
+  dashboard's model-list poll (`GET /v1/models?all=1`, every 5 s) still
+  counts, about 12 requests per minute per open tab.
 
 ## 6. Upstream rate-limit reality
 

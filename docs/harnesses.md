@@ -14,8 +14,14 @@
 3. **Idempotent & reversible.** `setup` never overwrites user edits blindly:
    it writes a clearly-marked block, and `bansos setup <harness> --undo`
    removes it.
-4. **No secrets written.** The daemon accepts any placeholder key
-   (e.g. `bansos`); adapters never invent or persist real credentials.
+4. **Only the router key is written.** The daemon requires its own API key
+   (`BANSOS_API_KEY`, else `~/.bansos/api-key`, generated on first use), and
+   `bansos setup` writes that key into the harness config where the harness
+   sends it as a bearer token or `x-api-key`. Adapters never write upstream
+   credentials (there are none). `--dry-run`, `--undo` and the dashboard
+   preview show the placeholder `<BANSOS_API_KEY>`; a real write (CLI or the
+   dashboard's Apply) uses the real key. With `BANSOS_AUTH=off` the dashboard
+   Apply writes the old placeholder `bansos`.
 
 ## 2. Matrix
 
@@ -24,20 +30,20 @@ Legend: 🟢 config-only · 🟡 config + small adapter · 🔵 works manually, 
 | Harness | Wire | Config location | Effort | Notes |
 |---|---|---|---|---|
 | **pi** | OpenAI Chat | extension (`registerProvider`) | 🟡 | Only code adapter: provider `bansosr` + `/bansosr` command, spawns daemon on demand, stops it again on exit if it spawned it |
-| **Claude Code** | Anthropic Messages | `~/.claude/settings.json` (`env`) | 🟢 | `ANTHROPIC_BASE_URL=http://127.0.0.1:17070` + `ANTHROPIC_AUTH_TOKEN=bansos` + model mappings |
-| **Aider** | OpenAI Chat | env / `aider.conf.yml` | 🟢 | `OPENAI_API_BASE=http://127.0.0.1:17070/v1`, `OPENAI_API_KEY=bansos`, `AIDER_MODEL=<id>` |
-| **OpenCode** | OpenAI Chat | `~/.config/opencode/opencode.json` | 🟢 | Custom provider with `@ai-sdk/openai-compatible`, `baseURL` |
-| **Codex CLI** | OpenAI Responses | `~/.codex/config.toml` | 🟢 | `[model_providers.bansos] base_url`, `wire_api = "responses"`: daemon serves `/v1/responses` |
-| **Hermes (Nous)** | OpenAI Chat | `~/.hermes/config.yaml` | 🟢 | `model.provider: custom` + `model.base_url` |
-| **OpenClaw** | OpenAI Chat or Anthropic | `~/.openclaw/config.json` / agent `models.json` | 🟢 | `models.providers.<id>.baseUrl`; can pick either wire |
-| **Goose** | OpenAI Chat | `~/.config/goose/custom_providers/*.json` | 🟢 | `engine: "openai"`, `base_url`, model list |
-| **Antigravity CLI** | OpenAI Chat | `~/.config/antigravity/config.toml` | 🟢 | `base_url`, `model`, `api_key_env` (or inline) |
-| **JCode** | OpenAI Chat | `~/.jcode/config.toml` | 🟢 | `[providers.bansos] type="openai-compatible"`, `base_url` |
-| **9Router** | OpenAI Chat | `~/.9router/db.json` | 🟢 | Custom compatible `providerNodes` + `providerConnections` |
-| **Continue** | OpenAI Chat | `~/.continue/config.json` | 🟢 | Appends/merges OpenAI provider entries in `models` array |
-| **Cline** | OpenAI Chat | `~/.config/cline/config.json` | 🟢 | Sets `apiProvider: "openai-compatible"`, `openAiBaseUrl` |
-| **Roo Code** | OpenAI Chat | `~/.config/roo-cline/config.json` | 🟢 | Sets `apiProvider: "openai-compatible"`, `openAiBaseUrl` |
-| **OMP (Oh My Pi)** | OpenAI Chat | `~/.omp/agent/models.yml` | 🟢 | Appends `bansos` provider with `openai-models-list` discovery |
+| **Claude Code** | Anthropic Messages | `~/.claude/settings.json` (`env`) | 🟢 | `ANTHROPIC_BASE_URL=http://127.0.0.1:17070` + `ANTHROPIC_AUTH_TOKEN=<BANSOS_API_KEY>` + model mappings |
+| **Aider** | OpenAI Chat | env / `aider.conf.yml` | 🟢 | `OPENAI_API_BASE=http://127.0.0.1:17070/v1`, `OPENAI_API_KEY=<BANSOS_API_KEY>`, `AIDER_MODEL=<id>` |
+| **OpenCode** | OpenAI Chat | `~/.config/opencode/opencode.json` | 🟢 | Custom provider with `@ai-sdk/openai-compatible`, `baseURL`, `apiKey` |
+| **Codex CLI** | OpenAI Responses | `~/.codex/config.toml` | 🟢 | `[model_providers.bansos] base_url`, `experimental_bearer_token`, `wire_api = "responses"`: daemon serves `/v1/responses` |
+| **Hermes (Nous)** | OpenAI Chat | `~/.hermes/config.yaml` | 🟢 | `model.provider: custom` + `model.base_url` + `model.api_key` |
+| **OpenClaw** | OpenAI Chat or Anthropic | `~/.openclaw/config.json` / agent `models.json` | 🟢 | `models.providers.<id>.baseUrl` + `apiKey`; can pick either wire |
+| **Goose** | OpenAI Chat | `~/.config/goose/custom_providers/*.json` | 🟢 | `engine: "openai"`, `base_url`, `api_key_env: "BANSOS_API_KEY"`, model list; export `BANSOS_API_KEY` where goose runs |
+| **Antigravity CLI** | OpenAI Chat | `~/.config/antigravity/config.toml` | 🟢 | `base_url`, `model`, `api_key` |
+| **JCode** | OpenAI Chat | `~/.jcode/config.toml` + `~/.config/jcode/openai-compatible.env` | 🟢 | `[providers.openai-compatible]` with `base_url`, `auth = "bearer"`; key in `OPENAI_COMPAT_API_KEY` |
+| **9Router** | OpenAI Chat | `~/.9router/db.json` | 🟢 | Custom compatible `providerNodes` + `providerConnections` (`apiKey`) |
+| **Continue** | OpenAI Chat | `~/.continue/config.json` | 🟢 | Appends/merges OpenAI provider entries in `models` array (`apiKey`) |
+| **Cline** | OpenAI Chat | `~/.config/cline/config.json` | 🟢 | Sets `apiProvider: "openai-compatible"`, `openAiBaseUrl`, `openAiApiKey` |
+| **Roo Code** | OpenAI Chat | `~/.config/roo-cline/config.json` | 🟢 | Sets `apiProvider: "openai-compatible"`, `openAiBaseUrl`, `openAiApiKey` |
+| **OMP (Oh My Pi)** | OpenAI Chat | `~/.omp/agent/models.yml` | 🟢 | Appends `bansos` provider (`apiKey`) with `openai-models-list` discovery |
 | **Claude Desktop** | Anthropic Messages | n/a | 🔴 | No supported custom base URL; out of scope (hacky MITM only) |
 | **Copilot CLI** | n/a | n/a | 🔴 | OAuth-only, no custom endpoint |
 | **Gemini CLI** | n/a | n/a | 🔴 | Retired (June 2026) -> Antigravity CLI |
@@ -52,11 +58,13 @@ type HarnessAdapter = {
   configPaths: string[];      // candidate locations, first existing wins (or create)
   render(ctx: SetupCtx): ConfigWrite[];  // ordered file writes
   undo(ctx: SetupCtx): void;  // remove only the bansos-marked block
+  keyEnv?: string;            // env var the harness reads the key from (goose)
 };
 type SetupCtx = {
   baseUrl: string;            // http://127.0.0.1:<port>
   defaultModel: string;       // from catalog or CLI flag
   models: ModelDef[];         // alive catalog snapshot
+  apiKey: string;             // router key, or "<BANSOS_API_KEY>" for previews
 };
 type ConfigWrite = {
   path: string;
@@ -113,13 +121,16 @@ the default.
 
 ## 4. Per-harness setup snippets (target output)
 
+`<BANSOS_API_KEY>` stands for the router key; `bansos setup` writes the real
+value and `bansos key` prints it.
+
 ### Claude Code: `~/.claude/settings.json`
 
 ```jsonc
 {
   "env": {
     "ANTHROPIC_BASE_URL": "http://127.0.0.1:17070",
-    "ANTHROPIC_AUTH_TOKEN": "bansos",
+    "ANTHROPIC_AUTH_TOKEN": "<BANSOS_API_KEY>", // sent as Authorization: Bearer
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "<fast-non-reasoning-id>",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "<flagship-reasoning-id>",
     "ANTHROPIC_DEFAULT_OPUS_MODEL": "<top-capacity-reasoning-id>",
@@ -132,7 +143,7 @@ the default.
 
 ```bash
 export OPENAI_API_BASE=http://127.0.0.1:17070/v1
-export OPENAI_API_KEY=bansos
+export OPENAI_API_KEY=$(bansos key)
 export AIDER_MODEL=<id>
 # or: aider --openai-api-base http://127.0.0.1:17070/v1 --model <id>
 ```
@@ -144,7 +155,7 @@ export AIDER_MODEL=<id>
   "provider": {
     "bansos": {
       "npm": "@ai-sdk/openai-compatible",
-      "options": { "baseURL": "http://127.0.0.1:17070/v1" },
+      "options": { "baseURL": "http://127.0.0.1:17070/v1", "apiKey": "<BANSOS_API_KEY>" },
       "models": {
         "muse-spark-1.3-contributor-free": {},
         "nemotron-3-ultra-free": {},
@@ -166,7 +177,7 @@ model_provider = "bansos"
 name = "Bansos Router"
 base_url = "http://127.0.0.1:17070/v1"
 wire_api = "responses"
-experimental_bearer_token = "bansos"   # keyless: router ignores auth; any token works
+experimental_bearer_token = "<BANSOS_API_KEY>"   # the router key, sent as Authorization: Bearer
 ```
 
 ### Hermes: `~/.hermes/config.yaml`
@@ -176,13 +187,18 @@ model:
   provider: custom
   default: "<id>"
   base_url: "http://127.0.0.1:17070/v1"
+  api_key: "<BANSOS_API_KEY>"
 ```
+
+If your Hermes version ignores `model.api_key` for a custom endpoint, export
+`OPENAI_API_KEY=$(bansos key)` where Hermes runs.
 
 ### OpenClaw: config `models.providers`
 
 ```jsonc
 { "models": { "providers": { "bansos": {
     "baseUrl": "http://127.0.0.1:17070/v1",
+    "apiKey": "<BANSOS_API_KEY>",
     "models": [{ "id": "<id>" }] } } } }
 ```
 
@@ -192,7 +208,17 @@ model:
 { "name": "bansos", "engine": "openai",
   "display_name": "Bansos Router",
   "base_url": "http://127.0.0.1:17070/v1",
+  "api_key_env": "BANSOS_API_KEY",
   "models": [{ "name": "<id>", "context_limit": 256000 }] }
+```
+
+Goose custom providers read the key from the environment variable named by
+`api_key_env`, never from the JSON, so the file holds no key. Export it where
+goose runs (`bansos setup goose` prints the same hint):
+
+```bash
+export BANSOS_API_KEY=$(bansos key)          # POSIX shells
+$env:BANSOS_API_KEY = (bansos key)           # PowerShell
 ```
 
 ### Antigravity: `~/.config/antigravity/config.toml`
@@ -200,18 +226,26 @@ model:
 ```toml
 base_url = "http://127.0.0.1:17070/v1"
 model = "<id>"
-api_key = "bansos"
+api_key = "<BANSOS_API_KEY>"
 ```
 
-### JCode: `~/.jcode/config.toml`
+### JCode: `~/.jcode/config.toml` + `~/.config/jcode/openai-compatible.env`
 
 ```toml
-default_provider = "bansos"
+default_provider = "openai-compatible"
 default_model = "<id>"
 
-[providers.bansos]
-type = "openai-compatible"
+[providers.openai-compatible]
+type = "open-ai-compatible"
 base_url = "http://127.0.0.1:17070/v1"
+auth = "bearer"
+```
+
+```bash
+# ~/.config/jcode/openai-compatible.env
+JCODE_OPENAI_COMPAT_API_BASE=http://127.0.0.1:17070
+OPENAI_COMPAT_API_KEY=<BANSOS_API_KEY>
+JCODE_OPENAI_COMPAT_LOCAL_ENABLED=1
 ```
 
 ### 9Router: `~/.9router/db.json`
@@ -236,7 +270,7 @@ base_url = "http://127.0.0.1:17070/v1"
       "name": "Bansos Router",
       "priority": 1,
       "isActive": true,
-      "apiKey": "bansos"
+      "apiKey": "<BANSOS_API_KEY>"
     }
   ]
 }
@@ -247,12 +281,14 @@ base_url = "http://127.0.0.1:17070/v1"
 Package `pi-bansos-router` (`pi install npm:pi-bansos-router`). Registers the
 `bansosr` provider (base URL `http://127.0.0.1:17070/v1`, `api:
 "openai-completions"`), fetches the live model list from `/v1/models`, and
-registers a `/bansosr` status command:
+registers a `/bansosr` status command. It reads the router key from
+`BANSOS_API_KEY`, else `~/.bansos/api-key` (or `$BANSOS_DIR/api-key`), and
+never generates one:
 
 ```ts
 pi.registerProvider("bansosr", {
   baseUrl: "http://127.0.0.1:17070/v1",
-  apiKey: "bansos",
+  apiKey: key ?? "bansos",    // key = BANSOS_API_KEY or the key file
   api: "openai-completions",
   models: aliveModels.map(toPiModel),
 });
@@ -272,7 +308,7 @@ running.
 npm i -g bansos-router
 bansos start --bg  # start the daemon
 bansos setup aider --model big-pickle
-# writes openai_api_base / openai_api_key / model into ~/.aider.conf.yml
+# writes openai_api_base / openai_api_key (the router key) / model into ~/.aider.conf.yml
 aider              # works
 ```
 
@@ -296,10 +332,21 @@ pointing at the same daemon. Rate limits are shared across harnesses (see
 
 `bansos doctor` checks, in order:
 
-1. the daemon answers `/healthz` (and how many models it serves);
+1. the daemon answers `/healthz`; then `/bansos/status` with this machine's
+   key (`BANSOS_API_KEY`, else `~/.bansos/api-key`) for the model count and
+   relay. A 401 there is reported as `✗ auth  the daemon rejected this
+   machine's API key` with the fix (set `BANSOS_API_KEY` to the daemon's key,
+   or restart the daemon so it uses the key file);
 2. relay state and the security config (strict mode, DLP, config warnings);
 3. per harness: config file missing, present with bansos markers or merged
-   keys, or present without them;
+   keys, or present without them. A configured harness whose file (for JCode,
+   its `openai-compatible.env`) does not contain the current key (for example the old `bansos` placeholder, or a key
+   from before `bansos key --rotate`) is reported as
+   `✗ <id> configured but its API key does not match the daemon's (fix: bansos setup <id>)`.
+   Goose reads the key from the environment, so doctor reports it as
+   `reads BANSOS_API_KEY from the environment` and adds a hint when the
+   variable is not set in the current shell. The key check is skipped when the
+   daemon rejects this machine's key or runs with `BANSOS_AUTH=off`;
 4. whether a newer `bansos-router` is on npm.
 
 It exits 1 when any check fails.

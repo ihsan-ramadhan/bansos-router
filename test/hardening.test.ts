@@ -21,7 +21,7 @@ async function assertDaemonAlive(baseUrl: string, attempts = 20): Promise<void> 
   throw new Error(`daemon did not survive: ${baseUrl}/healthz unreachable`);
 }
 
-function createTestDaemon(mockChatUrl: string): Promise<{
+function createTestDaemon(mockChatUrl: string, rateLimit = 1000): Promise<{
   server: http.Server;
   baseUrl: string;
   close: () => Promise<void>;
@@ -48,13 +48,14 @@ function createTestDaemon(mockChatUrl: string): Promise<{
       compat: { supportsDeveloperRole: false, supportsReasoningEffort: false },
     }),
   ]);
-  const rateLimiter = new RateLimiter({ limit: 1000, windowMs: 60_000 });
+  const rateLimiter = new RateLimiter({ limit: rateLimit, windowMs: 60_000 });
   const server = createServer({
     catalog,
     rateLimiter,
     port: 0,
     log,
     startedAt: Date.now(),
+    apiKey: null,
   });
 
   return new Promise((resolve) => {
@@ -129,6 +130,27 @@ function rawRequest(
     req.end();
   });
 }
+
+test("dashboard polling does not spend the rate limit; API requests do", async () => {
+  const { baseUrl, close } = await createTestDaemon("http://127.0.0.1:1", 2);
+  try {
+    for (let i = 0; i < 10; i++) {
+      const res = await fetch(`${baseUrl}/bansos/status`);
+      await res.arrayBuffer();
+      assert.equal(res.status, 200);
+    }
+    for (let i = 0; i < 2; i++) {
+      const res = await fetch(`${baseUrl}/v1/models`);
+      await res.arrayBuffer();
+      assert.equal(res.status, 200);
+    }
+    const limited = await fetch(`${baseUrl}/v1/models`);
+    await limited.arrayBuffer();
+    assert.equal(limited.status, 429);
+  } finally {
+    await close();
+  }
+});
 
 // A1: mid-stream upstream failures must not crash the daemon
 
