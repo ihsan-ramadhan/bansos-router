@@ -17,7 +17,7 @@ async function withFetch<T>(impl: typeof fetch, fn: () => Promise<T>): Promise<T
 }
 
 function listing(models: Array<{ id: string; context_length?: number }>): typeof fetch {
-  return (async () => new Response(JSON.stringify({ object: "list", data: models }))) as typeof fetch;
+  return (async () => new Response(JSON.stringify({ object: "list", data: models }))) as unknown as typeof fetch;
 }
 
 test("only seeded chat models that are live make the catalog", async () => {
@@ -45,12 +45,12 @@ test("a zero context falls back to the seed", async () => {
 });
 
 test("an unreachable or malformed listing keeps the last-known models", async () => {
-  const down = await withFetch((async () => new Response("bad gateway", { status: 502 })) as typeof fetch, () =>
+  const down = await withFetch((async () => new Response("bad gateway", { status: 502 })) as unknown as typeof fetch, () =>
     ovhUpstream.fetchCatalog(),
   );
   assert.equal(down, null);
 
-  const garbled = await withFetch((async () => new Response("{}")) as typeof fetch, () =>
+  const garbled = await withFetch((async () => new Response("{}")) as unknown as typeof fetch, () =>
     ovhUpstream.fetchCatalog(),
   );
   assert.equal(garbled, null);

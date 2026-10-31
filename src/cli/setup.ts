@@ -1,6 +1,6 @@
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { Database } from "bun:sqlite";
 import { ADAPTERS, buildSetupContext, findAdapter } from "../adapters";
 import type { HarnessAdapter, SetupContext } from "../adapters/types";
 import { AUTH_KEY_PLACEHOLDER, AUTH_OFF_KEY, resolveApiKey } from "../daemon/auth";
@@ -116,10 +116,8 @@ function update9RouterSqlite(dbPath: string, ctx: SetupContext): boolean {
   });
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sqliteMod = (globalThis as any).process?.getBuiltinModule?.("node:sqlite");
-    if (sqliteMod?.DatabaseSync) {
-      const db = new sqliteMod.DatabaseSync(dbPath);
+    const db = new Database(dbPath);
+    try {
       db.prepare(
         "INSERT OR REPLACE INTO providerNodes(id, type, name, data, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?)",
       ).run(nodeId, "openai-compatible", "Bansos Router", nodeData, now, now);
@@ -127,21 +125,10 @@ function update9RouterSqlite(dbPath: string, ctx: SetupContext): boolean {
       db.prepare(
         "INSERT OR REPLACE INTO providerConnections(id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       ).run(connId, nodeId, "api_key", "Bansos Router", null, 1, 1, connData, now, now);
-
+    } finally {
       db.close();
-      return true;
     }
-  } catch {
-    // fall through to the sqlite3 CLI
-  }
-
-  try {
-    const sql = [
-      `INSERT OR REPLACE INTO providerNodes(id, type, name, data, createdAt, updatedAt) VALUES('${nodeId}', 'openai-compatible', 'Bansos Router', '${nodeData.replace(/'/g, "''")}', '${now}', '${now}');`,
-      `INSERT OR REPLACE INTO providerConnections(id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt) VALUES('${connId}', '${nodeId}', 'api_key', 'Bansos Router', NULL, 1, 1, '${connData.replace(/'/g, "''")}', '${now}', '${now}');`,
-    ].join("\n");
-    const res = spawnSync("sqlite3", [dbPath, sql], { encoding: "utf8" });
-    return res.status === 0;
+    return true;
   } catch {
     return false;
   }
@@ -151,26 +138,14 @@ function undo9RouterSqlite(dbPath: string): boolean {
   const nodeId = "openai-compatible-chat-bansos";
   const connId = "bansos-default";
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sqliteMod = (globalThis as any).process?.getBuiltinModule?.("node:sqlite");
-    if (sqliteMod?.DatabaseSync) {
-      const db = new sqliteMod.DatabaseSync(dbPath);
+    const db = new Database(dbPath);
+    try {
       db.prepare("DELETE FROM providerNodes WHERE id = ?").run(nodeId);
       db.prepare("DELETE FROM providerConnections WHERE id = ?").run(connId);
+    } finally {
       db.close();
-      return true;
     }
-  } catch {
-    // fall through to the sqlite3 CLI
-  }
-
-  try {
-    const sql = [
-      `DELETE FROM providerNodes WHERE id = '${nodeId}';`,
-      `DELETE FROM providerConnections WHERE id = '${connId}';`,
-    ].join("\n");
-    const res = spawnSync("sqlite3", [dbPath, sql], { encoding: "utf8" });
-    return res.status === 0;
+    return true;
   } catch {
     return false;
   }

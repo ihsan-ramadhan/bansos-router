@@ -31,7 +31,9 @@ omp plugin install pi-bansos-router
   cache, and only falls back to the bundled snapshot if no catalog was ever
   cached. Model names carry their upstream (`Big Pickle (Zen)`), and vision
   models are registered with image input.
-- Spawns the daemon on demand if it is offline (`bansos start --bg`).
+- Spawns the daemon on demand if it is offline (`bansos start --bg`). The
+  daemon runs on Bun (>= 1.3), so Bun must be installed for the auto-spawn to
+  succeed; the extension itself runs inside the Node-based pi process.
 - On quit, stops only the daemon it started itself: a daemon you were already
   running is left alone.
 - `/bansosr` reports router health, the active model count and relay state,

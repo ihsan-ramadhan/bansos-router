@@ -25,18 +25,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
 
       - name: Install
-        run: npm ci
+        run: bun install --frozen-lockfile --ignore-scripts
 
       # a run where no upstream answers fails here and the last published list stays up
       - name: Build the page
-        run: npx tsx scripts/models-page.ts site
+        run: bun scripts/models-page.ts site
 
       - name: Configure Pages
         uses: actions/configure-pages@v6

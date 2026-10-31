@@ -20,8 +20,19 @@ Free, keyless coding models for every coding harness, through one local daemon. 
 
 ## Quick start
 
+bansos runs on [Bun](https://bun.sh) (>= 1.3), which is the only supported runtime. Install Bun first:
+
 ```bash
-npm i -g bansos-router
+# Linux / macOS
+curl -fsSL https://bun.sh/install | bash
+# Windows (PowerShell)
+powershell -c "irm bun.sh/install.ps1 | iex"
+```
+
+Then install bansos globally with either package manager:
+
+```bash
+npm i -g bansos-router    # or: bun add -g bansos-router
 ```
 
 Start the daemon and point your coding harness at it:
@@ -112,6 +123,17 @@ Without a key, or with a wrong one, every route answers `401` (`{"error":{"type"
 
 Harness configs written by older versions carry the placeholder key `bansos`, which the daemon now rejects with `401`. After upgrading, re-run `bansos setup <harness>` for each harness you use; `bansos doctor` lists the ones whose key does not match. Goose reads the key from the environment, so export `BANSOS_API_KEY` where goose runs (`export BANSOS_API_KEY=$(bansos key)`, or `$env:BANSOS_API_KEY = (bansos key)` in PowerShell). Scripts that call the daemon need the header too, and `/healthz` now returns only `{"status":"ok"}` (model count and relay moved behind the key, in `/bansos/status`).
 
+### Breaking change: Node.js is no longer supported
+
+bansos now runs only on Bun. Running the daemon under Node prints `bansos requires Bun >= 1.3.0 ...` and exits. To upgrade:
+
+1. Install Bun (see [Quick start](#quick-start)).
+2. Reinstall bansos: `npm i -g bansos-router` (or `bun add -g bansos-router`).
+3. Run `bansos autostart on` again. Autostart entries written by older versions call `node`, which now refuses to start; re-running rewrites them to launch Bun.
+4. Docker only: container state moved from `/home/node/.bansos` to `/home/bun/.bansos`. The named volume keeps its data and the container still runs as uid 1000, so no data is lost.
+
+Known Bun limitation: under Bun a client disconnecting mid-request does not cancel the upstream request (the generation finishes upstream); see [oven-sh/bun#7716](https://github.com/oven-sh/bun/issues/7716).
+
 ## Docker
 
 Run the daemon in a container instead of installing globally:
@@ -119,10 +141,10 @@ Run the daemon in a container instead of installing globally:
 ```bash
 docker build -t bansos-router .
 export BANSOS_API_KEY="$(openssl rand -base64 32)"   # keep it: clients send this key
-docker run -d --name bansos -p 17070:17070 -e BANSOS_API_KEY -v bansos-data:/home/node/.bansos bansos-router
+docker run -d --name bansos -p 17070:17070 -e BANSOS_API_KEY -v bansos-data:/home/bun/.bansos bansos-router
 ```
 
-The container runs as the non-root `node` user (uid 1000); state lives in `/home/node/.bansos` inside the container, which is what the volume above mounts. Without `-e BANSOS_API_KEY` the daemon generates a key into the volume; read it with `docker exec bansos node dist/cli/index.js key`.
+The container runs as the non-root `bun` user (uid 1000); state lives in `/home/bun/.bansos` inside the container, which is what the volume above mounts. Without `-e BANSOS_API_KEY` the daemon generates a key into the volume; read it with `docker exec bansos bun dist/cli/index.js key`.
 
 Or with compose, which refuses to start until `BANSOS_API_KEY` is set (in the shell or in a `.env` file next to `docker-compose.yml`):
 
@@ -131,7 +153,7 @@ export BANSOS_API_KEY="$(openssl rand -base64 32)"
 docker compose up -d
 ```
 
-- Image is a multi-stage build on node:22-alpine (~58 MB compressed), CLI + daemon + Web UI included, zero runtime dependencies.
+- Image is a multi-stage build on oven/bun:1.3-alpine, CLI + daemon + Web UI included, zero runtime dependencies.
 - The container runs the daemon in the foreground (Docker owns the lifecycle) bound to `0.0.0.0`, with tini for correct signal forwarding and a healthcheck on `/healthz`.
 - State persists across restarts in the `bansos-data` volume; point your harnesses at `http://127.0.0.1:17070` as usual. Run `bansos setup` on the host with the same `BANSOS_API_KEY` exported, so the harness configs carry the container's key.
 - The healthcheck uses `/healthz`, which needs no key.
@@ -190,7 +212,7 @@ With `mode: "strict"`:
 
 - One local daemon on `127.0.0.1:17070`, started with `bansos start`. It speaks three wire protocols: OpenAI Chat Completions, Anthropic Messages, and OpenAI Responses (Codex CLI).
 - Keyless free upstreams only: OpenCode Zen, KiloCode gateway, LLM7, and OVHcloud AI Endpoints (anonymous tier).
-  - *OpenCode Zen note*: Zen uses Cloudflare JA4 TLS fingerprinting and session affinity. It requires either Bun runtime or an OpenCode installation (installed via `curl -fsSL https://opencode.ai/v2/install | bash`, package managers, or `npm i -g @opencode/cli`). When OpenCode is installed, bansos-router automatically launches its background service. If neither is available, requests to Zen models transparently fail over to Kilo/LLM7/OVH free models.
+  - *OpenCode Zen note*: Zen uses Cloudflare JA4 TLS fingerprinting and session affinity. Because bansos runs on Bun, the Bun runtime satisfies this for every install. An OpenCode installation (via `curl -fsSL https://opencode.ai/v2/install | bash`, package managers, or `npm i -g @opencode/cli`) is also used when present: bansos-router then launches its background service for session identity. If Zen cannot be reached, requests to Zen models transparently fail over to Kilo/LLM7/OVH free models.
 - `bansos setup <harness>` writes config for Claude Code, Aider, OpenCode, Codex, Hermes, Goose, OpenClaw, Antigravity, JCode, 9Router, Continue, Cline, Roo Code, and OMP.
 - Web UI dashboard served at `http://127.0.0.1:17070/`. The catalog shows per-model capabilities (Think / Vision badges) and live latency; the activity tab tracks requests, tokens, latency, and error rate; the settings tab edits `~/.bansos/config.json` and restarts the daemon.
 - The pi extension ([`pi-bansos-router`](extensions/pi/README.md)) registers the `bansosr` provider, so every free model shows up in pi's `/model` picker. There is also a `/bansosr` command for status. If the daemon is not running when pi starts, the extension starts it and stops it again on exit.
@@ -227,15 +249,15 @@ For contributors working from source:
 ```bash
 git clone https://github.com/ihsan-ramadhan/bansos-router
 cd bansos-router
-npm install
-npm run build      # builds Web UI (Vite) + CLI (esbuild), outputs dist/
-npm link           # make `bansos`/`bansosd` available globally
-npm run typecheck  # tsc --noEmit
-npm test           # node:test
+bun install
+bun run build      # builds Web UI (Vite) + CLI (bun build), outputs dist/
+bun link           # make `bansos`/`bansosd` available globally
+bun run typecheck  # tsc --noEmit
+bun run test       # node:test suites run by `bun test`
 
-npm run dev        # run the bansos CLI from source
-npm run dev:daemon # run the daemon from source
-npm run dev:ui     # run Vite dev server for Web UI
+bun run dev        # run the bansos CLI from source
+bun run dev:daemon # run the daemon from source
+bun run dev:ui     # run Vite dev server for Web UI
 ```
 
 ## Docs

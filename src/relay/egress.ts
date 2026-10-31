@@ -1,5 +1,4 @@
 import { RELAY_STATE_FILE, readJson, writeJsonAtomic } from "../daemon/state";
-import { upstreamFetch } from "./upstream-fetch";
 
 // only known keyless upstream origins may be targeted via the relay; each entry must equal an upstream chatUrl origin
 export const ALLOWED_TARGETS = [
@@ -46,23 +45,23 @@ export async function relayFetch(
   init: RequestInit = {},
   relayPermitted = true,
 ): Promise<Response> {
-  if (!relayPermitted || !state.enabled || !state.url) return upstreamFetch(targetUrl, init);
+  if (!relayPermitted || !state.enabled || !state.url) return fetch(targetUrl, init);
 
   const u = new URL(targetUrl);
-  if (!ALLOWED_TARGETS.includes(u.origin)) return upstreamFetch(targetUrl, init);
+  if (!ALLOWED_TARGETS.includes(u.origin)) return fetch(targetUrl, init);
 
   try {
     const headers = new Headers(init.headers);
     headers.set("x-relay-target", u.origin);
     headers.set("x-relay-path", `${u.pathname}${u.search}`);
-    return await upstreamFetch(state.url, {
+    return await fetch(state.url, {
       ...init,
       headers,
       body: init.body,
       duplex: "half",
     });
   } catch {
-    return upstreamFetch(targetUrl, init); // non-strict fallback
+    return fetch(targetUrl, init); // non-strict fallback
   }
 }
 

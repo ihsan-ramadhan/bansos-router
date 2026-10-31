@@ -1,9 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { createRequire } from "node:module";
+import { Database } from "bun:sqlite";
 import { BANSOS_DIR } from "../daemon/state";
 import { restoreBridgedCalls } from "../protocols/tool-bridge";
 import { modelDef, type ModelDef, type Upstream } from "./types";
@@ -62,9 +61,6 @@ interface PersistentZenIdentity {
   project: string;
 }
 
-// a bare require is esbuild's throwing shim in the ESM bundle, so node:sqlite never loaded
-const nodeRequire = createRequire(import.meta.url);
-
 const ZEN_IDENTITY_FILE = path.join(BANSOS_DIR, "zen-identity.json");
 let cachedZenIdentity: PersistentZenIdentity | null = null;
 let lastIdentityLookup = 0;
@@ -104,55 +100,19 @@ function queryIdentity(get: (sql: string) => unknown): { row: PersistentZenIdent
   return { row: null, answered };
 }
 
-// undefined: no in-process sqlite answered (module missing or every query threw), so the caller tries the sqlite3 CLI
-function queryDbInProcess(dbPath: string): PersistentZenIdentity | null | undefined {
-  let answered = false;
-  if ("Bun" in globalThis) {
-    try {
-      const bunSqlite = nodeRequire("bun:sqlite") as { Database: new (p: string, opt?: { readonly?: boolean }) => { query: (q: string) => { get: () => unknown }; close: () => void } };
-      const db = new bunSqlite.Database(dbPath, { readonly: true });
-      try {
-        const result = queryIdentity((sql) => db.query(sql).get());
-        if (result.row) return result.row;
-        answered ||= result.answered;
-      } finally {
-        db.close();
-      }
-    } catch {}
-  }
-
+// readonly: opencode owns this db; null when it cannot be opened or no query returns a session
+function queryDb(dbPath: string): PersistentZenIdentity | null {
+  let db: Database;
   try {
-    const nodeSqlite = nodeRequire("node:sqlite") as { DatabaseSync: new (p: string, opt?: { readOnly?: boolean }) => { prepare: (q: string) => { get: () => unknown }; close: () => void } };
-    const db = new nodeSqlite.DatabaseSync(dbPath, { readOnly: true });
-    try {
-      const result = queryIdentity((sql) => db.prepare(sql).get());
-      if (result.row) return result.row;
-      answered ||= result.answered;
-    } finally {
-      db.close();
-    }
-  } catch {}
-
-  return answered ? null : undefined;
-}
-
-function sqlite3Query(dbPath: string, sql: string): Promise<PersistentZenIdentity | null> {
-  return new Promise((resolve) => {
-    try {
-      execFile("sqlite3", [dbPath, `${sql};`], { encoding: "utf-8", timeout: 1500, windowsHide: true }, (err, stdout) => {
-        const out = err ? "" : stdout.trim();
-        const parts = out.split("|");
-        resolve(out && parts.length >= 2 && parts[0] && parts[1] ? { session: parts[0], project: parts[1] } : null);
-      });
-    } catch {
-      resolve(null);
-    }
-  });
-}
-
-// fallback for runtimes without an in-process sqlite module; async so it never blocks the event loop
-async function queryDbWithCli(dbPath: string): Promise<PersistentZenIdentity | null> {
-  return (await sqlite3Query(dbPath, IDENTITY_SQL_V2)) ?? (await sqlite3Query(dbPath, IDENTITY_SQL_V1));
+    db = new Database(dbPath, { readonly: true });
+  } catch {
+    return null;
+  }
+  try {
+    return queryIdentity((sql) => db.query(sql).get()).row;
+  } finally {
+    db.close();
+  }
 }
 
 async function findLocalOpenCodeIdentity(): Promise<PersistentZenIdentity | null> {
@@ -166,8 +126,7 @@ async function findLocalOpenCodeIdentity(): Promise<PersistentZenIdentity | null
   }
   for (const dbPath of dbCandidates) {
     if (fs.existsSync(dbPath)) {
-      const direct = queryDbInProcess(dbPath);
-      const id = direct === undefined ? await queryDbWithCli(dbPath) : direct;
+      const id = queryDb(dbPath);
       if (id) return id;
     }
   }

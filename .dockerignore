@@ -4,6 +4,7 @@ extensions
 test
 docs
 .github
+.agents
 *.log
 .git
 .gitignore

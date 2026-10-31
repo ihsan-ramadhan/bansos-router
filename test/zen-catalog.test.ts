@@ -228,7 +228,7 @@ test("a seeded model the index turns paid is probed, not trusted", async () => {
 
 test("an unreachable zen listing keeps the last-known catalog", async () => {
   const original = globalThis.fetch;
-  globalThis.fetch = (async () => new Response("down", { status: 503 })) as typeof fetch;
+  globalThis.fetch = (async () => new Response("down", { status: 503 })) as unknown as typeof fetch;
   try {
     assert.equal(await zenUpstream.fetchCatalog(), null);
   } finally {

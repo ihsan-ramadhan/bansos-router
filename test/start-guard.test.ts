@@ -11,7 +11,7 @@ const cli = fileURLToPath(new URL("../src/cli/index.ts", import.meta.url));
 
 function runCli(args: string[]): Promise<{ code: number; stdout: string }> {
   return new Promise((resolve) => {
-    execFile(process.execPath, ["--import", "tsx", cli, ...args], { env: process.env, timeout: 30_000 }, (err, stdout) => {
+    execFile(process.execPath, [cli, ...args], { env: process.env, timeout: 30_000 }, (err, stdout) => {
       resolve({ code: err ? Number((err as NodeJS.ErrnoException).code ?? 1) : 0, stdout });
     });
   });

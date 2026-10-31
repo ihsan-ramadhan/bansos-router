@@ -278,7 +278,7 @@ test("toChatResponse surfaces an upstream reset instead of crashing the process"
 
   // pipe() would leave an unhandled 'error' that node turns into an uncaught exception
   await assert.rejects(async () => {
-    for await (const _chunk of Readable.fromWeb(out.body as any)) {
+    for await (const _chunk of out.body as any) {
       // drain
     }
   }, /upstream reset/);

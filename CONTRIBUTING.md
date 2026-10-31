@@ -4,8 +4,8 @@ Thanks for helping make free keyless models reachable from every coding harness.
 
 ## Prerequisites
 
-- Node.js 20 or newer
-- npm (ships with Node)
+- [Bun](https://bun.sh) 1.3.14 (pinned by `packageManager`; `bun test --isolate` needs >= 1.3.13) — the only runtime for the root package
+- Node.js 20+ and npm, only for `extensions/pi` (which runs inside the Node pi process)
 - A running `bansos` daemon for end to end testing (or start one with `bansos start --bg`)
 
 ## Fork workflow
@@ -32,15 +32,15 @@ Thanks for helping make free keyless models reachable from every coding harness.
 ```bash
 git clone https://github.com/ihsan-ramadhan/bansos-router
 cd bansos-router
-npm install
-npm run build      # build Web UI (Vite) + CLI (esbuild), outputs dist/
-npm link           # make `bansos`/`bansosd` available globally
-npm run typecheck  # tsc --noEmit
-npm test           # node --test (node:test, run with --test-concurrency=1)
+bun install
+bun run build      # build Web UI (Vite) + CLI (bun build), outputs dist/
+bun link           # make `bansos`/`bansosd` available globally
+bun run typecheck  # tsc --noEmit
+bun run test       # node:test suites run by `bun test` (isolated per file)
 
-npm run dev        # run the bansos CLI from source (tsx)
-npm run dev:daemon # run the daemon from source (tsx)
-npm run dev:ui     # run Vite dev server for the Web UI
+bun run dev        # run the bansos CLI from source
+bun run dev:daemon # run the daemon from source
+bun run dev:ui     # run Vite dev server for the Web UI
 ```
 
 The pi extension lives in `extensions/pi` and is published as a separate package (`pi-bansos-router`). Build and test it separately:
@@ -65,11 +65,12 @@ src/
   relay/          relay egress logic + vercel deploy stub (M4)
   ui/             web console dashboard (Preact, Vite)
   update.ts       npm registry version check (24h cache)
-scripts/          sync-version.mjs (copies the root version into extensions/pi)
+  cli/bin.ts      runtime guard entry (refuses non-Bun) that defers to cli/index
+scripts/          build-cli.ts (bun build split bundle), sync-version.mjs (copies the root version into extensions/pi)
   logger.ts       JSON line logger
 extensions/pi/    pi coding agent extension (registers the bansosr provider)
 docs/             architecture, protocols, harnesses, upstreams
-test/             node:test suites
+test/             node:test suites, run by `bun test`
 ```
 
 ## Architecture in one minute
@@ -86,7 +87,8 @@ test/             node:test suites
 - Keep it dependency free. There are no runtime deps at all: harness config reads use an inline JSONC stripper and a TOML-aware block writer in `src/cli/write.ts`, everything else is Node stdlib.
 - Prefer stdlib over new packages. A regex JSONC stripper or a tiny semver compare is fine inline instead of a dependency.
 - Cross platform paths must use `os.homedir()` (never `process.env.HOME`, which is undefined on Windows). Use `expandHome()` from `src/cli/write.ts`.
-- Tests use the built in `node:test` runner. Add a focused test for any new adapter, upstream, or protocol behavior.
+- Bun is the runtime: `node:` built-ins (fs, http, crypto, ...) are fine and preferred; use `bun:sqlite` for sqlite access. Don't rewrite working `node:` code to Bun-specific APIs just for style.
+- Tests use the `node:test` API (with `node:assert`), run by `bun test`. Add a focused test for any new adapter, upstream, or protocol behavior.
 
 ## Adding a harness adapter
 
@@ -113,14 +115,14 @@ test/             node:test suites
 ## Running tests
 
 ```bash
-npm test                                   # all suites
-node --import tsx --test test/setup.test.ts # one file
+bun run test                 # all suites
+bun test test/setup.test.ts  # one file (bunfig preloads test/isolate.ts for an isolated BANSOS_DIR)
 ```
 
 Type checking and building must both pass before opening a pull request:
 
 ```bash
-npm run typecheck && npm test && npm run build
+bun run typecheck && bun run test && bun run build
 cd extensions/pi && npm run typecheck && npm run build
 ```
 
@@ -129,8 +131,9 @@ cd extensions/pi && npm run typecheck && npm run build
 Bump the root version, then copy it into the extension with one command:
 
 ```bash
-npm version <x.y.z> --no-git-tag-version
-npm run sync-version   # extensions/pi package.json, package-lock.json, EXTENSION_VERSION
+# bun pm version <x.y.z> --no-git-tag-version if your Bun supports it (check `bun pm version --help`),
+# otherwise edit "version" in package.json by hand
+bun run sync-version   # extensions/pi package.json, package-lock.json, EXTENSION_VERSION
 ```
 
 ## Roadmap

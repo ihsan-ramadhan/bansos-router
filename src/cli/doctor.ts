@@ -1,7 +1,6 @@
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { Database } from "bun:sqlite";
 import { ADAPTERS } from "../adapters";
 import { readClientApiKey } from "../daemon/auth";
 import { API_KEY_FILE, effectiveBind, effectivePort, loadConfig, loadConfigWarnings } from "../daemon/state";
@@ -100,24 +99,10 @@ export async function runDoctor(_argv: string[]): Promise<number> {
   try {
     hasOpenCode = spawnSync(whichCmd, ["opencode"], { encoding: "utf-8", timeout: 1000 }).status === 0;
   } catch {}
-  const hasBun = "Bun" in globalThis || (() => {
-    try {
-      if (spawnSync(whichCmd, ["bun"], { encoding: "utf-8", timeout: 1000 }).status === 0) return true;
-    } catch {}
-    const binName = process.platform === "win32" ? "bun.exe" : "bun";
-    const candidates = [
-      path.join(os.homedir(), ".bun", "bin", binName),
-      "/usr/local/bin/bun",
-      "/usr/bin/bun",
-    ];
-    return candidates.some((c) => fs.existsSync(c));
-  })();
   if (hasOpenCode) {
     console.log(`✓ opencode    installed (Zen free models ready)`);
-  } else if (hasBun) {
-    console.log(`✓ runtime     bun detected (Zen free models ready)`);
   } else {
-    console.log(`· opencode    not installed (Zen models require opencode or bun; Kilo/LLM7/OVH work directly)`);
+    console.log(`✓ runtime     bun ${Bun.version} (Zen free models ready)`);
   }
 
 
@@ -213,20 +198,16 @@ function sqliteKeysExist(dbPath: string, keys: string[]): boolean {
   if (valid.length === 0) return false;
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sqliteMod = (globalThis as any).process?.getBuiltinModule?.("node:sqlite");
-    if (sqliteMod?.DatabaseSync) {
-      const db = new sqliteMod.DatabaseSync(dbPath, { readOnly: true });
-      try {
-        return valid.some(([table, id]) =>
-          Boolean(db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(id)),
-        );
-      } finally {
-        db.close();
-      }
+    const db = new Database(dbPath, { readonly: true });
+    try {
+      return valid.some(([table, id]) =>
+        Boolean(db.query(`SELECT 1 FROM ${table} WHERE id = ?`).get(id!)),
+      );
+    } finally {
+      db.close();
     }
   } catch {
-    // not a readable database (or no sqlite support in this runtime): report unconfigured
+    // not a readable database: report unconfigured
   }
   return false;
 }

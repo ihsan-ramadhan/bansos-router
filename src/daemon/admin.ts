@@ -311,6 +311,8 @@ export async function handleAdmin(
   }
 
   if (url === "/bansos/restart" && method === "POST") {
+    // bun's node:http never finishes server.close() for a connection whose request body was left unread
+    await readBody().catch(() => "");
     if (!opts.restart) return { status: 501, body: { error: { message: "this daemon cannot restart itself" } } };
     const saved = loadConfig(opts.configFile ?? CONFIG_FILE);
     const requested = opts.requestedPort ?? opts.port;

@@ -6,7 +6,7 @@
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "jsxImportSource": "preact",
-    "types": ["node"],
+    "types": ["bun"],
     "strict": true,
     "noEmit": true,
     "isolatedModules": true,

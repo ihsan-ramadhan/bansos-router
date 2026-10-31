@@ -1,6 +1,6 @@
 // translate chat <-> responses here (muse spark answers only on /v1/responses)
 import { Readable, Transform, pipeline } from "node:stream";
-import { createSseFrameSplitter } from "./stream";
+import { createSseFrameSplitter, webBodyToReadable } from "./stream";
 
 function randomId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
@@ -69,7 +69,7 @@ export async function toChatResponse(
     }
   }
 
-  const src = Readable.fromWeb(upstreamRes.body as import("node:stream/web").ReadableStream);
+  const src = webBodyToReadable(upstreamRes.body);
   const out = responsesToChatStream(modelId);
   // pipeline() wires errors and destroy both ways; pipe() would crash on an upstream reset
   pipeline(src, out, () => {

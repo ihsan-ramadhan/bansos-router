@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
+import net from "node:net";
 import { createServer } from "../src/daemon/server";
 import { RuntimeCatalog } from "../src/daemon/catalog";
 import { RateLimiter } from "../src/daemon/rate-limit";
@@ -140,20 +141,20 @@ test("Path traversal attempts are rejected with 403", async () => {
   const { baseUrl, close } = await setupTestServer();
   try {
     const url = new URL(baseUrl);
+    // a raw socket: bun's http.request normalizes the ../ away before sending
     const status = await new Promise<number>((resolve, reject) => {
-      const req = http.request(
-        {
-          host: url.hostname,
-          port: url.port,
-          path: "/assets/../package.json",
-          method: "GET",
-        },
-        (res) => {
-          resolve(res.statusCode ?? 0);
-        },
-      );
-      req.on("error", reject);
-      req.end();
+      const socket = net.connect(Number(url.port), url.hostname, () => {
+        socket.write(`GET /assets/../package.json HTTP/1.1\r\nHost: 127.0.0.1:${url.port}\r\nConnection: close\r\n\r\n`);
+      });
+      let head = "";
+      socket.on("data", (chunk: Buffer) => {
+        head += chunk.toString("latin1");
+        const eol = head.indexOf("\r\n");
+        if (eol === -1) return;
+        resolve(Number(head.slice(0, eol).split(" ")[1]));
+        socket.destroy();
+      });
+      socket.on("error", reject);
     });
     assert.equal(status, 403);
   } finally {

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { Database } from "bun:sqlite";
 import { harnessStatuses } from "../src/cli/doctor";
 
 function tempHome(): string {
@@ -102,18 +103,12 @@ test("jcode's key is checked in its .env file, not config.toml", () => {
   }
 });
 
-test("9router status is read from the sqlite registry when one is present", (t) => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sqliteMod = (process as any).getBuiltinModule?.("node:sqlite");
-  if (!sqliteMod?.DatabaseSync) {
-    t.skip("node:sqlite is not available in this runtime");
-    return;
-  }
+test("9router status is read from the sqlite registry when one is present", () => {
   const home = tempHome();
   const dbPath = path.join(home, ".9router", "db", "data.sqlite");
-  const db = new sqliteMod.DatabaseSync(dbPath);
-  db.exec("CREATE TABLE providerNodes (id TEXT PRIMARY KEY, name TEXT)");
-  db.prepare("INSERT INTO providerNodes(id, name) VALUES(?, ?)").run(
+  const db = new Database(dbPath);
+  db.run("CREATE TABLE providerNodes (id TEXT PRIMARY KEY, name TEXT)");
+  db.query("INSERT INTO providerNodes(id, name) VALUES(?, ?)").run(
     "openai-compatible-chat-bansos",
     "Bansos Router",
   );

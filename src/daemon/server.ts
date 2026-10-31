@@ -47,7 +47,7 @@ import {
   stripCredentialHeaders,
   type AuthDecision,
 } from "./auth";
-import { createSseFrameSplitter, readSseStream } from "../protocols/stream";
+import { createSseFrameSplitter, readSseStream, webBodyToReadable } from "../protocols/stream";
 import { callerToolsFromBody, type CallerTools, type Translator } from "../protocols/tool-bridge";
 import type { RuntimeCatalog } from "./catalog";
 import type { RateLimiter } from "./rate-limit";
@@ -970,7 +970,7 @@ export async function peekStreamError(
   let scanned = 0;
   let error: string | null = null;
   let done = false;
-  let pending: Promise<ReadableStreamReadResult<Uint8Array>> | null = null;
+  let pending: ReturnType<typeof reader.read> | null = null;
   scan: while (text.length < SSE_PEEK_LIMIT) {
     pending = reader.read();
     const wait = deadline - Date.now();
@@ -1526,9 +1526,7 @@ async function handleChat(
   }
 
   if (upstreamRes.body) {
-    const src = Readable.fromWeb(
-      upstreamRes.body as import("node:stream/web").ReadableStream,
-    );
+    const src = webBodyToReadable(upstreamRes.body);
     const usageTx = logUsageTransform(current.id, currentUpstream.id, log, requestStartedAt, model.id, activity, "chat");
     // a mid-stream upstream failure ends the client response, not the daemon; client abort releases the upstream
     const failStream = () => {

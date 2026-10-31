@@ -1,5 +1,5 @@
-#!/usr/bin/env node
-// copies the root package.json version into the pi extension: npm run sync-version
+#!/usr/bin/env bun
+// copies the root package.json version into the pi extension: bun run sync-version
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

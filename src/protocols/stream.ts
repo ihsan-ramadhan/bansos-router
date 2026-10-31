@@ -1,6 +1,23 @@
 // node's web ReadableStream type: the DOM global lacks [Symbol.asyncIterator], node has it
 import type { ReadableStream } from "node:stream/web";
+import { Readable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
+// bun's Readable.fromWeb ends quietly on a mid-stream reset; reading by hand turns the reset into an 'error' event
+export function webBodyToReadable(body: globalThis.ReadableStream<Uint8Array>): Readable {
+  async function* chunks() {
+    const reader = body.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) return;
+        yield value;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+  return Readable.from(chunks(), { objectMode: false });
+}
 
 // openai-style data:{json} frame
 export function sseData(data: unknown): string {

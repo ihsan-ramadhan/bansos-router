@@ -95,7 +95,7 @@ The core server, run via `bansos start` (foreground or `--bg`) or the
 
 | Concern | Design |
 |---|---|
-| HTTP server | Node `http`, bound to `127.0.0.1`, port `17070`, auto-bump to next free port up to `17090` (proven pattern from pi-bansos); port/bind configurable via `~/.bansos/config.json` |
+| HTTP server | `node:http` (as implemented by Bun), bound to `127.0.0.1`, port `17070`, auto-bump to next free port up to `17090` (proven pattern from pi-bansos); port/bind configurable via `~/.bansos/config.json` |
 | Inbound routes | Inference: `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1/responses`, `GET /v1/models`. Control (Web UI + CLI): `GET /healthz`, `GET /bansos/status`, `POST /bansos/refresh`, `GET /bansos/adapters[/render]`, `GET/POST /bansos/relay`, `POST /bansos/relay/probe`, `GET /bansos/usage`, `GET /bansos/events`. Dashboard session: `POST /bansos/login`, `POST /bansos/logout` |
 | Authentication | Every route needs the router's API key (`src/daemon/auth.ts`), sent as `Authorization: Bearer <key>` or `x-api-key: <key>`, or a dashboard session cookie from `/bansos/login`. Open without a key: CORS preflight, `GET /healthz` (body `{"status":"ok"}` only), the static UI files, and login/logout. Key source: `BANSOS_API_KEY` > `~/.bansos/api-key` > generated on first start. `BANSOS_AUTH=off` turns auth off on a loopback bind only. Wrong keys are counted per client IP (20 distinct wrong keys in 10 minutes -> 429). Credential headers are stripped before a request goes upstream |
 | Admin routes | `GET/POST /bansos/config`, `POST /bansos/restart`, `GET /bansos/logs`, `GET /bansos/doctor`, `POST /bansos/adapters/apply`, `GET/POST /bansos/autostart` (`src/daemon/admin.ts`): answered only for loopback peers, and POSTs need a loopback Origin or none |
@@ -218,27 +218,30 @@ profile's ACL instead) and rotated with a temp file + rename. When
 
 ### 7.1 Hard constraints
 
-1. **Node only for the core**: the pi extension talks to the daemon over HTTP
-   and imports none of `src/`, so the core targets Node ≥20 alone (CI runs
-   20, 22 and 24).
-2. **npm distribution**: `npm i -g bansos-router`, two bins.
+1. **Bun only for the core** (≥ 1.3): the pi extension talks to the daemon over
+   HTTP and imports none of `src/`, so it stays on Node inside the pi process,
+   while the daemon and CLI run on Bun alone. Running the bundle under Node
+   prints a clear "requires Bun" message and exits. CI runs Bun on Linux plus a
+   Windows smoke job.
+2. **npm distribution**: `npm i -g bansos-router` (or `bun add -g`), two bins;
+   Bun must be installed.
 3. **Minimal dependencies**: a proxy must be auditable; keep the tree tiny.
 
 ### 7.2 Decisions
 
 | Layer | Decision | Rationale |
 |---|---|---|
-| Runtime | **TypeScript on Node ≥20** (target LTS 22) | Widest install base; reuse pi-bansos logic (TS) |
+| Runtime | **TypeScript on Bun ≥ 1.3** | Needed for Zen's TLS fingerprint; `bun:sqlite` built in; one runtime to support |
 | Language | TS strict, ES modules, `verbatimModuleSyntax`; `tsc --noEmit` for type-check only | No build-time type checking in the hot path |
-| HTTP server | `node:http`: **no framework** | Raw streaming control; frameworks add nothing (pi-bansos proof) |
-| Upstream client | global `fetch` + `duplex: "half"` | SSE pass-through; connection pooling built into undici |
+| HTTP server | `node:http` as implemented by Bun: **no framework** | Raw streaming control; frameworks add nothing (pi-bansos proof) |
+| Upstream client | Bun's global `fetch` + `duplex: "half"` | SSE pass-through; keep-alive pooling built in, no shim needed |
 | Streaming | async-iterator translation, **never buffer** a streaming response | Protocols.md T1-T8 require real-time SSE in all three wires |
 | Config serializers | JSON (built-in); TOML/YAML written by a hand-rolled block serializer in `cli/write.ts` (zero deps) | Setup CLI writes three config formats |
 | CLI parsing | hand-rolled subcommand parser | Surface is small (`setup/status/relay/doctor`); no dep needed |
 | State | JSON under `~/.bansos/`, **atomic writes** (temp file + rename) | Crash-safe, no DB, survives npm updates |
 | Logging | hand-rolled JSON-lines logger, quiet by default | Proxy doesn't need pino-grade observability |
-| Testing | `node:test` (+ `tsx` loader in dev) | Zero-dep; enough for unit + streaming integration tests |
-| Build | **esbuild** -> one bundle (`dist/cli/index.js`); bins `bansos` + `bansosd` point at it | Single-file entry, no runtime build dep; `tsx` only for dev |
+| Testing | `node:test` suites run by `bun test` (isolated per file) | Zero-dep; enough for unit + streaming integration tests |
+| Build | **`bun build`** (`scripts/build-cli.ts`): a guard entry `dist/cli/index.js` (refuses non-Bun) plus a split chunk; bins `bansos` + `bansosd` point at it | No `bun:` imports reach the guard, so Node still prints the message |
 | Dashboard | **Preact + Tailwind**, built by Vite into `dist/ui` and served by the daemon | Small bundle, no server-side rendering needed |
 | Process mgmt | `bansos start` foreground; `--bg` = detached spawn + log file; `bansos stop` = SIGTERM all daemon pids; `bansos status` = TCP health-check | `state.json` pid + `/proc` (Linux) / `ps` / `wmic` scan, no PID-file complexity |
 
@@ -246,7 +249,7 @@ profile's ACL instead) and rotated with a temp file + rename. When
 
 ```
 runtime (0)
-dev (10):   typescript, esbuild, tsx, @types/node,
+dev (9):    typescript, @types/bun, @types/node,
             vite, @preact/preset-vite, preact, lucide-preact,
             tailwindcss, @tailwindcss/vite
 ```
@@ -260,20 +263,27 @@ its frontend and stealth libs).
 
 ```
 bansos-router/            # npm: bansos-router (bins: bansos, bansosd)
-├── src/                  # core: Node ≥20 (web APIs + node:http)
-├── dist/                 # esbuild output (gitignored; built by `prepare`)
-├── extensions/pi/        # separate npm package: pi-bansos-router
+├── src/                  # core: Bun ≥ 1.3 (web APIs + node:http + bun:sqlite)
+├── dist/                 # bun build output (gitignored; built by `prepare`)
+├── extensions/pi/        # separate npm package: pi-bansos-router (Node)
 ├── docs/
-└── package.json          # engines: node >=20
+└── package.json          # engines: bun >=1.3.0
 ```
 
 ### 7.5 Distribution options (phased)
 
-1. **npm package**: primary; `npm i -g bansos-router`.
+1. **npm package**: primary; `npm i -g bansos-router` (or `bun add -g`), Bun required.
 2. **`bun build --compile`**: optional native binaries per platform in GitHub
-   Releases for users without Node (same TS core, zero language change).
+   Releases for users without Bun (same TS core, zero language change).
 3. **Go rewrite**: last resort, only if single-static-binary becomes the
    dominant requirement (that's the path freebuff-proxy took).
+
+**Known Bun limitation**: under Bun, `node:http` does not emit a close/abort
+event when a client disconnects mid-request ([oven-sh/bun#7716](https://github.com/oven-sh/bun/issues/7716)),
+so `clientDisconnectSignal()` cannot cancel the upstream call; the generation
+runs to completion upstream and its socket is held until then. Follow-ups: wait
+for the Bun fix (the code already works once it lands), or port the HTTP layer
+to `Bun.serve` (whose `request.signal` reports disconnects) as a separate task.
 
 ### 7.6 Self-built translation
 
@@ -292,12 +302,16 @@ Responses/Messages translation ever outgrows what is reasonable to maintain.
 
 ```
 bansos-router/
-├── package.json            # bins: bansos, bansosd
-├── scripts/sync-version.mjs # copies the root version into extensions/pi
+├── package.json            # bins: bansos, bansosd (engines: bun >=1.3.0)
+├── scripts/
+│   ├── build-cli.ts        # bun build: guard entry + split chunk into dist/cli
+│   └── sync-version.mjs    # copies the root version into extensions/pi
 ├── src/
 │   ├── logger.ts           # shared JSON-lines logger (hand-rolled)
 │   ├── update.ts           # npm registry version check (24 h cache)
 │   ├── cli/                # bansos command
+│   │   ├── bin.ts          # runtime guard entry: refuses non-Bun, then loads index
+│   │   ├── runtime.ts      # MIN_BUN_VERSION + the "requires Bun" message
 │   │   ├── index.ts        # dispatch, start/stop/status/logs/usage
 │   │   ├── setup.ts        # apply/undo harness configs
 │   │   ├── write.ts        # JSON merge, TOML/YAML block writers
@@ -342,8 +356,8 @@ bansos-router/
 │   └── adapters/           # harness config templates
 │       ├── index.ts        # registry + per-harness render (all harnesses)
 │       └── types.ts        # HarnessAdapter contract
-├── extensions/pi/          # pi-bansos-router (separate npm package)
-├── test/                   # node:test suites
+├── extensions/pi/          # pi-bansos-router (separate npm package, Node)
+├── test/                   # node:test suites, run by `bun test`
 ├── docs/
 │   ├── architecture.md     # this file
 │   ├── protocols.md

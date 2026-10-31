@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { readStoredApiKey } from "../daemon/auth";
 import { API_KEY_FILE, runningDaemonUrl } from "../daemon/state";
 
@@ -32,30 +32,12 @@ const LABEL = "io.github.ihsan-ramadhan.bansos-router";
 export function defaultAutostartEnv(): AutostartEnv {
   const script = process.argv[1] ? path.resolve(process.argv[1]) : "";
   const home = os.homedir();
-  const bunPath = (() => {
-    try {
-      const which = spawnSync("which", ["bun"], { encoding: "utf8", timeout: 1000 });
-      if (which.status === 0 && which.stdout.trim() && fs.existsSync(which.stdout.trim())) {
-        return which.stdout.trim();
-      }
-    } catch {}
-    const candidates = [
-      path.join(home, ".bun", "bin", "bun"),
-      "/usr/local/bin/bun",
-      "/usr/bin/bun",
-    ];
-    for (const c of candidates) {
-      if (fs.existsSync(c)) return c;
-    }
-    return null;
-  })();
-  const execPath = bunPath ?? process.execPath;
   return {
     platform: process.platform,
     home,
     appData: process.env.APPDATA,
     uid: typeof process.getuid === "function" ? process.getuid() : undefined,
-    command: [execPath, ...process.execArgv, script],
+    command: [process.execPath, ...process.execArgv, script],
     run(cmd, args) {
       try {
         return { ok: true, stdout: execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }) };

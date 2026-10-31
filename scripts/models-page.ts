@@ -1,4 +1,4 @@
-// builds the published model list (index.html, models.json, badge.json): npx tsx scripts/models-page.ts <outDir>
+// builds the published model list (index.html, models.json, badge.json): bun scripts/models-page.ts <outDir>
 import fs from "node:fs";
 import path from "node:path";
 import { RuntimeCatalog } from "../src/daemon/catalog";
