@@ -6,6 +6,11 @@ import { Database } from "bun:sqlite";
 import { BANSOS_DIR } from "../daemon/state";
 import { restoreBridgedCalls } from "../protocols/tool-bridge";
 import { modelDef, type ModelDef, type Upstream } from "./types";
+import {
+  ensureFullGateTools,
+  getCachedGateRecipe,
+  refreshGateRecipe,
+} from "./zen-gate";
 
 // MITM-captured from real opencode CLI v2.1.3: POST https://opencode.ai/inference/openai/v1/chat/completions; the old /inference/v1/... path returns 429 for identical requests.
 const ZEN_INFERENCE_URL = "https://opencode.ai/inference/openai/v1";
@@ -261,9 +266,49 @@ function generateRequestId(timestamp = Date.now()): string {
 
 let liveOpenCodeVersion: string | null = null;
 
+/**
+ * Full gate profile, enabled by the daemon after a shape rejection
+ * (slice 1 self-heal). Once upstream has proven the minimal read/shell
+ * profile insufficient, later Zen requests in this process keep the
+ * full profile instead of re-learning the same failure. This is a
+ * process-wide latch, not a per-request flag, because the transform
+ * functions below are stateless with respect to the request.
+ */
+let zenFullGateProfile = false;
+
+export function enableZenFullGateProfile(): void {
+  zenFullGateProfile = true;
+}
+
+export function isZenFullGateProfileEnabled(): boolean {
+  return zenFullGateProfile;
+}
+
+/**
+ * Evict the daemon's cached/synthetic Zen identity and mint a fresh
+ * synthetic session. The next background identity refresh re-discovers
+ * a real local OpenCode session from opencode.db when one exists, so
+ * this only affects the healed retry, not the long-term identity.
+ * Callers that supplied their own opencode session headers must not
+ * call this: their session is theirs, not the daemon's to evict.
+ */
+export function evictZenIdentity(): { session: string; project: string } {
+  const fresh = {
+    session: generateSessionId(),
+    project: randomBytes(20).toString("hex"),
+  };
+  saveZenIdentity(fresh);
+  return fresh;
+}
+
 function getOpenCodeUA(): string {
   const override = process.env[OPENCODE_USER_AGENT_ENV]?.trim();
   if (override) return override.startsWith("opencode/") ? override : `opencode/${override}`;
+  // Slice 2: a live-derived recipe, when one has been fetched, wins
+  // over the pinned fallback. Before the first fetch this is the old
+  // fallback, so behaviour is unchanged on a cold daemon.
+  const live = getCachedGateRecipe();
+  if (live) return live.userAgent;
   if (liveOpenCodeVersion && OPENCODE_UA_VERSION_RE.test(liveOpenCodeVersion))
     return `opencode/${liveOpenCodeVersion}`;
   return `opencode/${OPENCODE_UA_FALLBACK}`;
@@ -291,6 +336,10 @@ function opencodeHeaders(
   callerHeaders?: Record<string, string | string[] | undefined>,
   withRequestHeader = false,
 ): Record<string, string> {
+  // Slice 2: warm the live recipe in the background. This request
+  // still uses the last known UA; the next one uses the live version.
+  // refreshGateRecipe is TTL-gated and single-flight, so this is cheap.
+  void refreshGateRecipe().catch(() => {});
   const headers: Record<string, string> = {};
   // Prefer the harness's own identity over synthetic spoofing, but only pass through User-Agent if it identifies as opencode.
   if (callerHeaders) {
@@ -360,6 +409,7 @@ function ensureChatFingerprintTools(body: Record<string, unknown>): void {
     if (present.has(t.function.name)) continue;
     (body.tools as unknown[]).push(structuredClone(t));
   }
+  if (zenFullGateProfile) ensureFullGateTools(body, "chat");
 }
 
 function ensureResponsesFingerprintTools(body: Record<string, unknown>): void {
@@ -379,6 +429,7 @@ function ensureResponsesFingerprintTools(body: Record<string, unknown>): void {
       parameters: t.function.parameters,
     });
   }
+  if (zenFullGateProfile) ensureFullGateTools(body, "responses");
 }
 
 function sanitizeResponsesItems(body: Record<string, unknown>): void {

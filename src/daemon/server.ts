@@ -51,6 +51,14 @@ import { createSseFrameSplitter, readSseStream, webBodyToReadable } from "../pro
 import { callerToolsFromBody, type CallerTools, type Translator } from "../protocols/tool-bridge";
 import type { RuntimeCatalog } from "./catalog";
 import type { RateLimiter } from "./rate-limit";
+import {
+  auditGateShape,
+  classifyGateError,
+  gateCooldown,
+  refreshGateRecipe,
+  toolNamesOf,
+} from "../upstreams/zen-gate";
+import { enableZenFullGateProfile, evictZenIdentity } from "../upstreams/zen";
 
 let activity: ActivityStore = new ActivityStore();
 
@@ -1156,6 +1164,75 @@ async function runChatForward(
   const callerTools = callerToolsFromBody(sanitizedBody);
   const needsTools = declaredToolNames(sanitizedBody).size > 0;
   const needsVision = hasImageInput(sanitizedBody);
+
+  // OFB-style Zen gate self-heal (slices 1+2). Runs before cross-provider
+  // failover: a shape rejection gets exactly one healed retry on the
+  // same model/upstream. An IP-abuse block is terminal for Zen (no
+  // refresh, no re-mint, no retry) and falls straight through to
+  // failover instead. A harness-supplied session is never evicted:
+  // it belongs to the harness, not to this daemon.
+  let zenGateHealed = false;
+  let zenGateHealedRetry = false;
+  const hasHarnessZenSession = Boolean(
+    req.headers["x-opencode-session"] ??
+      req.headers["x-opencode-session-id"] ??
+      req.headers["x-session-affinity"],
+  );
+  const tryZenGateHeal = async (
+    status: number,
+    errorMsg: string,
+    outboundHeaders: Headers,
+    outboundTransformedBody: Record<string, unknown>,
+  ): Promise<boolean> => {
+    if (currentUpstream.id !== "zen" || zenGateHealed) {
+      if (currentUpstream.id === "zen" && zenGateHealed) {
+        const id = outboundHeaders.get("x-opencode-session") ?? "daemon";
+        gateCooldown.recordFailedFullShape(id);
+      }
+      return false;
+    }
+    const kind = classifyGateError(status, errorMsg);
+    if (kind === "ip-abuse") {
+      log.warn("zen gate ip-abuse: terminal for this upstream, failing over", {
+        model: current.id,
+        upstream: currentUpstream.id,
+        status,
+        durationMs: Date.now() - requestStartedAt,
+      });
+      return false;
+    }
+    if (kind !== "free-tier" && kind !== "upgrade-required" && kind !== "endpoint-moved") {
+      return false;
+    }
+    const sentHeaders: Record<string, string> = {};
+    for (const [k, v] of outboundHeaders.entries()) sentHeaders[k] = v;
+    const identity = sentHeaders["x-opencode-session"] ?? "daemon";
+    if (gateCooldown.isCoolingDown(identity)) {
+      log.warn("zen gate heal skipped: gate cooldown active", {
+        model: current.id,
+        upstream: currentUpstream.id,
+        kind,
+        durationMs: Date.now() - requestStartedAt,
+      });
+      return false;
+    }
+    const audit = auditGateShape(sentHeaders, toolNamesOf(outboundTransformedBody));
+    log.warn("zen gate heal: refreshing identity and retrying once with full tools", {
+      model: current.id,
+      upstream: currentUpstream.id,
+      kind,
+      shapeOk: audit.shapeOk,
+      missingTools: audit.missingTools,
+      missingHeaders: audit.missingHeaders,
+      durationMs: Date.now() - requestStartedAt,
+    });
+    await refreshGateRecipe().catch(() => {});
+    if (!hasHarnessZenSession) evictZenIdentity();
+    enableZenFullGateProfile();
+    zenGateHealed = true;
+    zenGateHealedRetry = true;
+    return true;
+  };
   const incapable = (m: ModelDef) =>
     (needsTools && m.supportsTools === false) || (needsVision && !m.input.includes("image"));
   for (const m of catalog.models) if (incapable(m)) tried.add(m.id);
@@ -1191,7 +1268,17 @@ async function runChatForward(
   }
 
   for (let attempt = 0; attempt <= MAX_FAILOVER_RETRIES; attempt++) {
-    if (current.id !== model.id || attempt > 0) {
+    if (zenGateHealedRetry) {
+      log.warn("zen gate healed - retrying same model", {
+        from: model.id,
+        to: current.id,
+        fromUpstream: upstream.id,
+        status: transientError?.status,
+        durationMs: Date.now() - requestStartedAt,
+        attempt,
+      });
+      zenGateHealedRetry = false;
+    } else if (current.id !== model.id || attempt > 0) {
       log.warn("upstream rejected - fallback used", {
         from: model.id,
         to: current.id,
@@ -1316,6 +1403,17 @@ async function runChatForward(
         return { status: upstreamRes.status, message: errorMsg };
       }
 
+      // Gate self-heal runs before any refused-marking or failover:
+      // a healed retry must not park the model for 30 minutes first.
+      if (
+        currentUpstream.id === "zen" &&
+        (upstreamRes.status === 403 || upstreamRes.status === 426 || upstreamRes.status === 404) &&
+        (await tryZenGateHeal(upstreamRes.status, errorMsg, headers, transformedBody))
+      ) {
+        transientError = { status: upstreamRes.status, message: errorMsg };
+        continue;
+      }
+
       if (refused) {
         catalog.markRefused(current.id);
       } else if (upstreamRes.status === 429) {
@@ -1349,6 +1447,13 @@ async function runChatForward(
         // unreadable or not json: let the normal path handle the original
       }
       if (envelopeError) {
+        if (
+          currentUpstream.id === "zen" &&
+          (await tryZenGateHeal(502, envelopeError, headers, transformedBody))
+        ) {
+          transientError = { status: 502, message: envelopeError };
+          continue;
+        }
         transientError = { status: 502, message: envelopeError };
         const next = selectFailover(
           catalog, current, currentUpstream, tried, security, failoverAllowed,
@@ -1364,6 +1469,13 @@ async function runChatForward(
 
     const peeked = await peekStreamError(upstreamRes);
     if (peeked.error) {
+      if (
+        currentUpstream.id === "zen" &&
+        (await tryZenGateHeal(502, peeked.error, headers, transformedBody))
+      ) {
+        transientError = { status: 502, message: peeked.error };
+        continue;
+      }
       transientError = { status: 502, message: peeked.error };
       const next = selectFailover(
         catalog, current, currentUpstream, tried, security, failoverAllowed,
