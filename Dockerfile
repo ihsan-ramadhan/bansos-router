@@ -1,6 +1,6 @@
 # bansos-router daemon container
 # build:  docker build -t bansos-router .
-# run:    docker run -d --name bansos -p 17070:17070 -v bansos-data:/root/.bansos bansos-router
+# run:    docker run -d --name bansos -p 17070:17070 -v bansos-data:/home/node/.bansos bansos-router
 
 # stage 1: build the zero-dependency bundle
 FROM node:22-alpine AS build

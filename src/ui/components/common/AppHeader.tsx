@@ -1,5 +1,6 @@
 import { Cpu, Wrench, Shield, MessageSquare, Activity, ScrollText, Settings } from "lucide-preact";
 import type { DaemonStatus } from "../../types";
+import { UpdateNotice } from "./UpdateNotice";
 
 export type NavTab = "models" | "agent" | "relay" | "playground" | "activity" | "logs" | "settings";
 
@@ -55,6 +56,7 @@ export function AppHeader({
               <span className="text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-0.5 rounded-full bg-[#202028] text-[#a1a1aa] border border-[#2c2c36] font-mono shrink-0">
                 v{__APP_VERSION__}
               </span>
+              {status?.update?.hasUpdate && <UpdateNotice current={status.update.current} latest={status.update.latest} />}
             </div>
           </div>
 

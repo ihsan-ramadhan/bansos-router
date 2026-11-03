@@ -19,6 +19,7 @@ import { redactRequestBody, scanRequestBody, type SecretType } from "../security
 import { ActivityStore, type ActivityKind } from "./activity";
 import type { ModelDef, Upstream } from "../upstreams/types";
 import { pickSmartDefaultModel } from "../upstreams/types";
+import { VERSION, peekUpdate, type UpdateInfo } from "../update";
 import { parseChatTurn, sanitizeChatBody } from "../protocols/openai-chat";
 import { parseResponsesTurn, renderResponse, extractReasoningText, ResponsesStreamEncoder } from "../protocols/responses";
 import { chatToResponsesBody, toChatResponse } from "../protocols/responses-upstream";
@@ -47,6 +48,7 @@ let activity: ActivityStore = new ActivityStore();
 
 export interface StatusPayload {
   status: "ok";
+  version: string;
   uptimeSeconds: number;
   port: number;
   modelCount: number;
@@ -59,6 +61,7 @@ export interface StatusPayload {
     allowedUpstreams: string[];
     allowCrossProviderFailover: boolean;
   };
+  update?: UpdateInfo;
 }
 
 function providerCounts(
@@ -2064,8 +2067,10 @@ export function createServer(opts: ServerOptions): http.Server {
 
     if (url === "/bansos/status") {
       const relay = visibleRelayState();
+      const update = peekUpdate();
       const payload: StatusPayload = {
         status: "ok",
+        version: VERSION,
         uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
         port,
         modelCount: catalog.servableModels.length,
@@ -2078,6 +2083,7 @@ export function createServer(opts: ServerOptions): http.Server {
           allowedUpstreams: security.allowedUpstreams,
           allowCrossProviderFailover: security.allowCrossProviderFailover,
         },
+        ...(update ? { update } : {}),
       };
       sendJson(res, 200, payload);
       return;

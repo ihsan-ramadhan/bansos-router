@@ -49,6 +49,21 @@ export function effectiveBind(): string {
   return typeof state?.bind === "string" ? state.bind : loadConfig().bind;
 }
 
+// the flags a daemon was started with, kept in state.json so bansos restart starts it the same way
+export interface StartFlags {
+  port?: number;
+  bind?: string;
+  unsafeAllowNonLoopback?: boolean;
+}
+
+export function startArgs(flags: StartFlags = {}): string[] {
+  return [
+    ...(flags.port !== undefined ? ["--port", String(flags.port)] : []),
+    ...(flags.bind !== undefined ? ["--bind", flags.bind] : []),
+    ...(flags.unsafeAllowNonLoopback ? ["--unsafe-allow-non-loopback"] : []),
+  ];
+}
+
 // base url of the daemon answering /healthz at the recorded port; an explicit other port never collides with it
 export async function runningDaemonUrl(port?: number): Promise<string | null> {
   if (port !== undefined && port !== effectivePort()) return null;

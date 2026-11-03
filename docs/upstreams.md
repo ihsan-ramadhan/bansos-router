@@ -51,7 +51,7 @@ The catalog is **live-first with a pinned fallback**:
 | Base URL | `https://opencode.ai/inference/openai/v1/chat/completions` |
 | Auth | Keyless passthrough (`authorization: Bearer public`) |
 | Spoofed headers | `User-Agent: opencode/latest/2.1.3/cli`, `authorization: Bearer public`, `x-opencode-client: cli`, `x-opencode-project: <hex40>`, `x-opencode-session: <session_id>`, `x-session-affinity: <session_id>`, `b3`, `traceparent` |
-| Model source | models.dev free models (`cost.input === 0`, not deprecated) intersected with live `GET /v1/models`, plus the pinned seed (`src/upstreams/zen.ts`); seeded ids missing from the live list are probed once and dropped if they fail. An id models.dev marks paid never enters, so the catalog cannot leak paid models |
+| Model source | models.dev free models (`cost.input === 0`, not deprecated) intersected with live `GET /v1/models`, plus the pinned seed (`src/upstreams/zen.ts`); seeded ids missing from the live list, or marked paid or deprecated by models.dev, are probed keyless and dropped if the probe fails. A non-seeded id models.dev marks paid never enters, and a seeded one stays only while it still answers without a key, so the catalog cannot leak paid models |
 | Rate limit | Unpublished; treated as best-effort |
 | Gateway quirk | The free-tier gate requires `stream: true`, the presence of core tools (`read` + `shell`), an `<env>` block in the system prompt, and Cloudflare JA4 TLS fingerprint matching BoringSSL. The daemon auto-spawns the local OpenCode background service (`opencode serve --service`) if installed to reuse live session affinity. When neither OpenCode nor Bun is available, requests auto-failover to Kilo/LLM7/OVH. |
 
@@ -147,7 +147,7 @@ forwarded byte-for-byte.
 | Field | Value |
 |---|---|
 | Base URL | `https://api.llm7.io/v1` (OpenAI-compatible) |
-| Auth | **Anonymous**: send `api_key: "unused"`; optional free token from `dash.llm7.io` for higher limits |
+| Auth | **Anonymous**: send `Authorization: Bearer unused`; optional free token from `dash.llm7.io` for higher limits |
 | Model source | `GET /v1/models`: **dynamic** (filtered by `usage_based_only: false`); stable selectors: `default`, `fast` (pro is paid-only) |
 | Rate limit | Shared anonymous tier (1 request concurrency per IP); free token raises limits |
 | Quirk | Models can appear/disappear: dynamic catalog + health-check are mandatory |
@@ -179,7 +179,7 @@ v1 ships **keyless upstreams only**. These land later:
   ban risk** (ToS conflict), and requires relay egress **off** (its own docs
   warn against VPN/hosting egress). Design rules are captured in
   `docs/architecture.md` §7.7 + this section's history; implementation lands
-  with `{ type: "local-openai", baseUrl, apiKey? }` in `~/.bansos/config.json`.
+  with `localUpstreams: [{ name, baseUrl, apiKey? }]` in `~/.bansos/config.json`.
 - **OpenRouter `:free`** models (20 req/min, 200 req/day per model: needs no
   key for some models, else optional key)
 - **Routeway `:free`**, DashScope free tokens
@@ -203,7 +203,7 @@ type ModelDef = {
   reasoning: boolean;
   contextWindow: number;
   maxTokens: number;
-  input: ("text" | "image")[];
+  input: Array<"text" | "image" | "audio" | "video" | "pdf">;
   compat: {
     supportsReasoningEffort: boolean;
     supportsDeveloperRole: boolean;
@@ -219,8 +219,8 @@ type ModelDef = {
 `/v1/responses`. The forward path swaps in `Upstream.responsesUrl`, translates
 the outbound chat body with `chatToResponsesBody()`, and converts the reply back
 with `responsesToChatJson()` (or `responsesToChatStream()` for SSE), all in
-`src/protocols/responses-upstream.ts`. Everything downstream — the chat,
-Responses, and Anthropic handlers, usage logging, the reasoning fold — keeps
+`src/protocols/responses-upstream.ts`. Everything downstream (the chat,
+Responses, and Anthropic handlers, usage logging, the reasoning fold) keeps
 seeing OpenAI chat and needs no per-model branching.
 
 v1 seed (pinned seeds + live refresh; liveness drops dead ids, live `:free`
@@ -256,7 +256,7 @@ A seed absent from the live listing is dropped on refresh.
 | Phase | When | What |
 |---|---|---|
 | Startup | daemon boot | fetch each upstream catalog; mark alive/dead; log `✓/✗` per model |
-| Periodic | every `refreshInterval` (default 30 min, configurable) | re-fetch; update runtime catalog in place; keep serving during the check |
+| Periodic | every `refreshIntervalMs` (default 30 min, `0` turns it off) | re-fetch; update runtime catalog in place; keep serving during the check |
 | Manual | `bansos refresh` | force a check now |
 | Failure policy | upstream unreachable | keep last-known-good catalog; mark source `degraded`; do not wipe models (a blip ≠ death) |
 
@@ -264,8 +264,9 @@ Catalog fetches are cheap (`GET /v1/models`-style). For kilo and llm7 the
 listing itself is authoritative, so liveness of **individual** models is
 derived from the upstream catalog containing that id. Zen's listing is not
 exhaustive (some servable promos are never listed), so zen re-checks each
-seed against the listing and only probe-verifies the unlisted ones keyless
-(typically zero to one model per refresh).
+seed against the listing and probe-verifies keyless the unlisted ones and the
+listed ones models.dev marks paid or deprecated (typically a handful per
+refresh).
 
 ### 4.1 Building the Zen catalog
 
@@ -307,7 +308,7 @@ is retired and still answering, and DeepSeek V4 Flash Free, which was listed for
 days after it began returning 400. Alive keeps it; dead drops it.
 
 A seeded id missing from the listing is probed too, since the listing is not
-exhaustive. When models.dev is unreachable the seed alone drives the pass —
+exhaustive. When models.dev is unreachable the seed alone drives the pass;
 unreachable covers a rejected fetch (DNS failure, refused connection, timeout)
 as well as a non-ok status, so an index outage degrades the pass instead of
 wiping Zen out of the catalog. When the Zen listing is unreachable the catalog

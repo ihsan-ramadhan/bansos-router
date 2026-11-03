@@ -17,4 +17,5 @@ export interface DaemonStatus {
     allowedUpstreams: string[];
     allowCrossProviderFailover: boolean;
   };
+  update?: { hasUpdate: boolean; current: string; latest: string };
 }

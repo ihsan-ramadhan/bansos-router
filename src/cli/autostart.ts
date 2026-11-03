@@ -194,6 +194,27 @@ export function enableAutostart(startNow: boolean, env: AutostartEnv = defaultAu
   return autostartStatus(env);
 }
 
+// restart through the manager that runs the daemon so it stays supervised; null when no manager runs it
+export function restartManaged(env: AutostartEnv = defaultAutostartEnv()): AutostartManager | null {
+  const manager = managerFor(env.platform);
+  if (manager === "systemd") {
+    if (unsupportedReason(env) || !env.run("systemctl", ["--user", "is-active", UNIT]).ok) return null;
+    if (!env.run("systemctl", ["--user", "restart", UNIT]).ok) {
+      throw new Error(`systemctl --user restart ${UNIT} failed; check: systemctl --user status ${UNIT}`);
+    }
+    return manager;
+  }
+  if (manager === "launchd" && env.uid !== undefined) {
+    const target = `gui/${env.uid}/${LABEL}`;
+    const printed = env.run("launchctl", ["print", target]);
+    // loaded is not enough: after bansos stop the agent stays loaded but idle, and a manual daemon may own the port
+    if (!printed.ok || !/^\s*state = running$/m.test(printed.stdout)) return null;
+    if (!env.run("launchctl", ["kickstart", "-k", target]).ok) throw new Error(`launchctl kickstart -k ${target} failed`);
+    return manager;
+  }
+  return null;
+}
+
 // leaves a running daemon alone: turning this off only stops the next login from starting one
 export function disableAutostart(env: AutostartEnv = defaultAutostartEnv()): AutostartStatus {
   const file = autostartPath(env);

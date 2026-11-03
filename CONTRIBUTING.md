@@ -65,8 +65,9 @@ src/
   relay/          relay egress logic + vercel deploy stub (M4)
   ui/             web console dashboard (Preact, Vite)
   update.ts       npm registry version check (24h cache)
-scripts/          sync-version.mjs (copies the root version into extensions/pi)
   logger.ts       JSON line logger
+scripts/          sync-version.mjs (copies the root version into extensions/pi),
+                  models-page.ts (builds the GitHub Pages model list)
 extensions/pi/    pi coding agent extension (registers the bansosr provider)
 docs/             architecture, protocols, harnesses, upstreams
 test/             node:test suites
@@ -91,10 +92,12 @@ test/             node:test suites
 ## Adding a harness adapter
 
 1. Open `src/adapters/index.ts`.
-2. Add a function returning a `HarnessAdapter`:
+2. Add a function returning a `HarnessAdapter` (`src/adapters/types.ts`):
    - `id`, `name`, `wire` (`chat` | `anthropic` | `responses`)
+   - `modelMode`: `list` (writes every picked model), `tiered` (maps tiers from them), `single` (one model) or `discovery` (the harness lists `/v1/models` itself)
    - `configPaths` (first existing wins, or created)
-   - `render(ctx)` returns `ConfigWrite[]` (mode `merge` for JSON, or `overwrite-block` for TOML/YAML with `START_MARKER`/`END_MARKER`)
+   - `render(ctx)` returns `ConfigWrite[]`. Modes: `merge` for JSON, `overwrite-block` for a marked block appended at the root, `toml-block` for a TOML table, `yaml-block` for a block nested under a YAML key. The block modes use `START_MARKER`/`END_MARKER`
+   - `undo(ctx)` returns the paths an undo would touch
    - `undoKeys` for JSON merge adapters (exactly the keys bansos added)
 3. Append it to the `ADAPTERS` array.
 4. Add a test in `test/setup.test.ts` covering both the all models and `--model` cases.
@@ -110,9 +113,11 @@ test/             node:test suites
 ## Running tests
 
 ```bash
-npm test                                   # all suites
-node --import tsx --test test/setup.test.ts # one file
+npm test                                                             # all suites
+node --import tsx --import ./test/isolate.ts --test test/setup.test.ts # one file
 ```
+
+Keep the `test/isolate.ts` preload when running a single file: it points `BANSOS_DIR` at a temporary directory and sets `NO_UPDATE_NOTIFIER`, so tests never write to your real `~/.bansos` or call the npm registry.
 
 Type checking and building must both pass before opening a pull request:
 

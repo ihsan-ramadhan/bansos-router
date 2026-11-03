@@ -6,7 +6,7 @@ import { ADAPTERS } from "../adapters";
 import { effectiveBind, effectivePort, loadConfig, loadConfigWarnings } from "../daemon/state";
 import { START_MARKER } from "../adapters/types";
 import { expandHome, parseJsonc } from "./write";
-import { checkUpdate } from "../update";
+import { checkUpdate, updateNotice } from "../update";
 import { autostartStatus } from "./autostart";
 
 export async function runDoctor(_argv: string[]): Promise<number> {
@@ -86,10 +86,8 @@ export async function runDoctor(_argv: string[]): Promise<number> {
   }
 
   // 3. update available?
-  const update = await checkUpdate();
-  if (update.hasUpdate) {
-    console.log(`\nUpdate available: ${update.current} -> ${update.latest} (run: npm i -g bansos-router)`);
-  }
+  const notice = updateNotice(await checkUpdate());
+  if (notice) console.log(`\n${notice}`);
 
   return failures > 0 ? 1 : 0;
 }

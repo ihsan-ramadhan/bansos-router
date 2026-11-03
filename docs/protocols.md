@@ -62,11 +62,11 @@ type InternalToolCall = { id: string; name: string; arguments: string };
 
 Rules:
 
-- **Model resolution**: inbound `model` string may be an alias. Aliases map
-  to catalog ids (e.g. `"free"`, `"coding-fast"`, `"gemini"` style names
-  configured per install). Unknown model -> `404`-style error listing available
-  ids. `max_tokens`/`max_tokens_to_sample` absent -> per-model default from the
-  catalog.
+- **Model resolution**: inbound `model` must be a catalog id; an id without
+  its vendor prefix also resolves (`laguna-xs-2.1:free` matches
+  `poolside/laguna-xs-2.1:free`). There are no aliases. Unknown model -> `400`
+  with `unknown model: <id>` (see §6). `max_tokens`/`max_tokens_to_sample`
+  absent -> per-model default from the catalog.
 - **Reasoning flags come from the catalog**, not the client. If a model has
   `reasoning: false`, thinking/reasoning-effort parameters are stripped
   silently (Kilo models notably reject reasoning-effort).
@@ -134,8 +134,8 @@ lossless.
 Input modalities are advertised per-model via the `input` field on
 `/v1/models`, typed `Array<"text" | "image" | "audio" | "video" | "pdf">`. The
 daemon detects them automatically for the Kilo and LLM7 upstreams from the live
-catalog (`architecture.input_modalities`), and from a manual seed for Zen
-(static catalog). Image parts are passed through to upstreams only when the
+catalog (`architecture.input_modalities`), and for Zen from models.dev
+(`modalities.input`), with the seed in `src/upstreams/zen.ts` as the fallback. Image parts are passed through to upstreams only when the
 resolved model lists `image` in `input`; otherwise the image block is dropped
 and the text is sent alone.
 
@@ -219,7 +219,7 @@ non-stream shape:
 
 ## 5. Per-model metadata (drives translation)
 
-The catalog (`docs/upstreams.md` §6) carries flags that gate translation:
+The catalog (`docs/upstreams.md` §3) carries flags that gate translation:
 
 ```ts
 type ModelDef = {
@@ -229,7 +229,7 @@ type ModelDef = {
   reasoning: boolean;    // supports/emits thinking
   contextWindow: number;
   maxTokens: number;
-  input: ("text" | "image")[];
+  input: Array<"text" | "image" | "audio" | "video" | "pdf">;
   // translation flags
   compat: {
     supportsReasoningEffort: boolean;   // kilo: false
@@ -249,7 +249,7 @@ Translation code switches on `compat`:
 
 | Upstream / internal condition | Chat | Anthropic | Responses |
 |---|---|---|---|
-| Unknown model | `400 model_not_found` | `400 invalid_request_error` | `400 invalid_request_error` |
+| Unknown model | `400` `{error: {message: "unknown model: <id>", type: "upstream_error"}}` | `400 invalid_request_error` | `400` `{error: {message: "unknown model: <id>", type: "upstream_error"}}` |
 | Rate limited (upstream 429 / 402) | `429` + retry hint | `429 rate_limit_error` | `429` + `rate_limit` event |
 | Upstream down / timeout | `502` | `502 api_error` | `502` |
 | Relay unreachable | `502` (fall back to direct per config) | same | same |

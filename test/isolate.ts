@@ -3,6 +3,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+process.env.NO_UPDATE_NOTIFIER = "1";
+
 if (!process.env.BANSOS_DIR) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bansos-test-"));
   process.env.BANSOS_DIR = dir;

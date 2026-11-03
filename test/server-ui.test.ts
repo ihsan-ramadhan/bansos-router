@@ -7,6 +7,10 @@ import { RateLimiter } from "../src/daemon/rate-limit";
 import { createLogger } from "../src/logger";
 import { SEEDED_MODELS } from "../src/upstreams";
 import { loadRelayState, saveRelayState } from "../src/relay/egress";
+import fs from "node:fs";
+import path from "node:path";
+import { BANSOS_DIR } from "../src/daemon/state";
+import { VERSION } from "../src/update";
 
 function setupTestServer(): Promise<{ server: http.Server; baseUrl: string; close: () => Promise<void> }> {
   const log = createLogger({ level: "error" });
@@ -284,4 +288,26 @@ test("render writes only the picked models and upstreams, and refuses bad picks"
   } finally {
     await close();
   }
+});
+
+// the dashboard polls status every 5s, so the update field comes from the 24h cache, never a live registry call
+test("GET /bansos/status reports a cached update and NO_UPDATE_NOTIFIER hides it", async (t) => {
+  const cacheFile = path.join(BANSOS_DIR, "update-check.json");
+  fs.mkdirSync(BANSOS_DIR, { recursive: true });
+  fs.writeFileSync(cacheFile, JSON.stringify({ "bansos-router": { latest: "99.0.0", checkedAt: Date.now() } }));
+  const optOut = process.env.NO_UPDATE_NOTIFIER;
+  const { baseUrl, close } = await setupTestServer();
+  t.after(async () => {
+    process.env.NO_UPDATE_NOTIFIER = optOut;
+    fs.rmSync(cacheFile, { force: true });
+    await close();
+  });
+
+  delete process.env.NO_UPDATE_NOTIFIER;
+  const status = (await (await fetch(`${baseUrl}/bansos/status`)).json()) as { update?: unknown };
+  assert.deepEqual(status.update, { hasUpdate: true, current: VERSION, latest: "99.0.0" });
+
+  process.env.NO_UPDATE_NOTIFIER = "1";
+  const quiet = (await (await fetch(`${baseUrl}/bansos/status`)).json()) as { update?: unknown };
+  assert.equal(quiet.update, undefined);
 });

@@ -32,7 +32,7 @@ Legend: 🟢 config-only · 🟡 config + small adapter · 🔵 works manually, 
 | **OpenClaw** | OpenAI Chat or Anthropic | `~/.openclaw/config.json` / agent `models.json` | 🟢 | `models.providers.<id>.baseUrl`; can pick either wire |
 | **Goose** | OpenAI Chat | `~/.config/goose/custom_providers/*.json` | 🟢 | `engine: "openai"`, `base_url`, model list |
 | **Antigravity CLI** | OpenAI Chat | `~/.config/antigravity/config.toml` | 🟢 | `base_url`, `model`, `api_key_env` (or inline) |
-| **JCode** | OpenAI Chat | `~/.jcode/config.toml` | 🟢 | `[providers.bansos] type="openai-compatible"`, `base_url` |
+| **JCode** | OpenAI Chat | `~/.jcode/config.toml` + `~/.config/jcode/openai-compatible.env` | 🟢 | `[providers.openai-compatible] type="open-ai-compatible"`, `base_url`, plus the env file for the API base and key |
 | **9Router** | OpenAI Chat | `~/.9router/db.json` | 🟢 | Custom compatible `providerNodes` + `providerConnections` |
 | **Continue** | OpenAI Chat | `~/.continue/config.json` | 🟢 | Appends/merges OpenAI provider entries in `models` array |
 | **Cline** | OpenAI Chat | `~/.config/cline/config.json` | 🟢 | Sets `apiProvider: "openai-compatible"`, `openAiBaseUrl` |
@@ -49,26 +49,32 @@ type HarnessAdapter = {
   id: string;                 // "claude-code", "aider", ...
   name: string;               // human-readable
   wire: "chat" | "anthropic" | "responses";
+  modelMode: "list" | "tiered" | "single" | "discovery";
   configPaths: string[];      // candidate locations, first existing wins (or create)
   render(ctx: SetupCtx): ConfigWrite[];  // ordered file writes
-  undo(ctx: SetupCtx): void;  // remove only the bansos-marked block
+  undo(ctx: SetupCtx): string[];         // paths an undo would touch
+  undoKeys?: string[];        // merge mode: dotted keys --undo removes
 };
 type SetupCtx = {
   baseUrl: string;            // http://127.0.0.1:<port>
   defaultModel: string;       // from catalog or CLI flag
-  models: ModelDef[];         // alive catalog snapshot
+  models: ModelDef[];         // alive catalog snapshot, narrowed by --models/--upstream
+  specificModel?: boolean;    // true when --model pinned one model
 };
 type ConfigWrite = {
   path: string;
   content: string;
-  mode?: "merge" | "overwrite-block"; // block = wrapped in markers
-  markers?: [string, string]; // e.g. <!-- bansos-router:start -->
+  mode: "merge" | "overwrite-block" | "toml-block" | "yaml-block";
+  markers?: [string, string]; // e.g. # bansos-router:start
+  tomlTable?: string;         // toml-block: the table the block defines
+  yamlParent?: string;        // yaml-block: the key the block nests under
+  replace?: string[];         // merge: dotted paths rewritten wholesale
 };
 ```
 
 ### 3.1 Write modes
 
-`bansos setup <harness>` writes with `--undo` support in two modes:
+`bansos setup <harness>` writes with `--undo` support in these modes:
 
 - **JSON targets** (Claude Code `settings.json`, OpenCode, Goose, OpenClaw):
   the existing file is parsed, the bansos fragment is deep-merged, and the
@@ -79,8 +85,10 @@ type ConfigWrite = {
   every run, so models that left the catalog do not pile up (Goose's
   key-less `{name}` entries used to double on each rerun).
 - **Non-JSON formats** (TOML, YAML, env: Aider, Codex, Hermes, Antigravity,
-  JCode): a marked block (`# bansos-router:start` / `# ...:end`) is replaced or
-  appended; `--undo` deletes between the markers.
+  JCode, OMP): a marked block (`# bansos-router:start` / `# ...:end`) is
+  replaced or appended; `--undo` deletes between the markers. `toml-block`
+  (Codex, JCode) keeps the block inside its own table, and `yaml-block` (OMP)
+  nests it under a top-level key such as `providers`.
 - **TOML root keys** (Codex `model` / `model_provider`, JCode `default_*`)
   cannot live in the marked block, which sits after other tables. They are
   written in root scope with a trailing `# bansos-router` tag; a value the user
@@ -103,10 +111,10 @@ combine; an upstream adds every model it serves), and `--model` cannot be mixed
 with them. Each adapter declares a `modelMode` (`list`, `tiered`, `single`,
 `discovery`) that `/bansos/adapters` reports, so the dashboard shows a checklist,
 a single picker, or nothing. With no model flag, adapters apply these defaults:
-- **Claude Code**: Maps tiers automatically (`haiku` -> fast non-reasoning, `sonnet` -> daily reasoning, `opus` -> highest-capacity reasoning) and sets `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`.
+- **Claude Code**: Maps tiers automatically (`haiku` -> the largest non-reasoning model, `sonnet` -> the smart default when it reasons, otherwise the second-largest reasoning model, `opus` -> the largest reasoning model) and sets `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`.
 - **OpenCode, Goose, OpenClaw, Continue**: Register all catalog models so every model is selectable in the harness.
 - **9Router, OMP**: Register a provider that discovers models from `/v1/models` on its own.
-- **Aider, Codex, Hermes, Antigravity, JCode, Cline, Roo**: Default to the smart primary model (currently `muse-spark-1.3-contributor-free`) and switch freely via `/v1/models`.
+- **Aider, Codex, Hermes, Antigravity, JCode, Cline, Roo**: Default to the smart model (the preferred model in `src/upstreams/types.ts` when it is alive, otherwise the reasoning model with the largest context window) and switch freely via `/v1/models`.
 
 In strict mode only models from `allowedUpstreams` are registered or picked as
 the default.
@@ -146,7 +154,7 @@ export AIDER_MODEL=<id>
       "npm": "@ai-sdk/openai-compatible",
       "options": { "baseURL": "http://127.0.0.1:17070/v1" },
       "models": {
-        "muse-spark-1.3-contributor-free": {},
+        "mimo-v2.6-flash-free": {},
         "nemotron-3-ultra-free": {},
         "big-pickle": {},
         "kilo-auto/free": {}
@@ -206,12 +214,25 @@ api_key = "bansos"
 ### JCode: `~/.jcode/config.toml`
 
 ```toml
-default_provider = "bansos"
+default_provider = "openai-compatible"
 default_model = "<id>"
 
-[providers.bansos]
-type = "openai-compatible"
+[providers.openai-compatible]
+type = "open-ai-compatible"
 base_url = "http://127.0.0.1:17070/v1"
+auth = "bearer"
+model_catalog = true
+context_window = 262144
+```
+
+and `~/.config/jcode/openai-compatible.env`:
+
+```sh
+# bansos-router:start
+JCODE_OPENAI_COMPAT_API_BASE=http://127.0.0.1:17070
+OPENAI_COMPAT_API_KEY=bansos
+JCODE_OPENAI_COMPAT_LOCAL_ENABLED=1
+# bansos-router:end
 ```
 
 ### 9Router: `~/.9router/db.json`
@@ -298,8 +319,9 @@ pointing at the same daemon. Rate limits are shared across harnesses (see
 
 1. the daemon answers `/healthz` (and how many models it serves);
 2. relay state and the security config (strict mode, DLP, config warnings);
-3. per harness: config file missing, present with bansos markers or merged
+3. autostart: on, off, or pointing at a path that no longer exists;
+4. per harness: config file missing, present with bansos markers or merged
    keys, or present without them;
-4. whether a newer `bansos-router` is on npm.
+5. whether a newer `bansos-router` is on npm.
 
 It exits 1 when any check fails.

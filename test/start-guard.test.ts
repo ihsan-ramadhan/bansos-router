@@ -5,7 +5,7 @@ import http from "node:http";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { STATE_FILE, runningDaemonUrl } from "../src/daemon/state";
+import { STATE_FILE, runningDaemonUrl, startArgs } from "../src/daemon/state";
 
 const cli = fileURLToPath(new URL("../src/cli/index.ts", import.meta.url));
 
@@ -17,10 +17,11 @@ function runCli(args: string[]): Promise<{ code: number; stdout: string }> {
   });
 }
 
-async function withLiveDaemon(fn: (port: number) => Promise<void>) {
+async function withLiveDaemon(fn: (port: number) => Promise<void>, version?: string) {
   const server = http.createServer((req, res) => {
-    res.writeHead(req.url === "/healthz" ? 200 : 404, { "content-type": "application/json" });
-    res.end('{"status":"ok"}');
+    const known = req.url === "/healthz" || (version !== undefined && req.url === "/bansos/status");
+    res.writeHead(known ? 200 : 404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ status: "ok", ...(version ? { version } : {}) }));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as { port: number }).port;
@@ -73,4 +74,25 @@ test("a stale state.json whose daemon is gone does not block a start", async () 
   } finally {
     fs.rmSync(STATE_FILE, { force: true });
   }
+});
+
+test("bansos restart starts a daemon again with the flags it was started with", () => {
+  assert.deepEqual(startArgs(), []);
+  assert.deepEqual(startArgs({ port: 18000, bind: "0.0.0.0", unsafeAllowNonLoopback: true }), [
+    "--port",
+    "18000",
+    "--bind",
+    "0.0.0.0",
+    "--unsafe-allow-non-loopback",
+  ]);
+});
+
+// after npm i -g the CLI is new but the daemon is not, which is exactly when the notice matters
+test("start --bg next to a daemon running older code says to restart it", async () => {
+  await withLiveDaemon(async (port) => {
+    const out = await runCli(["start", "--bg"]);
+    assert.equal(out.code, 0);
+    assert.match(out.stdout, new RegExp(`still runs 0\\.0\\.1, but .* is installed \\(run: bansos restart\\)`));
+    assert.match(out.stdout, new RegExp(`already running at http://127\\.0\\.0\\.1:${port}`));
+  }, "0.0.1");
 });

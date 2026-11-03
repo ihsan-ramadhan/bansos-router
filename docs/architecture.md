@@ -103,22 +103,24 @@ The core server, run via `bansos start` (foreground or `--bg`) or the
 | Rate limiter | Local per-IP limit (protects against accidental LAN exposure; upstreams have their own limits) |
 | Relay egress | When enabled, upstream calls go through a user-owned relay via `x-relay-target` / `x-relay-path` headers (proven pattern). See `docs/upstreams.md` §7 |
 | Request logging | Text or JSON lines (`BANSOS_LOG=json`) to stdout and always to `~/.bansos/logs/bansosd.log`, rotated past 5 MB; secrets and raw upstream errors are kept out in strict mode |
+| Update check | Once a day against the npm registry, cached in `~/.bansos/update-check.json`; shown by `bansos start`, `restart`, `status`, `doctor` and the dashboard header. The header's status poll answers from memory and refreshes a stale cache in the background, waiting an hour after a failed registry call. `bansos start` and `status` also flag a daemon still running an older version than the installed CLI. `NO_UPDATE_NOTIFIER=1` turns the registry check off |
 
 ### 3.2 `bansos`: the CLI (short-lived)
 
 | Command | Purpose |
 |---|---|
 | `bansos setup <harness>` | Write/update the harness config (see `docs/harnesses.md`) |
-| `bansos status` | Show daemon state: port, alive models, relay on/off, request count |
-| `bansos models` | List catalog with liveness |
+| `bansos status` | Show each daemon found on 17070-17090: port, version, model count, relay on/off, alive models |
+| `bansos models` | List the ids the daemon serves on `/v1/models` |
 | `bansos ping [model]` | Probe live health, latency, and rate-limit status of models |
 | `bansos refresh` | Re-run health checks now |
 | `bansos relay on/off/status` | Toggle relay egress live |
 | `bansos relay url <URL>` / `use <URL>` / `list` / `remove <URL>` | Manage saved relays |
 | `bansos relay deploy` | Stub (M4): prints how to bring your own relay |
-| `bansos doctor` | Diagnose: daemon reachability, relay, security config, harness config validity, available update |
-| `bansos start [--bg]` | Start the daemon (foreground, or detached with `--bg`) |
-| `bansos stop [--all]` | Stop the daemon in `~/.bansos/state.json`; `--all` also scans for every other bansos daemon |
+| `bansos doctor` | Diagnose: daemon reachability, relay, security config, autostart, harness config validity, available update |
+| `bansos start [--bg]` | Start the daemon (foreground, or detached with `--bg`); exits 0 without starting a second one when a daemon already answers on that port |
+| `bansos stop [--all]` | Stop the daemon in `~/.bansos/state.json`; `--all` also scans for every other bansos daemon. SIGTERM, then SIGKILL after 5 s; exits 1 if a daemon survives |
+| `bansos restart` | Restart through systemd or launchd when `bansos autostart` runs the daemon, otherwise stop and `start --bg` with the flags recorded in `state.json`; refuses when only unrecorded daemons are running |
 | `bansos logs [--activity]` | Tail the daemon log, or the request feed |
 | `bansos usage [--json]` | Request and token totals over the last 60 days |
 | `bansos autostart on/off/status` | Start the daemon at login via a systemd user service, a LaunchAgent, or the Windows Startup folder |
@@ -156,13 +158,17 @@ demand, stops it again when pi exits if the extension spawned it).
 - Daemon lifecycle: started manually (`bansos start`, or `bansosd`) or spawned
   on demand by the pi extension. `bansos doctor` reports a daemon that is not
   running with the command to start it. `bansos stop` stops the recorded
-  daemon; `bansos stop --all` adds a `/proc` (Linux) or process-list scan.
+  daemon and waits for it to exit; `bansos stop --all` adds a `/proc` (Linux),
+  `ps` (macOS) or PowerShell `Get-CimInstance` (Windows) scan.
 - `bansos autostart on` hands the daemon to the OS service manager at login.
   systemd and launchd run it in the foreground and restart it after a crash
-  but not after `bansos stop` (a clean exit); the Windows Startup folder runs
-  `bansos start --bg`.
+  but not after `bansos stop` (a clean exit; a daemon force-killed after 5 s
+  counts as a crash); the Windows Startup folder runs `bansos start --bg`.
+  `bansos restart` goes through the same manager, so the daemon stays
+  supervised.
 - The dashboard's Settings tab can restart the daemon in place with the saved
-  config; the process stays the same, only the HTTP server is rebuilt.
+  config; the process stays the same, only the HTTP server is rebuilt, so a
+  new version still needs `bansos restart`.
 
 ## 5. State & persistence
 
@@ -171,8 +177,8 @@ never wipe it):
 
 ```
 ~/.bansos/
-├── config.json        # port, bind, refresh interval, security
-├── state.json         # runtime state: pid/port/bind of the running daemon
+├── config.json        # port, bind, refresh interval, security, local gateways
+├── state.json         # pid, port, bind, start time and start flags of the running daemon
 ├── activity.json      # request feed + token usage (rolling 60 days)
 ├── relay-state.json   # saved relays + active relay + enabled flag
 ├── pi-models.json     # last catalog the pi extension saw (offline fallback)
@@ -180,7 +186,9 @@ never wipe it):
 └── logs/              # daemon log (bansosd.log, rotated)
 ```
 
-State files are plain JSON, never secret-bearing (keyless design).
+State files are plain JSON. The keyless upstreams need no secrets; the one
+exception is an optional `apiKey` for a local gateway in `config.json`
+(`localUpstreams`).
 
 ## 6. Security model
 
@@ -226,7 +234,7 @@ State files are plain JSON, never secret-bearing (keyless design).
 | Testing | `node:test` (+ `tsx` loader in dev) | Zero-dep; enough for unit + streaming integration tests |
 | Build | **esbuild** -> one bundle (`dist/cli/index.js`); bins `bansos` + `bansosd` point at it | Single-file entry, no runtime build dep; `tsx` only for dev |
 | Dashboard | **Preact + Tailwind**, built by Vite into `dist/ui` and served by the daemon | Small bundle, no server-side rendering needed |
-| Process mgmt | `bansos start` foreground; `--bg` = detached spawn + log file; `bansos stop` = SIGTERM all daemon pids; `bansos status` = TCP health-check | `state.json` pid + `/proc` (Linux) / `ps` / `wmic` scan, no PID-file complexity |
+| Process mgmt | `bansos start` foreground; `--bg` = detached spawn + log file; `bansos stop` = SIGTERM the recorded pid (`--all`: every daemon), SIGKILL after 5 s; `bansos status` = HTTP probe of `/bansos/status` on 17070-17090 | `state.json` pid + `/proc` (Linux) / `ps` (macOS) / PowerShell `Get-CimInstance` (Windows) scan, no PID-file complexity |
 
 ### 7.3 Dependency budget
 
@@ -280,6 +288,7 @@ Responses/Messages translation ever outgrows what is reasonable to maintain.
 bansos-router/
 ├── package.json            # bins: bansos, bansosd
 ├── scripts/sync-version.mjs # copies the root version into extensions/pi
+├── scripts/models-page.ts  # builds the GitHub Pages model list
 ├── src/
 │   ├── logger.ts           # shared JSON-lines logger (hand-rolled)
 │   ├── update.ts           # npm registry version check (24 h cache)

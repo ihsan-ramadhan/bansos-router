@@ -211,7 +211,7 @@ export function usePlaygroundChat({
     setMessages(updatedMessages);
     setUserPrompt("");
 
-    const targetModel = selectedModel || models[0]?.id || "mimo-v2.5-free";
+    const targetModel = selectedModel || models[0]?.id || "big-pickle";
     const targetProtocol = selectedProtocol;
     setPendingModel(targetModel);
     setPendingProtocol(targetProtocol);

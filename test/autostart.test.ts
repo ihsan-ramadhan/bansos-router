@@ -8,6 +8,7 @@ import {
   disableAutostart,
   enableAutostart,
   renderAutostart,
+  restartManaged,
   type AutostartEnv,
 } from "../src/cli/autostart";
 import { handleAdmin } from "../src/daemon/admin";
@@ -15,7 +16,10 @@ import { RuntimeCatalog } from "../src/daemon/catalog";
 import { createLogger } from "../src/logger";
 import type http from "node:http";
 
-function fakeEnv(platform: NodeJS.Platform, opts: { systemd?: boolean; enabled?: boolean; enableFails?: boolean } = {}) {
+function fakeEnv(
+  platform: NodeJS.Platform,
+  opts: { systemd?: boolean; enabled?: boolean; enableFails?: boolean; active?: boolean; restartFails?: boolean; loaded?: "running" | "idle" } = {},
+) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "bansos-autostart-"));
   const node = path.join(home, "bin", "node");
   const script = path.join(home, "lib", platform === "win32" ? "50% dir" : "50% $HOME \"x\"", "index.js");
@@ -32,12 +36,17 @@ function fakeEnv(platform: NodeJS.Platform, opts: { systemd?: boolean; enabled?:
     command: [node, script],
     run(cmd, args) {
       calls.push([cmd, ...args].join(" "));
+      if (cmd === "launchctl" && args[0] === "print") {
+        return { ok: Boolean(opts.loaded), stdout: opts.loaded ? `\tstate = ${opts.loaded === "running" ? "running" : "not running"}\n` : "" };
+      }
       if (cmd !== "systemctl") return { ok: true, stdout: "" };
       if (opts.systemd === false) return { ok: false, stdout: "" };
       if (args[1] === "enable" && opts.enableFails) return { ok: false, stdout: "" };
       if (args[1] === "enable") enabled = true;
       if (args[1] === "disable") enabled = false;
       if (args[1] === "is-enabled") return { ok: enabled, stdout: enabled ? "enabled\n" : "disabled\n" };
+      if (args[1] === "is-active") return { ok: Boolean(opts.active), stdout: "" };
+      if (args[1] === "restart" && opts.restartFails) return { ok: false, stdout: "" };
       return { ok: true, stdout: "" };
     },
   };
@@ -171,5 +180,37 @@ test("the dashboard toggles start-at-login without starting a second daemon", as
     assert.equal((off.body as { enabled: boolean }).enabled, false);
   } finally {
     f.cleanup();
+  }
+});
+
+// npm i -g swaps the code on disk, but only a fresh process runs it; a supervised daemon must stay supervised
+test("restart goes through the service manager that runs the daemon, and only then", () => {
+  const systemd = fakeEnv("linux", { active: true });
+  const idle = fakeEnv("linux", { active: false });
+  const broken = fakeEnv("linux", { active: true, restartFails: true });
+  const noBus = fakeEnv("linux", { systemd: false });
+  const launchd = fakeEnv("darwin", { loaded: "running" });
+  const idleAgent = fakeEnv("darwin", { loaded: "idle" });
+  const notLoaded = fakeEnv("darwin");
+  const windows = fakeEnv("win32");
+  try {
+    assert.equal(restartManaged(systemd.env), "systemd");
+    assert.ok(systemd.calls.includes("systemctl --user restart bansos-router.service"));
+
+    assert.equal(restartManaged(idle.env), null, "an enabled but idle unit means someone else runs the daemon");
+    assert.ok(!idle.calls.some((c) => c.includes(" restart ")));
+
+    assert.throws(() => restartManaged(broken.env), /systemctl --user restart bansos-router.service failed/);
+    assert.equal(restartManaged(noBus.env), null);
+
+    assert.equal(restartManaged(launchd.env), "launchd");
+    assert.ok(launchd.calls.includes("launchctl kickstart -k gui/1000/io.github.ihsan-ramadhan.bansos-router"));
+    assert.equal(restartManaged(idleAgent.env), null, "a loaded agent idle after bansos stop does not run the daemon");
+    assert.ok(!idleAgent.calls.some((c) => c.includes("kickstart")));
+    assert.equal(restartManaged(notLoaded.env), null);
+
+    assert.equal(restartManaged(windows.env), null, "the Startup folder script supervises nothing");
+  } finally {
+    for (const f of [systemd, idle, broken, noBus, launchd, idleAgent, notLoaded, windows]) f.cleanup();
   }
 });
