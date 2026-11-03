@@ -1,4 +1,4 @@
-import { Zap } from "lucide-preact";
+import { WifiOff } from "lucide-preact";
 
 interface OfflineBannerProps {
   daemonAddress: string;
@@ -11,7 +11,7 @@ export function OfflineBanner({ daemonAddress, loadingStatus, onRetry }: Offline
     <div className="rounded-xl border border-rose-800/60 bg-rose-950/40 p-3 sm:p-4 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-rose-200 animate-in fade-in">
       <div className="flex items-center gap-3">
         <div className="p-2 rounded-lg bg-rose-900/60 text-rose-300 border border-rose-700/50 shrink-0">
-          <Zap className="h-4 w-4" />
+          <WifiOff className="h-4 w-4" />
         </div>
         <div className="space-y-0.5 min-w-0">
           <span className="font-semibold text-white block text-xs sm:text-sm">Daemon Disconnected</span>

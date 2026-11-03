@@ -1,12 +1,13 @@
 import {
   Search,
   Filter,
-  Zap,
+  Activity,
   RotateCcw,
   ChevronDown,
   X,
   Layers,
-  Sparkles,
+  Brain,
+  Gauge,
   Eye,
 } from "lucide-preact";
 import type { CapabilityFilter } from "../../utils/models";
@@ -105,7 +106,7 @@ export function CatalogToolbar({
             className="min-h-9.5 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#202028] hover:bg-[#282834] active:bg-[#1a1a20] border border-[#2c2c36] text-xs font-medium text-white transition disabled:opacity-50 cursor-pointer shrink-0"
             title="Ping live latency and status for visible models"
           >
-            <Zap className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+            <Activity className="h-3.5 w-3.5 text-amber-400 shrink-0" />
             <span className="whitespace-nowrap">Ping All</span>
           </button>
         )}
@@ -178,7 +179,7 @@ export function CapabilityFilterChips({
 }: CapabilityFilterChipsProps) {
   return (
     <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5 px-0.5 text-xs">
-      <span className="text-[10px] sm:text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider shrink-0 mr-0.5">
+      <span className="text-xs font-medium text-[#a1a1aa] shrink-0 mr-0.5">
         Capability:
       </span>
       <button
@@ -203,7 +204,7 @@ export function CapabilityFilterChips({
         }`}
         title="Filter models capable of step-by-step reasoning / thinking"
       >
-        <Sparkles className="h-3.5 w-3.5 shrink-0" />
+        <Brain className="h-3.5 w-3.5 shrink-0" />
         <span>Reasoning / Think</span>
       </button>
 
@@ -217,7 +218,7 @@ export function CapabilityFilterChips({
         }`}
         title="Filter fast models for quick completions without reasoning delay"
       >
-        <Zap className="h-3.5 w-3.5 shrink-0" />
+        <Gauge className="h-3.5 w-3.5 shrink-0" />
         <span>Fast (Non-thinking)</span>
       </button>
 

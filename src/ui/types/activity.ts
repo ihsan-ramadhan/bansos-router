@@ -10,6 +10,7 @@ export interface ActivityEvent {
   upstream: string;
   inputTokens: number;
   outputTokens: number;
+  cachedTokens?: number;
   durationMs: number;
   status: ActivityStatus;
   statusCode?: number;
@@ -21,6 +22,7 @@ export interface ModelActivity {
   ok: number;
   inputTokens: number;
   outputTokens: number;
+  cachedTokens: number;
 }
 
 export interface UpstreamActivity {
@@ -34,6 +36,7 @@ export interface UsageStats {
   errorRequests: number;
   totalInputTokens: number;
   totalOutputTokens: number;
+  totalCachedTokens: number;
   failoverCount: number;
   avgDurationMs: number;
   perModel: Record<string, ModelActivity>;

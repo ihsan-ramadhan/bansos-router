@@ -14,6 +14,7 @@ export interface ActivityEvent {
   upstream: string;
   inputTokens: number;
   outputTokens: number;
+  cachedTokens?: number;
   durationMs: number;
   status: ActivityStatus;
   statusCode?: number;
@@ -25,6 +26,7 @@ export interface ModelActivity {
   ok: number;
   inputTokens: number;
   outputTokens: number;
+  cachedTokens: number;
 }
 
 export interface UsageStats {
@@ -33,6 +35,7 @@ export interface UsageStats {
   errorRequests: number;
   totalInputTokens: number;
   totalOutputTokens: number;
+  totalCachedTokens: number;
   failoverCount: number;
   avgDurationMs: number;
   perModel: Record<string, ModelActivity>;
@@ -48,6 +51,7 @@ export interface ActivityInput {
   upstream: string;
   inputTokens: number;
   outputTokens: number;
+  cachedTokens?: number;
   durationMs: number;
   status: ActivityStatus;
   statusCode?: number;
@@ -139,6 +143,7 @@ export class ActivityStore {
     let errorRequests = 0;
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
+    let totalCachedTokens = 0;
     let failoverCount = 0;
     let totalDurationMs = 0;
     const perModel: Record<string, ModelActivity> = {};
@@ -150,16 +155,18 @@ export class ActivityStore {
       else errorRequests++;
       totalInputTokens += e.inputTokens;
       totalOutputTokens += e.outputTokens;
+      totalCachedTokens += e.cachedTokens ?? 0;
       totalDurationMs += e.durationMs;
       if (e.failoverFrom) failoverCount++;
 
       const m =
         perModel[e.model] ??
-        (perModel[e.model] = { requests: 0, ok: 0, inputTokens: 0, outputTokens: 0 });
+        (perModel[e.model] = { requests: 0, ok: 0, inputTokens: 0, outputTokens: 0, cachedTokens: 0 });
       m.requests++;
       if (e.status === "ok") m.ok++;
       m.inputTokens += e.inputTokens;
       m.outputTokens += e.outputTokens;
+      m.cachedTokens += e.cachedTokens ?? 0;
 
       const u =
         perUpstream[e.upstream] ?? (perUpstream[e.upstream] = { requests: 0, ok: 0 });
@@ -173,6 +180,7 @@ export class ActivityStore {
       errorRequests,
       totalInputTokens,
       totalOutputTokens,
+      totalCachedTokens,
       failoverCount,
       avgDurationMs: totalRequests ? Math.round(totalDurationMs / totalRequests) : 0,
       perModel,

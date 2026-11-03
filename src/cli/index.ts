@@ -815,9 +815,10 @@ interface UsageCliShape {
   errorRequests: number;
   totalInputTokens: number;
   totalOutputTokens: number;
+  totalCachedTokens: number;
   failoverCount: number;
   avgDurationMs: number;
-  perModel: Record<string, { requests: number; ok: number; inputTokens: number; outputTokens: number }>;
+  perModel: Record<string, { requests: number; ok: number; inputTokens: number; outputTokens: number; cachedTokens: number }>;
   perUpstream: Record<string, { requests: number; ok: number }>;
 }
 
@@ -837,9 +838,10 @@ async function runUsage(json: boolean): Promise<number> {
       errorRequests: number;
       totalInputTokens: number;
       totalOutputTokens: number;
+      totalCachedTokens: number;
       failoverCount: number;
       avgDurationMs: number;
-      perModel: Record<string, { requests: number; ok: number; inputTokens: number; outputTokens: number }>;
+      perModel: Record<string, { requests: number; ok: number; inputTokens: number; outputTokens: number; cachedTokens: number }>;
       perUpstream: Record<string, { requests: number; ok: number }>;
     };
   } catch {
@@ -859,6 +861,7 @@ async function runUsage(json: boolean): Promise<number> {
   console.log(`\n● usage summary (last 60 days)\n`);
   console.log(`  requests    : ${body.totalRequests} (${body.okRequests} ok, ${body.errorRequests} err)`);
   console.log(`  tokens in   : ${fmt(body.totalInputTokens)}`);
+  console.log(`  cached      : ${fmt(body.totalCachedTokens ?? 0)}`);
   console.log(`  tokens out  : ${fmt(body.totalOutputTokens)}`);
   console.log(`  avg latency : ${dur(body.avgDurationMs)}`);
   console.log(`  failovers   : ${body.failoverCount}`);
@@ -867,7 +870,7 @@ async function runUsage(json: boolean): Promise<number> {
   if (models.length > 0) {
     console.log(`\n  by model:`);
     for (const [m, s] of models) {
-      console.log(`    ${m}  ${s.requests} reqs · ${fmt(s.inputTokens)}/${fmt(s.outputTokens)} tok`);
+      console.log(`    ${m}  ${s.requests} reqs · ${fmt(s.inputTokens)}/${fmt(s.outputTokens)} tok · ${fmt(s.cachedTokens ?? 0)} cached`);
     }
   }
 

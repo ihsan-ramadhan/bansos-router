@@ -53,7 +53,7 @@ export function AppHeader({
               <span className="font-semibold text-sm sm:text-[15px] tracking-tight text-white truncate">
                 Bansos Router
               </span>
-              <span className="text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-0.5 rounded-full bg-[#202028] text-[#a1a1aa] border border-[#2c2c36] font-mono shrink-0">
+              <span className="text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-0.5 rounded-md bg-[#202028] text-[#a1a1aa] border border-[#2c2c36] font-mono shrink-0">
                 v{__APP_VERSION__}
               </span>
               {status?.update?.hasUpdate && <UpdateNotice current={status.update.current} latest={status.update.latest} />}

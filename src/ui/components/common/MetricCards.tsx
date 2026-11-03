@@ -58,7 +58,7 @@ export function MetricCards({ status, loading, daemonAddress }: MetricCardsProps
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-3 sm:p-4 transition-all duration-200 hover:border-[#2e2e38] shadow-xs flex flex-col justify-between">
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] sm:text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider">
+            <span className="text-xs font-medium text-[#a1a1aa]">
               Status
             </span>
             <div className="p-1 sm:p-1.5 rounded-lg bg-[#1a1a20] text-[#71717a] border border-[#282832] shrink-0">
@@ -74,7 +74,7 @@ export function MetricCards({ status, loading, daemonAddress }: MetricCardsProps
             </span>
           </div>
         </div>
-        <div className="text-[11px] sm:text-xs text-[#71717a] mt-1.5 font-mono truncate">
+        <div className="text-[11px] sm:text-xs text-[#a1a1aa] mt-1.5 font-mono truncate">
           {daemonAddress || `127.0.0.1:${status?.port ?? 17070}`}
         </div>
       </div>
@@ -83,7 +83,7 @@ export function MetricCards({ status, loading, daemonAddress }: MetricCardsProps
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-3 sm:p-4 transition-all duration-200 hover:border-[#2e2e38] shadow-xs flex flex-col justify-between">
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] sm:text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider">
+            <span className="text-xs font-medium text-[#a1a1aa]">
               Models
             </span>
             <div className="p-1 sm:p-1.5 rounded-lg bg-[#1a1a20] text-[#71717a] border border-[#282832] shrink-0">
@@ -95,8 +95,7 @@ export function MetricCards({ status, loading, daemonAddress }: MetricCardsProps
             <span className="text-xs font-normal text-[#a1a1aa]">Available</span>
           </div>
         </div>
-        <div
-          className="text-[11px] sm:text-xs text-[#71717a] mt-1.5 truncate"
+        <div className="text-[11px] sm:text-xs text-[#a1a1aa] mt-1.5 truncate"
           title={providers
             .map((p) => `${formatProviderLabel(p.id)}: ${p.models}${p.allowed ? "" : " (blocked by strict mode)"}`)
             .join("\n") || undefined}
@@ -118,7 +117,7 @@ export function MetricCards({ status, loading, daemonAddress }: MetricCardsProps
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-3 sm:p-4 transition-all duration-200 hover:border-[#2e2e38] shadow-xs flex flex-col justify-between">
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] sm:text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider">
+            <span className="text-xs font-medium text-[#a1a1aa]">
               Uptime
             </span>
             <div className="p-1 sm:p-1.5 rounded-lg bg-[#1a1a20] text-[#71717a] border border-[#282832] shrink-0">
@@ -146,7 +145,7 @@ export function MetricCards({ status, loading, daemonAddress }: MetricCardsProps
         ) : isOnline ? (
           <div className="text-[11px] sm:text-xs text-[#9393a0] mt-1.5 truncate">Failover off</div>
         ) : (
-          <div className="text-[11px] sm:text-xs text-[#71717a] mt-1.5 truncate">
+          <div className="text-[11px] sm:text-xs text-[#a1a1aa] mt-1.5 truncate">
             Daemon stopped
           </div>
         )}
@@ -156,7 +155,7 @@ export function MetricCards({ status, loading, daemonAddress }: MetricCardsProps
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-3 sm:p-4 transition-all duration-200 hover:border-[#2e2e38] shadow-xs flex flex-col justify-between">
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] sm:text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider">
+            <span className="text-xs font-medium text-[#a1a1aa]">
               Egress Mode
             </span>
             <div className="p-1 sm:p-1.5 rounded-lg bg-[#1a1a20] text-[#71717a] border border-[#282832] shrink-0">
@@ -178,7 +177,7 @@ export function MetricCards({ status, loading, daemonAddress }: MetricCardsProps
             </span>
           </div>
         </div>
-        <div className="text-[11px] sm:text-xs text-[#71717a] mt-1.5 truncate">
+        <div className="text-[11px] sm:text-xs text-[#a1a1aa] mt-1.5 truncate">
           {status?.relay?.enabled && status?.relay?.url ? status.relay.url : "Direct connection (no proxy)"}
         </div>
       </div>

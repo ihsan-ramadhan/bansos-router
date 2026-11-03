@@ -510,13 +510,29 @@ async function readBody(
 interface TokenUsage {
   inputTokens: number;
   outputTokens: number;
+  cachedTokens?: number;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
 }
 
 export function extractUsage(json: unknown): TokenUsage | null {
-  const usage = (json as { usage?: { prompt_tokens?: number; completion_tokens?: number } })
-    ?.usage;
-  if (!usage || usage.prompt_tokens == null || usage.completion_tokens == null) return null;
-  return { inputTokens: usage.prompt_tokens, outputTokens: usage.completion_tokens };
+  const usage = asRecord(asRecord(json)?.usage);
+  if (!usage) return null;
+  const prompt = usage.prompt_tokens;
+  const completion = usage.completion_tokens;
+  if (typeof prompt !== "number" || typeof completion !== "number") return null;
+  // openai chat reports prompt_tokens_details, the responses wire reports input_tokens_details
+  const cached =
+    asRecord(usage.prompt_tokens_details)?.cached_tokens ??
+    asRecord(usage.input_tokens_details)?.cached_tokens ??
+    usage.cache_read_input_tokens;
+  return {
+    inputTokens: prompt,
+    outputTokens: completion,
+    ...(typeof cached === "number" ? { cachedTokens: cached } : {}),
+  };
 }
 
 // find the first complete `"usage": {...}` in a tail of SSE bytes, tolerating nested braces
@@ -761,6 +777,7 @@ export function logUsageTransform(
               upstream,
               inputTokens: usage.inputTokens,
               outputTokens: usage.outputTokens,
+              cachedTokens: usage.cachedTokens ?? 0,
               durationMs: Date.now() - startedAt,
               status: "ok",
               ...(requestedModel && requestedModel !== model ? { failoverFrom: requestedModel } : {}),
@@ -1473,6 +1490,7 @@ async function handleChat(
           upstream: currentUpstream.id,
           inputTokens: usage.inputTokens,
           outputTokens: usage.outputTokens,
+          cachedTokens: usage.cachedTokens ?? 0,
           durationMs: Date.now() - requestStartedAt,
           status: "ok",
           ...(current.id !== model.id ? { failoverFrom: model.id } : {}),
@@ -1665,6 +1683,7 @@ async function handleResponses(
         upstream: currentUpstream.id,
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
+        cachedTokens: usage.cachedTokens ?? 0,
         durationMs: Date.now() - requestStartedAt,
         status: "ok",
         ...(current.id !== resolved.id ? { failoverFrom: resolved.id } : {}),
@@ -1737,6 +1756,7 @@ async function handleResponses(
       upstream: currentUpstream.id,
       inputTokens: streamUsage.inputTokens,
       outputTokens: streamUsage.outputTokens,
+      cachedTokens: streamUsage.cachedTokens ?? 0,
       durationMs: Date.now() - requestStartedAt,
       status: "ok",
       ...(current.id !== resolved.id ? { failoverFrom: resolved.id } : {}),
@@ -1856,6 +1876,7 @@ async function handleAnthropic(
         upstream: currentUpstream.id,
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
+        cachedTokens: usage.cachedTokens ?? 0,
         durationMs: Date.now() - requestStartedAt,
         status: "ok",
         ...(current.id !== model.id ? { failoverFrom: model.id } : {}),
@@ -1928,6 +1949,7 @@ async function handleAnthropic(
       upstream: currentUpstream.id,
       inputTokens: streamUsage.inputTokens,
       outputTokens: streamUsage.outputTokens,
+      cachedTokens: streamUsage.cachedTokens ?? 0,
       durationMs: Date.now() - requestStartedAt,
       status: "ok",
       ...(current.id !== model.id ? { failoverFrom: model.id } : {}),

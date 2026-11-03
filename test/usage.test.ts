@@ -9,6 +9,26 @@ test("extractUsage returns input/output tokens from an openai usage object", () 
     extractUsage({ usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }),
     { inputTokens: 10, outputTokens: 5 },
   );
+  assert.deepEqual(
+    extractUsage({
+      usage: {
+        prompt_tokens: 100,
+        completion_tokens: 20,
+        prompt_tokens_details: { cached_tokens: 80 },
+      },
+    }),
+    { inputTokens: 100, outputTokens: 20, cachedTokens: 80 },
+  );
+  assert.deepEqual(
+    extractUsage({
+      usage: {
+        prompt_tokens: 100,
+        completion_tokens: 20,
+        input_tokens_details: { cached_tokens: 60 },
+      },
+    }),
+    { inputTokens: 100, outputTokens: 20, cachedTokens: 60 },
+  );
 });
 
 test("extractUsage returns null when usage is missing or partial", () => {

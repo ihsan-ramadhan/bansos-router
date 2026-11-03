@@ -26,6 +26,10 @@ interface AgentSetupProps {
 }
 
 export function AgentSetup({ models, daemonPort, onCatalogStale }: AgentSetupProps) {
+  const apiOrigin = typeof window !== "undefined" && window.location.origin
+    ? window.location.origin
+    : `http://127.0.0.1:${daemonPort}`;
+  const apiEndpoint = `${apiOrigin}/v1`;
   const [adapters, setAdapters] = useState<AdapterSummary[]>([]);
   const [selectedAdapterId, setSelectedAdapterId] = useState<string>("opencode");
   const [selectedModel, setSelectedModel] = useState<string>("");
@@ -193,8 +197,8 @@ export function AgentSetup({ models, daemonPort, onCatalogStale }: AgentSetupPro
 
           <div className="flex items-center gap-2 self-stretch sm:self-auto justify-between sm:justify-end shrink-0">
             <div className="text-left sm:text-right">
-              <div className="text-[10px] text-[#71717a] uppercase font-mono tracking-wider">Local API Endpoint</div>
-              <div className="text-xs font-mono text-emerald-400">http://127.0.0.1:{daemonPort}/v1</div>
+              <div className="text-[10px] text-[#a1a1aa] uppercase font-mono tracking-wider">API Endpoint</div>
+              <div className="text-xs font-mono text-emerald-400">{apiEndpoint}</div>
             </div>
           </div>
         </div>
@@ -228,10 +232,10 @@ export function AgentSetup({ models, daemonPort, onCatalogStale }: AgentSetupPro
           {/* Target Harness */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-[#8b8b96]">
+              <span className="text-xs font-medium text-[#a1a1aa]">
                 Coding Agent / Tool
               </span>
-              <span className="text-[10px] sm:text-[11px] font-mono text-[#71717a]">
+              <span className="text-[10px] sm:text-[11px] font-mono text-[#a1a1aa]">
                 {adapters.length} available
               </span>
             </div>
@@ -285,7 +289,7 @@ export function AgentSetup({ models, daemonPort, onCatalogStale }: AgentSetupPro
           {/* Models */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-[#8b8b96]">
+              <span className="text-xs font-medium text-[#a1a1aa]">
                 {modelFieldLabel}
               </span>
               {mode !== "discovery" && (

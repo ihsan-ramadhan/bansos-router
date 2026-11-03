@@ -4,6 +4,7 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Coins,
+  Database,
   GitBranch,
   RefreshCw,
   Server,
@@ -42,13 +43,14 @@ interface StatCardProps {
   value: string;
   icon: preact.ComponentChild;
   hint?: string;
+  className?: string;
 }
 
-function StatCard({ label, value, icon, hint }: StatCardProps) {
+function StatCard({ label, value, icon, hint, className = "" }: StatCardProps) {
   return (
-    <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-3 sm:p-4 shadow-xs flex flex-col justify-between">
+    <div className={`rounded-xl border border-[#23232a] bg-[#16161a] p-3 sm:p-4 shadow-xs flex flex-col justify-between ${className}`}>
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] sm:text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider">
+        <span className="text-xs font-medium text-[#a1a1aa]">
           {label}
         </span>
         <div className="p-1 sm:p-1.5 rounded-lg bg-[#1a1a20] text-[#71717a] border border-[#282832] shrink-0">
@@ -58,7 +60,7 @@ function StatCard({ label, value, icon, hint }: StatCardProps) {
       <div className="text-base sm:text-lg font-bold text-white tracking-tight font-mono truncate">
         {value}
       </div>
-      {hint && <div className="text-[11px] sm:text-xs text-[#71717a] mt-1.5 truncate">{hint}</div>}
+      {hint && <div className="text-[11px] sm:text-xs text-[#a1a1aa] mt-1.5 truncate">{hint}</div>}
     </div>
   );
 }
@@ -69,21 +71,23 @@ interface AggregateRowProps {
   ok: number;
   inputTokens: number;
   outputTokens: number;
+  cachedTokens: number;
   sub?: string;
 }
 
-function ModelRow({ label, requests, ok, inputTokens, outputTokens, sub }: AggregateRowProps) {
+function ModelRow({ label, requests, ok, inputTokens, outputTokens, cachedTokens, sub }: AggregateRowProps) {
   return (
     <tr className="border-b border-[#202026] last:border-0">
       <td className="py-2.5 px-3 sm:px-4">
         <div className="text-xs font-medium text-white font-mono truncate max-w-45 sm:max-w-65">
           {label}
         </div>
-        {sub && <div className="text-[10px] text-[#71717a] truncate max-w-45 sm:max-w-65">{sub}</div>}
+        {sub && <div className="text-[10px] text-[#a1a1aa] truncate max-w-45 sm:max-w-65">{sub}</div>}
       </td>
       <td className="py-2.5 px-3 sm:px-4 text-right text-xs text-[#d4d4d8] font-mono">{requests}</td>
       <td className="py-2.5 px-3 sm:px-4 text-right text-xs text-[#d4d4d8] font-mono">{ok}</td>
       <td className="py-2.5 px-3 sm:px-4 text-right text-xs text-[#d4d4d8] font-mono">{formatNumber(inputTokens)}</td>
+      <td className="py-2.5 px-3 sm:px-4 text-right text-xs text-[#d4d4d8] font-mono">{formatNumber(cachedTokens)}</td>
       <td className="py-2.5 px-3 sm:px-4 text-right text-xs text-[#d4d4d8] font-mono">{formatNumber(outputTokens)}</td>
     </tr>
   );
@@ -189,7 +193,7 @@ export function ActivityView() {
       )}
 
       {/* Usage summary cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-4">
         <StatCard
           label="Requests"
           value={usage ? formatNumber(usage.totalRequests) : "-"}
@@ -203,6 +207,16 @@ export function ActivityView() {
           hint="prompt tokens"
         />
         <StatCard
+          label="Tokens Cached"
+          value={usage ? formatNumber(usage.totalCachedTokens) : "-"}
+          icon={<Database className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
+          hint={
+            usage && usage.totalInputTokens > 0
+              ? `${Math.round((usage.totalCachedTokens / usage.totalInputTokens) * 100)}% prompt cache`
+              : "prompt cache"
+          }
+        />
+        <StatCard
           label="Tokens Out"
           value={usage ? formatNumber(usage.totalOutputTokens) : "-"}
           icon={<ArrowUpRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
@@ -213,6 +227,7 @@ export function ActivityView() {
           value={usage ? formatDuration(usage.avgDurationMs) : "-"}
           icon={<Timer className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
           hint={usage && usage.failoverCount > 0 ? `${usage.failoverCount} failovers` : "no failovers"}
+          className="col-span-2 sm:col-span-1"
         />
       </div>
 
@@ -220,24 +235,25 @@ export function ActivityView() {
         {/* Per-model aggregates */}
         <div className="rounded-xl border border-[#23232a] bg-[#16161a] overflow-hidden shadow-xs">
           <div className="px-3 sm:px-4 py-3 border-b border-[#23232a] flex items-center gap-2">
-            <Coins className="h-3.5 w-3.5 text-[#71717a]" />
-            <span className="text-[11px] sm:text-xs font-semibold text-[#8b8b96] uppercase tracking-wider">
+            <Coins className="h-3.5 w-3.5 text-[#8b8b96]" />
+            <span className="text-xs font-medium text-[#e4e4e7]">
               Usage by Model
             </span>
           </div>
           {loading ? (
-            <div className="p-6 text-center text-xs text-[#71717a]">Loading...</div>
+            <div className="p-6 text-center text-xs text-[#a1a1aa]">Loading...</div>
           ) : topModels.length === 0 ? (
-            <div className="p-6 text-center text-xs text-[#71717a]">No requests recorded yet.</div>
+            <div className="p-6 text-center text-xs text-[#a1a1aa]">No model requests recorded yet in this window.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
-                <thead className="bg-[#121215] text-[10px] sm:text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider">
+                <thead className="bg-[#121215] text-[11px] sm:text-xs font-medium text-[#a1a1aa]">
                   <tr>
                     <th className="py-2.5 px-3 sm:px-4">Model</th>
                     <th className="py-2.5 px-3 sm:px-4 text-right">Reqs</th>
                     <th className="py-2.5 px-3 sm:px-4 text-right">OK</th>
                     <th className="py-2.5 px-3 sm:px-4 text-right">In</th>
+                    <th className="py-2.5 px-3 sm:px-4 text-right">Cached</th>
                     <th className="py-2.5 px-3 sm:px-4 text-right">Out</th>
                   </tr>
                 </thead>
@@ -250,9 +266,22 @@ export function ActivityView() {
                       ok={m.ok}
                       inputTokens={m.inputTokens}
                       outputTokens={m.outputTokens}
+                      cachedTokens={m.cachedTokens}
                     />
                   ))}
                 </tbody>
+                {usage && topModels.length > 0 && (
+                  <tfoot className="border-t border-[#23232a] bg-[#121215] text-xs font-medium text-[#e4e4e7]">
+                    <tr>
+                      <td className="py-2.5 px-3 sm:px-4 text-[#a1a1aa]">Total</td>
+                      <td className="py-2.5 px-3 sm:px-4 text-right font-mono text-[#d4d4d8]">{usage.totalRequests}</td>
+                      <td className="py-2.5 px-3 sm:px-4 text-right font-mono text-[#d4d4d8]">{usage.okRequests}</td>
+                      <td className="py-2.5 px-3 sm:px-4 text-right font-mono text-[#d4d4d8]">{formatNumber(usage.totalInputTokens)}</td>
+                      <td className="py-2.5 px-3 sm:px-4 text-right font-mono text-emerald-400 font-semibold">{formatNumber(usage.totalCachedTokens)}</td>
+                      <td className="py-2.5 px-3 sm:px-4 text-right font-mono text-[#d4d4d8]">{formatNumber(usage.totalOutputTokens)}</td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           )}
@@ -261,19 +290,19 @@ export function ActivityView() {
         {/* Per-upstream aggregates */}
         <div className="rounded-xl border border-[#23232a] bg-[#16161a] overflow-hidden shadow-xs">
           <div className="px-3 sm:px-4 py-3 border-b border-[#23232a] flex items-center gap-2">
-            <GitBranch className="h-3.5 w-3.5 text-[#71717a]" />
-            <span className="text-[11px] sm:text-xs font-semibold text-[#8b8b96] uppercase tracking-wider">
+            <GitBranch className="h-3.5 w-3.5 text-[#8b8b96]" />
+            <span className="text-xs font-medium text-[#e4e4e7]">
               Usage by Upstream
             </span>
           </div>
           {loading ? (
-            <div className="p-6 text-center text-xs text-[#71717a]">Loading...</div>
+            <div className="p-6 text-center text-xs text-[#a1a1aa]">Loading...</div>
           ) : topUpstreams.length === 0 ? (
-            <div className="p-6 text-center text-xs text-[#71717a]">No requests recorded yet.</div>
+            <div className="p-6 text-center text-xs text-[#a1a1aa]">No upstream requests recorded yet in this window.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
-                <thead className="bg-[#121215] text-[10px] sm:text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider">
+                <thead className="bg-[#121215] text-[11px] sm:text-xs font-medium text-[#a1a1aa]">
                   <tr>
                     <th className="py-2.5 px-3 sm:px-4">Upstream</th>
                     <th className="py-2.5 px-3 sm:px-4 text-right">Reqs</th>
@@ -303,25 +332,28 @@ export function ActivityView() {
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] overflow-hidden shadow-xs">
         <div className="px-3 sm:px-4 py-3 border-b border-[#23232a] flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <Activity className="h-3.5 w-3.5 text-[#71717a]" />
-            <span className="text-[11px] sm:text-xs font-semibold text-[#8b8b96] uppercase tracking-wider">
+            <Activity className="h-3.5 w-3.5 text-[#8b8b96]" />
+            <span className="text-xs font-medium text-[#e4e4e7]">
               Recent Requests
             </span>
           </div>
           {!loading && events.length > 0 && (
-            <span className="text-[10px] text-[#71717a] font-mono">last {events.length}</span>
+            <span className="text-[10px] text-[#a1a1aa] font-mono">last {events.length}</span>
           )}
         </div>
         {loading ? (
-          <div className="p-6 text-center text-xs text-[#71717a]">Loading...</div>
+          <div className="p-6 text-center text-xs text-[#a1a1aa]">Loading...</div>
         ) : events.length === 0 ? (
-          <div className="p-6 text-center text-xs text-[#71717a]">
-            No requests yet. Send a prompt through the router to see activity here.
+          <div className="p-6 text-center text-xs text-[#a1a1aa] space-y-1">
+            <p>No requests recorded yet in this window.</p>
+            <p className="text-[11px] text-[#8b8b96]">
+              Send a prompt through your agent harness or curl <code className="text-[#d4d4d8] font-mono bg-[#1a1a20] px-1 py-0.5 rounded border border-[#282832]">/v1/chat/completions</code> to see live requests here.
+            </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
-              <thead className="bg-[#121215] text-[10px] sm:text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider">
+              <thead className="bg-[#121215] text-[11px] sm:text-xs font-medium text-[#a1a1aa]">
                 <tr>
                   <th className="py-2.5 px-3 sm:px-4">When</th>
                   <th className="py-2.5 px-3 sm:px-4">Status</th>

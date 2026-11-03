@@ -66,12 +66,13 @@ export function useDaemonStatus() {
     return () => clearInterval(interval);
   }, [loadStatus, loadModels]);
 
-  const daemonHost =
-    typeof window !== "undefined" && window.location.hostname && window.location.hostname !== "localhost"
-      ? window.location.hostname
-      : "127.0.0.1";
   const daemonPort = status?.port ?? 17070;
-  const daemonAddress = `${daemonHost}:${daemonPort}`;
+  const daemonAddress =
+    typeof window !== "undefined" && window.location.host
+      ? (window.location.hostname === "localhost"
+          ? `127.0.0.1:${window.location.port || daemonPort}`
+          : window.location.host)
+      : `127.0.0.1:${daemonPort}`;
 
   const isConnected = Boolean(status && !error);
   const isConnecting = loadingStatus && !status;

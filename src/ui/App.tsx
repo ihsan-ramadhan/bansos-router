@@ -1,4 +1,4 @@
-import { useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import type { NavTab } from "./components/common/AppHeader";
 import { AppHeader } from "./components/common/AppHeader";
 import { OfflineBanner } from "./components/common/OfflineBanner";
@@ -14,8 +14,28 @@ import { useDaemonStatus } from "./hooks/useDaemonStatus";
 import { usePing } from "./hooks/usePing";
 import { ExternalLink } from "lucide-preact";
 
+const NAV_TABS: readonly NavTab[] = ["models", "agent", "relay", "playground", "activity", "logs", "settings"];
+
+// the tab lives in the URL hash so a refresh, a shared link or the back button lands on the same tab
+function tabFromHash(): NavTab {
+  const id = window.location.hash.replace(/^#/, "");
+  return (NAV_TABS as readonly string[]).includes(id) ? (id as NavTab) : "models";
+}
+
 export function App() {
-  const [activeTab, setActiveTab] = useState<NavTab>("models");
+  const [activeTab, setActiveTab] = useState<NavTab>(tabFromHash);
+
+  useEffect(() => {
+    const onHashChange = () => setActiveTab(tabFromHash());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  // replaceState, not location.hash: switching tabs should not fill the back history
+  const selectTab = (tab: NavTab) => {
+    setActiveTab(tab);
+    if (window.location.hash !== `#${tab}`) window.history.replaceState(null, "", `#${tab}`);
+  };
 
   const {
     status,
@@ -55,7 +75,7 @@ export function App() {
       {/* Top Navbar */}
       <AppHeader
         activeTab={activeTab}
-        onSelectTab={setActiveTab}
+        onSelectTab={selectTab}
         status={status}
         loadingStatus={loadingStatus}
         daemonAddress={daemonAddress}
@@ -135,7 +155,7 @@ export function App() {
 
       {/* Footer */}
       <footer className="border-t border-[#232329] py-4 bg-[#141417] mt-auto">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[#71717a]">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[#a1a1aa]">
           <div className="flex items-center gap-2 text-center sm:text-left">
             <span className="font-medium text-[#a1a1aa]">Bansos Router</span>
             <span>•</span>

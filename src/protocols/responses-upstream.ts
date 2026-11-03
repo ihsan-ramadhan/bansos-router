@@ -181,6 +181,7 @@ export function responsesToChatJson(resp: any, modelId: string): unknown {
       : "stop";
 
   const usage = resp?.usage ?? {};
+  const cached = usage.input_tokens_details?.cached_tokens ?? usage.prompt_tokens_details?.cached_tokens;
   const message: Record<string, unknown> = { role: "assistant", content: text };
   if (toolCalls.length > 0) message.tool_calls = toolCalls;
 
@@ -194,6 +195,7 @@ export function responsesToChatJson(resp: any, modelId: string): unknown {
       prompt_tokens: usage.input_tokens ?? 0,
       completion_tokens: usage.output_tokens ?? 0,
       total_tokens: usage.total_tokens ?? (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0),
+      ...(typeof cached === "number" ? { prompt_tokens_details: { cached_tokens: cached } } : {}),
     },
   };
 }
@@ -288,10 +290,12 @@ export function responsesToChatStream(modelId: string): Transform {
           choices: [{ index: 0, delta: {}, finish_reason: finish }],
         };
         if (usage) {
+          const cached = usage.input_tokens_details?.cached_tokens ?? usage.prompt_tokens_details?.cached_tokens;
           final.usage = {
             prompt_tokens: usage.input_tokens ?? 0,
             completion_tokens: usage.output_tokens ?? 0,
             total_tokens: usage.total_tokens ?? (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0),
+            ...(typeof cached === "number" ? { prompt_tokens_details: { cached_tokens: cached } } : {}),
           };
         }
         push(`data: ${JSON.stringify(final)}\n\n`);

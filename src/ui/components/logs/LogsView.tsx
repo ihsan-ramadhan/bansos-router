@@ -130,9 +130,9 @@ export function LogsView({ active }: { active: boolean }) {
         className="h-[60vh] overflow-auto rounded-lg bg-[#111113] border border-[#23232a] p-3 text-[11.5px] leading-relaxed font-mono whitespace-pre-wrap break-all"
       >
         {!loaded ? (
-          <span className="inline-flex items-center gap-2 text-[#71717a]"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading</span>
+          <span className="inline-flex items-center gap-2 text-[#a1a1aa]"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading</span>
         ) : shown.length === 0 ? (
-          <span className="text-[#71717a]">{needle ? "No lines match the filter." : "The log is empty."}</span>
+          <span className="text-[#a1a1aa]">{needle ? "No lines match the filter." : "The daemon log is empty. Streaming logs will appear as requests arrive."}</span>
         ) : (
           shown.map((line, i) => (
             <div key={i} className={lineClass(line)}>{line || " "}</div>

@@ -44,6 +44,9 @@ export function PlaygroundSidebar({
   daemonPort,
   messageCount,
 }: PlaygroundSidebarProps) {
+  const endpointHost = typeof window !== "undefined" && window.location.host
+    ? (window.location.hostname === "localhost" ? `127.0.0.1:${window.location.port || daemonPort}` : window.location.host)
+    : `127.0.0.1:${daemonPort}`;
   return (
     <div className="lg:col-span-4 space-y-3 sm:space-y-4">
       <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-3.5 sm:p-4 shadow-xs space-y-4">
@@ -256,10 +259,10 @@ export function PlaygroundSidebar({
         </div>
 
         {/* Chat Session Info */}
-        <div className="pt-2 border-t border-[#23232a] text-xs text-[#71717a] space-y-1">
+        <div className="pt-2 border-t border-[#23232a] text-xs text-[#a1a1aa] space-y-1">
           <div className="flex justify-between">
             <span>Daemon Endpoint</span>
-            <span className="font-mono text-[#d4d4d8]">127.0.0.1:{daemonPort}</span>
+            <span className="font-mono text-[#d4d4d8]">{endpointHost}</span>
           </div>
           <div className="flex justify-between">
             <span>Active Protocol</span>
