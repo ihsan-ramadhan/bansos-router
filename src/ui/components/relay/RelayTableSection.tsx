@@ -40,8 +40,8 @@ export function RelayTableSection({
   const hasRelays = Boolean(relayState?.relays?.length);
 
   return (
-    <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 sm:p-5 shadow-xs space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#23232a] pb-3">
+    <div className="rounded-xl border border-[#1c1f2b] bg-[#10121a] p-4 sm:p-5 shadow-xs space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#1c1f2b] pb-3">
         <div>
           <h3 className="text-xs font-bold text-white uppercase tracking-wider">
             Configured Relay Proxies
@@ -69,7 +69,7 @@ export function RelayTableSection({
       {showAddForm && (
         <form
           onSubmit={handleSubmit}
-          className="p-3 sm:p-4 rounded-xl bg-[#121215] border border-[#2b64e0]/40 space-y-3 animate-in fade-in duration-200"
+          className="p-3 sm:p-4 rounded-xl bg-[#0c0e14] border border-[#2563eb]/40 space-y-3 animate-in fade-in duration-200"
         >
           <div className="flex items-center gap-2 text-xs font-bold text-white">
             <Zap className="h-3.5 w-3.5 text-[#3b82f6] shrink-0" />
@@ -88,7 +88,7 @@ export function RelayTableSection({
                 onInput={(e) => setNewUrl((e.target as HTMLInputElement).value)}
                 required
                 autoFocus
-                className="w-full px-3 py-2 text-xs rounded-lg bg-[#18181c] border border-[#282832] text-white placeholder-[#52525b] focus:outline-none focus:border-[#2b64e0] font-mono"
+                className="w-full px-3 py-2 text-xs rounded-lg bg-[#08090d] border border-[#1c1f2b] text-white placeholder-[#52525b] focus:outline-none focus:border-[#2563eb] font-mono"
               />
             </div>
             <div className="space-y-1">
@@ -100,7 +100,7 @@ export function RelayTableSection({
                 placeholder="e.g. Cloudflare SG / Personal Worker"
                 value={newLabel}
                 onInput={(e) => setNewLabel((e.target as HTMLInputElement).value)}
-                className="w-full px-3 py-2 text-xs rounded-lg bg-[#18181c] border border-[#282832] text-white placeholder-[#52525b] focus:outline-none focus:border-[#2b64e0]"
+                className="w-full px-3 py-2 text-xs rounded-lg bg-[#08090d] border border-[#1c1f2b] text-white placeholder-[#52525b] focus:outline-none focus:border-[#2563eb]"
               />
             </div>
           </div>
@@ -148,7 +148,7 @@ export function RelayTableSection({
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b border-[#23232a] text-[#71717a] text-[10px] sm:text-[11px] uppercase font-mono tracking-wider">
+                <tr className="border-b border-[#1c1f2b] text-[#94a3b8] text-[10px] sm:text-[11px] uppercase font-mono tracking-wider">
                   <th className="py-2.5 px-3">Status</th>
                   <th className="py-2.5 px-3">Relay Endpoint</th>
                   <th className="py-2.5 px-3">Health / Latency</th>
@@ -176,8 +176,8 @@ export function RelayTableSection({
         </div>
       ) : (
         /* Empty state */
-        <div className="p-6 sm:p-8 rounded-xl bg-[#121215] border border-dashed border-[#282832] text-center space-y-3">
-          <div className="mx-auto h-10 w-10 rounded-xl bg-[#1a1a20] border border-[#282832] flex items-center justify-center text-blue-400">
+        <div className="p-6 sm:p-8 rounded-xl bg-[#0c0e14] border border-dashed border-[#1c1f2b] text-center space-y-3">
+          <div className="mx-auto h-10 w-10 rounded-xl bg-[#131620] border border-[#1c1f2b] flex items-center justify-center text-blue-400">
             <Globe className="h-5 w-5" />
           </div>
           <div className="space-y-1">
@@ -192,7 +192,7 @@ export function RelayTableSection({
               <button
                 type="button"
                 onClick={() => setShowAddForm(true)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#2b64e0] hover:bg-[#2557c7] text-xs font-semibold text-white transition cursor-pointer shadow-xs"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#2563eb] hover:bg-[#1d4ed8] text-xs font-semibold text-white transition cursor-pointer shadow-xs"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>Add Relay Node</span>
@@ -221,25 +221,25 @@ export function RelayFooterInfo() {
   return (
     <>
       {/* Allowed target origins */}
-      <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 sm:p-5 shadow-xs space-y-3">
+      <div className="rounded-xl border border-[#1c1f2b] bg-[#10121a] p-4 sm:p-5 shadow-xs space-y-3">
         <div className="flex items-center gap-2 text-xs font-bold text-white uppercase tracking-wider">
           <Lock className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
           <span>Security & Allowed Upstreams</span>
         </div>
         <p className="text-xs text-[#9393a0] leading-relaxed">
-          To ensure relay workers cannot be used as open proxies, forwarded requests via <code className="text-white font-mono bg-[#111113] px-1.5 py-0.5 rounded border border-[#23232a]">x-relay-target</code> are strictly restricted to verified keyless AI providers:
+          To ensure relay workers cannot be used as open proxies, forwarded requests via <code className="text-white font-mono bg-[#0c0e14] px-1.5 py-0.5 rounded border border-[#1c1f2b]">x-relay-target</code> are strictly restricted to verified keyless AI providers:
         </p>
 
         <div className="flex flex-wrap gap-2 pt-1">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#121215] border border-[#282832] text-xs font-mono text-[#d4d4d8]">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#0c0e14] border border-[#1c1f2b] text-xs font-mono text-[#d4d4d8]">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" />
             <span>https://opencode.ai</span>
           </span>
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#121215] border border-[#282832] text-xs font-mono text-[#d4d4d8]">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#0c0e14] border border-[#1c1f2b] text-xs font-mono text-[#d4d4d8]">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" />
             <span>https://api.kilo.ai</span>
           </span>
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#121215] border border-[#282832] text-xs font-mono text-[#d4d4d8]">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#0c0e14] border border-[#1c1f2b] text-xs font-mono text-[#d4d4d8]">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" />
             <span>https://api.llm7.io</span>
           </span>
@@ -247,21 +247,18 @@ export function RelayFooterInfo() {
       </div>
 
       {/* CLI quick commands */}
-      <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 sm:p-5 shadow-xs space-y-3">
-        <div className="flex items-center justify-between border-b border-[#23232a] pb-3">
-          <div className="flex items-center gap-2">
-            <Terminal className="h-4 w-4 text-[#8b8b96] shrink-0" />
-            <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-              CLI Quick Commands
-            </h3>
-          </div>
+      <div className="rounded-xl border border-[#1c1f2b] bg-[#10121a] p-4 sm:p-5 shadow-xs space-y-3">
+        <div className="flex items-center justify-between border-b border-[#1c1f2b] pb-3">
+          <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+            CLI Quick Commands
+          </h3>
           <span className="text-[10px] sm:text-[11px] font-mono text-[#71717a]">
             Terminal Equivalence
           </span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 text-xs">
-          <div className="p-3 rounded-lg bg-[#121215] border border-[#23232a] flex items-center justify-between gap-2">
+          <div className="p-3 rounded-lg bg-[#0c0e14] border border-[#1c1f2b] flex items-center justify-between gap-2">
             <div className="min-w-0">
               <div className="text-[10px] text-[#71717a] font-mono uppercase">Toggle Relay</div>
               <code className="text-white font-mono truncate block">bansos relay on | off</code>
@@ -277,7 +274,7 @@ export function RelayFooterInfo() {
             </button>
           </div>
 
-          <div className="p-3 rounded-lg bg-[#121215] border border-[#23232a] flex items-center justify-between gap-2">
+          <div className="p-3 rounded-lg bg-[#0c0e14] border border-[#1c1f2b] flex items-center justify-between gap-2">
             <div className="min-w-0">
               <div className="text-[10px] text-[#71717a] font-mono uppercase">Switch Active</div>
               <code className="text-white font-mono truncate block">bansos relay use &lt;URL&gt;</code>
@@ -293,7 +290,7 @@ export function RelayFooterInfo() {
             </button>
           </div>
 
-          <div className="p-3 rounded-lg bg-[#121215] border border-[#23232a] flex items-center justify-between gap-2">
+          <div className="p-3 rounded-lg bg-[#0c0e14] border border-[#1c1f2b] flex items-center justify-between gap-2">
             <div className="min-w-0">
               <div className="text-[10px] text-[#71717a] font-mono uppercase">Save New Relay</div>
               <code className="text-white font-mono truncate block">bansos relay url &lt;URL&gt;</code>
@@ -309,7 +306,7 @@ export function RelayFooterInfo() {
             </button>
           </div>
 
-          <div className="p-3 rounded-lg bg-[#121215] border border-[#23232a] flex items-center justify-between gap-2">
+          <div className="p-3 rounded-lg bg-[#0c0e14] border border-[#1c1f2b] flex items-center justify-between gap-2">
             <div className="min-w-0">
               <div className="text-[10px] text-[#71717a] font-mono uppercase">List Relays</div>
               <code className="text-white font-mono truncate block">bansos relay list</code>

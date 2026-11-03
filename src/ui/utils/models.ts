@@ -37,16 +37,16 @@ export function getProviderBadgeColor(provider: string): string {
   switch (provider.toLowerCase()) {
     case "opencode":
     case "zen":
-      return "bg-blue-950/70 text-blue-300 border-blue-800/60";
+      return "bg-blue-950/60 text-blue-300 border-blue-800/40";
     case "kilo":
     case "kilocode":
-      return "bg-purple-950/70 text-purple-300 border-purple-800/60";
+      return "bg-indigo-950/60 text-indigo-300 border-indigo-800/40";
     case "llm7":
-      return "bg-emerald-950/70 text-emerald-300 border-emerald-800/60";
+      return "bg-teal-950/60 text-teal-300 border-teal-800/40";
     case "ovh":
-      return "bg-amber-950/70 text-amber-300 border-amber-800/60";
+      return "bg-amber-950/50 text-amber-300/90 border-amber-800/40";
     default:
-      return "bg-zinc-800/70 text-zinc-300 border-zinc-700/60";
+      return "bg-slate-900/60 text-slate-300 border-slate-800/40";
   }
 }
 

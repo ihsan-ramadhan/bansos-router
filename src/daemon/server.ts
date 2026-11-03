@@ -188,7 +188,10 @@ function isAllowedInboundPath(pathname: string): boolean {
   if (STATIC_ROOT_FILES.has(pathname) || API_EXACT_PATHS.has(pathname)) {
     return true;
   }
-  return pathname.startsWith("/assets/") && /^[\w.-]+$/.test(pathname.slice(8));
+  if (pathname.startsWith("/assets/") && /^[\w.-]+$/.test(pathname.slice(8))) {
+    return true;
+  }
+  return pathname.startsWith("/fonts/") && /^[\w.-]+$/.test(pathname.slice(7));
 }
 
 // fallback models to try after the primary is rejected; total attempts = 1 + this
@@ -353,7 +356,7 @@ function serveStaticUi(res: http.ServerResponse, reqPath: string): void {
     return;
   }
 
-  if (relativePath.startsWith("assets/")) {
+  if (relativePath.startsWith("assets/") || relativePath.startsWith("fonts/")) {
     sendJson(res, 404, { error: { message: "asset not found" } });
     return;
   }
@@ -2323,6 +2326,7 @@ export function createServer(opts: ServerOptions): http.Server {
       (url === "" ||
         url === "/index.html" ||
         cleanUrl.startsWith("/assets/") ||
+        cleanUrl.startsWith("/fonts/") ||
         url === "/favicon.ico" ||
         url === "/favicon.svg" ||
         url === "/favicon.png" ||

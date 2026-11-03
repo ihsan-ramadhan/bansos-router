@@ -22,7 +22,7 @@ export function PlaygroundRawViewer({ rawPayload, rawChunks }: PlaygroundRawView
           Stream Chunks ({rawChunks.length})
         </div>
         {rawChunks.length === 0 ? (
-          <div className="p-4 text-center text-[#52525c] border border-dashed border-[#23232a] rounded-lg">
+          <div className="p-4 text-center text-[#52525c] border border-dashed border-[#1c1f2b] rounded-lg">
             No SSE chunks received yet.
           </div>
         ) : (
@@ -30,7 +30,7 @@ export function PlaygroundRawViewer({ rawPayload, rawChunks }: PlaygroundRawView
             {rawChunks.map((chunk, idx) => (
               <div
                 key={`chunk-${idx}-${chunk.slice(0, 16)}`}
-                className="p-2 rounded bg-[#0e0e12] border border-[#23232e] text-[#a1a1aa] text-[11px] font-mono break-all"
+                className="p-2 rounded bg-[#0c0e14] border border-[#1c1f2b] text-[#a1a1aa] text-[11px] font-mono break-all"
               >
                 <span className="text-[#3b82f6] select-none mr-2">[{idx + 1}]</span>
                 {chunk}

@@ -65,6 +65,9 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
     handleStop,
     handleClearChat,
     toggleReasoning,
+    attachedImages,
+    onAttachImage,
+    onRemoveImage,
   } = usePlaygroundChat({
     models,
     selectedModel,
@@ -128,22 +131,14 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="flex-1 min-h-0 flex flex-col space-y-3">
       {/* Header */}
-      <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 sm:p-5 shadow-xs">
+      <div className="shrink-0 rounded-xl border border-[#1c1f2b] bg-[#10121a] p-3 sm:p-4 shadow-xs">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 sm:gap-4">
           <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shrink-0">
-                <MessageSquare className="h-4 w-4" />
-              </div>
-              <h2 className="text-sm sm:text-base font-bold text-white tracking-tight">
-                Model Playground
-              </h2>
-              <span className="text-[10px] sm:text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 font-mono shrink-0">
-                Live Session
-              </span>
-            </div>
+            <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">
+              Model Playground
+            </h2>
             <p className="text-xs text-[#9393a0]">
               Chat with models, experiment with prompts, and inspect live responses.
             </p>
@@ -203,7 +198,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
       </div>
 
       {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
+      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4">
         {/* Left Side: Model Selector, Protocol & System Instructions */}
         <PlaygroundSidebar
           models={models}
@@ -228,17 +223,17 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
         />
 
         {/* Right Side: Chat & Streaming */}
-        <div className={`space-y-4 ${isFullscreen ? "fixed inset-0 z-50 p-3 sm:p-6 bg-[#111113]/95 backdrop-blur-md flex flex-col" : "lg:col-span-8"}`}>
-          <div className={`rounded-xl border border-[#23232a] bg-[#16161a] overflow-hidden shadow-xs flex flex-col ${isFullscreen ? "flex-1 min-h-0" : "h-155 sm:h-170 max-h-[85vh]"}`}>
+        <div className={`flex flex-col min-h-0 ${isFullscreen ? "fixed inset-0 z-50 p-3 sm:p-6 bg-[#08090d]/95 backdrop-blur-md" : "lg:col-span-8 h-full"}`}>
+          <div className="rounded-xl border border-[#1c1f2b] bg-[#10121a] overflow-hidden shadow-xs flex flex-col flex-1 min-h-0">
             {/* Tabs & view toggle */}
-            <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 sm:px-4 py-2 sm:py-3 border-b border-[#23232a] bg-[#121215] shrink-0">
-              <div className="flex items-center gap-1 bg-[#1a1a20] p-0.5 sm:p-1 rounded-lg border border-[#262630]">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 sm:px-4 py-2 sm:py-3 border-b border-[#1c1f2b] bg-[#0c0e14] shrink-0">
+              <div className="flex items-center gap-1 bg-[#131620] p-0.5 sm:p-1 rounded-lg border border-[#1e2330]">
                 <button
                   type="button"
                   onClick={() => setActiveViewTab("rendered")}
                   className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded text-[11px] sm:text-xs font-medium transition cursor-pointer ${
                     activeViewTab === "rendered"
-                      ? "bg-[#2b64e0] text-white"
+                      ? "bg-[#2563eb] text-white shadow-xs"
                       : "text-[#9393a0] hover:text-white"
                   }`}
                 >
@@ -255,14 +250,14 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
                   onClick={() => setActiveViewTab("raw")}
                   className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded text-[11px] sm:text-xs font-medium transition cursor-pointer ${
                     activeViewTab === "raw"
-                      ? "bg-[#2b64e0] text-white"
+                      ? "bg-[#2563eb] text-white shadow-xs"
                       : "text-[#9393a0] hover:text-white"
                   }`}
                 >
                   <Code2 className="h-3.5 w-3.5 shrink-0" />
                   <span>Raw SSE / JSON</span>
                   {rawChunks.length > 0 && (
-                    <span className="text-[10px] px-1 rounded bg-[#262630] font-mono text-[#a1a1aa]">
+                    <span className="text-[10px] px-1 rounded bg-[#1c1f2b] font-mono text-[#a1a1aa]">
                       {rawChunks.length}
                     </span>
                   )}
@@ -293,7 +288,7 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
                 <button
                   type="button"
                   onClick={() => setIsFullscreen(!isFullscreen)}
-                  className="inline-flex items-center gap-1 text-[11px] sm:text-xs text-[#a1a1aa] hover:text-white px-2 py-1 rounded bg-[#1c1c22] hover:bg-[#23232a] border border-[#282832] transition cursor-pointer shrink-0"
+                  className="inline-flex items-center gap-1 text-[11px] sm:text-xs text-[#a1a1aa] hover:text-white px-2 py-1 rounded bg-[#131620] hover:bg-[#1a1e2b] border border-[#1c1f2b] transition cursor-pointer shrink-0"
                   title={isFullscreen ? "Exit Fullscreen" : "Fullscreen Chat"}
                   aria-label={isFullscreen ? "Exit Fullscreen" : "Fullscreen Chat"}
                 >
@@ -342,6 +337,10 @@ export function Playground({ models, daemonPort }: PlaygroundProps) {
               onSubmit={handleSendMessage}
               onStop={handleStop}
               isLoading={isLoading}
+              supportsVision={Boolean(Array.isArray(activeModelObj?.input) && activeModelObj.input.includes("image"))}
+              attachedImages={attachedImages}
+              onAttachImage={onAttachImage}
+              onRemoveImage={onRemoveImage}
             />
           </div>
         </div>

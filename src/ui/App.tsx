@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import type { NavTab } from "./components/common/AppHeader";
 import { AppHeader } from "./components/common/AppHeader";
+import { AppSidebar } from "./components/common/AppSidebar";
+import { MobileBottomNav } from "./components/common/MobileBottomNav";
 import { OfflineBanner } from "./components/common/OfflineBanner";
 import { MetricCards } from "./components/common/MetricCards";
 import { ModelCatalog } from "./components/models/ModelCatalog";
@@ -12,30 +14,86 @@ import { LogsView } from "./components/logs/LogsView";
 import { SettingsView } from "./components/settings/SettingsView";
 import { useDaemonStatus } from "./hooks/useDaemonStatus";
 import { usePing } from "./hooks/usePing";
-import { ExternalLink } from "lucide-preact";
 
 const NAV_TABS: readonly NavTab[] = ["models", "agent", "relay", "playground", "activity", "logs", "settings"];
 
-// the tab lives in the URL hash so a refresh, a shared link or the back button lands on the same tab
-function tabFromHash(): NavTab {
-  const id = window.location.hash.replace(/^#/, "");
-  return (NAV_TABS as readonly string[]).includes(id) ? (id as NavTab) : "models";
+// Tab state is persisted in localStorage so refresh stays on the last opened tab with a clean URL (no # in address bar)
+function initialActiveTab(): NavTab {
+  if (typeof window === "undefined") return "models";
+  // clean up any lingering hash in address bar
+  if (window.location.hash) {
+    const fromHash = window.location.hash.replace(/^#/, "");
+    if ((NAV_TABS as readonly string[]).includes(fromHash)) {
+      try {
+        localStorage.setItem("bansos_active_tab", fromHash);
+      } catch {}
+    }
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+  }
+  try {
+    const saved = localStorage.getItem("bansos_active_tab");
+    return saved && (NAV_TABS as readonly string[]).includes(saved) ? (saved as NavTab) : "models";
+  } catch {
+    return "models";
+  }
 }
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<NavTab>(tabFromHash);
+  const [activeTab, setActiveTab] = useState<NavTab>(initialActiveTab);
 
-  useEffect(() => {
-    const onHashChange = () => setActiveTab(tabFromHash());
-    window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
-  }, []);
-
-  // replaceState, not location.hash: switching tabs should not fill the back history
   const selectTab = (tab: NavTab) => {
     setActiveTab(tab);
-    if (window.location.hash !== `#${tab}`) window.history.replaceState(null, "", `#${tab}`);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("bansos_active_tab", tab);
+      } catch {}
+    }
   };
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    if (window.innerWidth < 768) return false;
+    try {
+      const saved = localStorage.getItem("bansos_sidebar_open");
+      return saved !== null ? saved === "true" : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleSidebar = () => {
+    setSidebarOpen((prev) => {
+      const next = !prev;
+      if (typeof window !== "undefined" && window.innerWidth >= 768) {
+        try {
+          localStorage.setItem("bansos_sidebar_open", String(next));
+        } catch {}
+      }
+      return next;
+    });
+  };
+
+  // sync sidebar state when crossing the mobile/desktop breakpoint
+  useEffect(() => {
+    let wasDesktop = typeof window !== "undefined" && window.innerWidth >= 768;
+    const handleResize = () => {
+      const isDesktop = window.innerWidth >= 768;
+      if (wasDesktop !== isDesktop) {
+        wasDesktop = isDesktop;
+        if (!isDesktop) {
+          setSidebarOpen(false);
+        } else {
+          try {
+            const saved = localStorage.getItem("bansos_sidebar_open");
+            setSidebarOpen(saved !== null ? saved === "true" : true);
+          } catch {
+            setSidebarOpen(true);
+          }
+        }
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const {
     status,
@@ -71,19 +129,26 @@ export function App() {
   );
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#111113] text-[#f4f4f6]">
+    <div className="h-screen flex flex-col bg-[#08090d] text-[#f8fafc] overflow-hidden">
       {/* Top Navbar */}
       <AppHeader
-        activeTab={activeTab}
-        onSelectTab={selectTab}
         status={status}
         loadingStatus={loadingStatus}
         daemonAddress={daemonAddress}
         isConnected={isConnected}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={toggleSidebar}
       />
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-29 sm:pt-32 pb-6 sm:pb-8 space-y-4 sm:space-y-6">
+      <div className="flex-1 flex min-h-0 pt-14 overflow-hidden">
+        <AppSidebar
+          activeTab={activeTab}
+          onSelectTab={selectTab}
+          isOpen={sidebarOpen}
+        />
+
+        <div className="flex-1 min-w-0 flex flex-col overflow-y-auto">
+          <main className="flex-1 min-h-0 w-full px-3 sm:px-6 py-3.5 sm:py-4 pb-24 md:pb-4 flex flex-col space-y-3 sm:space-y-4">
         {/* Offline Alert Banner */}
         {!isConnected && !isConnecting && (
           <OfflineBanner
@@ -132,7 +197,7 @@ export function App() {
         </div>
 
         {/* Tab 4: Playground */}
-        <div className={activeTab === "playground" ? "block" : "hidden"}>
+        <div className={activeTab === "playground" ? "flex-1 min-h-0 flex flex-col" : "hidden"}>
           <Playground
             models={usableModels}
             daemonPort={daemonPort}
@@ -144,36 +209,20 @@ export function App() {
           <ActivityView />
         </div>
 
-        <div className={activeTab === "logs" ? "block" : "hidden"}>
+        <div className={activeTab === "logs" ? "flex-1 min-h-0 flex flex-col" : "hidden"}>
           <LogsView active={activeTab === "logs"} />
         </div>
 
         <div className={activeTab === "settings" ? "block" : "hidden"}>
           <SettingsView active={activeTab === "settings"} onApplied={() => void loadStatus()} />
         </div>
-      </main>
+          </main>
 
-      {/* Footer */}
-      <footer className="border-t border-[#232329] py-4 bg-[#141417] mt-auto">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[#a1a1aa]">
-          <div className="flex items-center gap-2 text-center sm:text-left">
-            <span className="font-medium text-[#a1a1aa]">Bansos Router</span>
-            <span>•</span>
-            <span>Free & Keyless Coding Models</span>
-          </div>
-          <div className="flex items-center gap-4 text-[11px]">
-            <a
-              href="https://github.com/ihsan-ramadhan/bansos-router"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-[#8b8b96] hover:text-white transition cursor-pointer"
-            >
-              <span>GitHub</span>
-              <ExternalLink className="h-3 w-3" />
-            </a>
-          </div>
         </div>
-      </footer>
+      </div>
+
+      {/* Floating Bottom Nav on Mobile */}
+      <MobileBottomNav activeTab={activeTab} onSelectTab={selectTab} />
     </div>
   );
 }

@@ -24,10 +24,9 @@ export function AgentConfigViewer({
   selectedAdapterId,
 }: AgentConfigViewerProps) {
   return (
-    <div className="rounded-xl border border-[#23232a] bg-[#16161a] overflow-hidden shadow-xs">
-      <div className="bg-[#121215] border-b border-[#23232a] px-3 sm:px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+    <div className="rounded-xl border border-[#1c1f2b] bg-[#10121a] overflow-hidden shadow-xs">
+      <div className="bg-[#0c0e14] border-b border-[#1c1f2b] px-3 sm:px-4 py-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <FileCode className="h-4 w-4 text-[#8b8b96] shrink-0" />
           <span className="text-xs font-bold text-white tracking-tight">
             Generated Config Output
           </span>
@@ -71,7 +70,7 @@ export function AgentConfigViewer({
                 <div className="flex items-center gap-2 text-xs font-mono text-[#a1a1aa] min-w-0">
                   <span className="text-[#60a5fa] shrink-0">File:</span>
                   <span className="text-white truncate">{cfg.path}</span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-[#202028] text-[#71717a] border border-[#2c2c36] shrink-0">
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-[#131620] text-[#a1a1aa] border border-[#1c1f2b] shrink-0">
                     {cfg.mode || "merge"}
                   </span>
                 </div>
@@ -79,7 +78,7 @@ export function AgentConfigViewer({
                 <button
                   type="button"
                   onClick={() => onCopyConfig(cfg.content, idx)}
-                  className="shrink-0 flex items-center gap-1 text-[11px] text-[#71717a] hover:text-white px-2.5 py-1 rounded bg-[#16161a] hover:bg-[#202028] border border-[#262630] transition cursor-pointer"
+                  className="shrink-0 flex items-center gap-1 text-[11px] text-[#a1a1aa] hover:text-white px-2.5 py-1 rounded bg-[#131620] hover:bg-[#1a1e2b] border border-[#1c1f2b] transition cursor-pointer"
                   title="Copy configuration snippet"
                 >
                   {copiedConfigIndex === idx ? (
@@ -96,7 +95,7 @@ export function AgentConfigViewer({
                 </button>
               </div>
 
-              <pre className="p-3 sm:p-3.5 rounded-lg bg-[#111113] border border-[#23232a] text-xs font-mono text-[#e4e4e7] overflow-x-auto max-h-96 select-all leading-relaxed w-full min-w-0">
+              <pre className="p-3 sm:p-3.5 rounded-lg bg-[#0c0e14] border border-[#1c1f2b] text-xs font-mono text-[#e4e4e7] overflow-x-auto max-h-96 select-all leading-relaxed w-full min-w-0">
                 {cfg.content}
               </pre>
             </div>
@@ -105,7 +104,7 @@ export function AgentConfigViewer({
       </div>
 
       {/* Tips */}
-      <div className="bg-[#121215] border-t border-[#23232a] px-3 sm:px-4 py-2.5 text-[10px] sm:text-[11px] text-[#9393a0] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1">
+      <div className="bg-[#0c0e14] border-t border-[#1c1f2b] px-3 sm:px-4 py-2.5 text-[10px] sm:text-[11px] text-[#9393a0] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1">
         <span>Undo it any time with <code>bansos setup {selectedAdapterId} --undo</code>.</span>
       </div>
     </div>

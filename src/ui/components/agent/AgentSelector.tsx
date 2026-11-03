@@ -36,7 +36,7 @@ export function AgentAdapterSelector({
         className="fixed inset-0 z-20 cursor-default bg-transparent border-0"
         onClick={onClose}
       />
-      <div className="absolute left-0 right-0 top-full mt-1.5 rounded-xl bg-[#16161a] border border-[#282832] shadow-2xl p-2 z-30 space-y-2 max-h-64 flex flex-col">
+      <div className="absolute left-0 right-0 top-full mt-1.5 rounded-xl bg-[#10121a] border border-[#1c1f2b] shadow-2xl p-2 z-30 space-y-2 max-h-64 flex flex-col">
         <div className="relative shrink-0">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#71717a]" />
           <input
@@ -44,7 +44,7 @@ export function AgentAdapterSelector({
             value={searchQuery}
             onInput={(e) => onSearchChange((e.target as HTMLInputElement).value)}
             placeholder="Search agent..."
-            className="w-full pl-8 pr-3 py-1.5 bg-[#121215] border border-[#262630] rounded-lg text-xs text-white placeholder-[#71717a] focus:outline-none focus:border-[#2b64e0]"
+            className="w-full pl-8 pr-3 py-1.5 bg-[#0c0e14] border border-[#1c1f2b] rounded-lg text-xs text-white placeholder-[#71717a] focus:outline-none focus:border-[#2563eb]"
           />
         </div>
 

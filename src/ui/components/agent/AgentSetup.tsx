@@ -176,17 +176,14 @@ export function AgentSetup({ models, daemonPort, onCatalogStale }: AgentSetupPro
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 sm:p-5 shadow-xs">
+      <div className="rounded-xl border border-[#1c1f2b] bg-[#10121a] p-4 sm:p-5 shadow-xs">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
-                <Wrench className="h-4 w-4" />
-              </div>
-              <h2 className="text-sm sm:text-base font-bold text-white tracking-tight">
+              <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">
                 Coding Agent Setup (Harness)
               </h2>
-              <span className="text-[10px] sm:text-[11px] px-2 py-0.5 rounded-full bg-[#202028] text-emerald-400 border border-emerald-800/40 font-mono shrink-0">
+              <span className="text-[10px] sm:text-[11px] px-2 py-0.5 rounded-full bg-[#1c1d24] text-emerald-400 border border-emerald-800/40 font-mono shrink-0">
                 {adapters.length > 0 ? `${adapters.length} Agents Supported` : "Agents Supported"}
               </span>
             </div>
@@ -196,7 +193,7 @@ export function AgentSetup({ models, daemonPort, onCatalogStale }: AgentSetupPro
           </div>
 
           <div className="flex items-center gap-2 self-stretch sm:self-auto justify-between sm:justify-end shrink-0">
-            <div className="text-left sm:text-right">
+            <div className="text-left sm:text-right bg-[#0c0e14] border border-[#1c1f2b] px-3 py-1.5 rounded-lg">
               <div className="text-[10px] text-[#a1a1aa] uppercase font-mono tracking-wider">API Endpoint</div>
               <div className="text-xs font-mono text-emerald-400">{apiEndpoint}</div>
             </div>
@@ -205,8 +202,8 @@ export function AgentSetup({ models, daemonPort, onCatalogStale }: AgentSetupPro
       </div>
 
       {/* Configuration */}
-      <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 sm:p-5 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#23232a] pb-3">
+      <div className="rounded-xl border border-[#1c1f2b] bg-[#10121a] p-4 sm:p-5 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#1c1f2b] pb-3">
           <div>
             <span className="text-xs font-bold text-white tracking-tight uppercase">
               Agent & Model Configuration
@@ -257,7 +254,7 @@ export function AgentSetup({ models, daemonPort, onCatalogStale }: AgentSetupPro
                   setAdapterDropdownOpen(!adapterDropdownOpen);
                   setModelDropdownOpen(false);
                 }}
-                className="w-full min-h-10.5 flex items-center justify-between bg-[#121215] hover:bg-[#18181d] border border-[#262630] hover:border-[#383846] rounded-lg px-3 py-2 text-xs font-medium text-white transition cursor-pointer"
+                className="w-full min-h-10.5 flex items-center justify-between bg-[#0c0e14] hover:bg-[#131620] border border-[#1c1f2b] hover:border-[#2b334a] rounded-lg px-3 py-2 text-xs font-medium text-white transition cursor-pointer"
               >
                 <div className="flex items-center gap-2 truncate">
                   <Code2 className="h-4 w-4 text-[#60a5fa] shrink-0" />
@@ -300,7 +297,7 @@ export function AgentSetup({ models, daemonPort, onCatalogStale }: AgentSetupPro
             </div>
 
             {mode === "discovery" ? (
-              <p className="min-h-10.5 flex items-center rounded-lg border border-dashed border-[#2e2e38] px-3 py-2 text-xs text-[#9393a0]">
+              <p className="min-h-10.5 flex items-center rounded-lg border border-dashed border-[#1c1f2b] px-3 py-2 text-xs text-[#9393a0]">
                 {activeAdapter?.name ?? "This agent"} lists the live models from /v1/models itself, so there is nothing to pick here.
               </p>
             ) : (
@@ -319,8 +316,8 @@ export function AgentSetup({ models, daemonPort, onCatalogStale }: AgentSetupPro
                     setModelDropdownOpen(!modelDropdownOpen);
                     setAdapterDropdownOpen(false);
                   }}
-                  className={`w-full min-h-10.5 flex items-center justify-between bg-[#121215] hover:bg-[#18181d] border rounded-lg px-3 py-2 text-xs font-medium text-white transition cursor-pointer ${
-                    nothingChecked ? "border-rose-500" : "border-[#262630] hover:border-[#383846]"
+                  className={`w-full min-h-10.5 flex items-center justify-between bg-[#0c0e14] hover:bg-[#131620] border rounded-lg px-3 py-2 text-xs font-medium text-white transition cursor-pointer ${
+                    nothingChecked ? "border-rose-500" : "border-[#1c1f2b] hover:border-[#2b334a]"
                   }`}
                 >
                   <div className="flex items-center gap-2 truncate">
@@ -370,14 +367,11 @@ export function AgentSetup({ models, daemonPort, onCatalogStale }: AgentSetupPro
       {/* Setup & Config */}
       <div className="space-y-4">
         {/* Terminal setup */}
-        <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 sm:p-5 shadow-xs space-y-3">
+        <div className="rounded-xl border border-[#1c1f2b] bg-[#10121a] p-4 sm:p-5 shadow-xs space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-            <div className="flex items-center gap-2">
-              <Terminal className="h-4 w-4 text-[#3b82f6] shrink-0" />
-              <span className="text-xs font-bold text-white tracking-tight">
-                1-Click Terminal Setup
-              </span>
-            </div>
+            <span className="text-xs font-bold text-white tracking-tight">
+              1-Click Terminal Setup
+            </span>
             <span className="text-[10px] sm:text-[11px] font-mono text-[#71717a]">
               Automatically updates agent config without overwriting your custom keys
             </span>
@@ -393,7 +387,7 @@ export function AgentSetup({ models, daemonPort, onCatalogStale }: AgentSetupPro
                 handleCopyCli();
               }
             }}
-            className="flex items-center justify-between gap-2.5 p-2.5 sm:p-3 rounded-lg bg-[#111113] border border-[#23232a] hover:border-[#383846] transition cursor-pointer group min-w-0 w-full"
+            className="flex items-center justify-between gap-2.5 p-2.5 sm:p-3 rounded-lg bg-[#0c0e14] border border-[#1c1f2b] hover:border-[#2b334a] transition cursor-pointer group min-w-0 w-full"
             title="Click to copy terminal command"
           >
             <code className={`text-xs font-mono truncate min-w-0 flex-1 ${nothingChecked ? "text-[#9393a0]" : "text-emerald-400 select-all"}`}>
@@ -405,7 +399,7 @@ export function AgentSetup({ models, daemonPort, onCatalogStale }: AgentSetupPro
                 e.stopPropagation();
                 handleCopyCli();
               }}
-              className="shrink-0 flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md bg-[#202026] group-hover:bg-[#282832] active:bg-[#1a1a20] border border-[#2a2a34] text-xs font-medium text-white transition cursor-pointer shadow-xs"
+              className="shrink-0 flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md bg-[#131620] hover:bg-[#1a1e2b] active:bg-[#0c0e14] border border-[#1c1f2b] text-xs font-medium text-[#d4d4d8] hover:text-white transition cursor-pointer shadow-xs"
               title="Copy terminal command"
             >
               {copiedCli ? (
@@ -422,7 +416,7 @@ export function AgentSetup({ models, daemonPort, onCatalogStale }: AgentSetupPro
             </button>
           </div>
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-[#23232a]">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-[#1c1f2b]">
             <div className="text-[11px] text-[#9393a0] min-w-0">
               {activeAdapter?.status === "configured" ? (
                 <span className="text-emerald-400">{activeAdapter.name} already points at bansos.</span>
@@ -438,7 +432,7 @@ export function AgentSetup({ models, daemonPort, onCatalogStale }: AgentSetupPro
                   <button
                     type="button"
                     onClick={() => setConfirmUndo(false)}
-                    className="px-3 min-h-9 rounded-md bg-[#202026] border border-[#2e2e38] text-xs text-[#d4d4d8] hover:text-white cursor-pointer"
+                    className="px-3 min-h-9 rounded-md bg-[#131620] border border-[#1c1f2b] text-xs text-[#d4d4d8] hover:text-white cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -456,7 +450,7 @@ export function AgentSetup({ models, daemonPort, onCatalogStale }: AgentSetupPro
                     type="button"
                     onClick={() => setConfirmUndo(true)}
                     disabled={applying !== null || activeAdapter?.status === "missing"}
-                    className="inline-flex items-center gap-1.5 px-3 min-h-9 rounded-md bg-[#202026] hover:bg-[#282832] border border-[#2e2e38] text-xs font-medium text-[#d4d4d8] hover:text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-1.5 px-3 min-h-9 rounded-md bg-[#131620] hover:bg-[#1a1e2b] border border-[#1c1f2b] text-xs font-medium text-[#d4d4d8] hover:text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {applying === "undo" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />}
                     <span>Undo</span>
@@ -465,7 +459,7 @@ export function AgentSetup({ models, daemonPort, onCatalogStale }: AgentSetupPro
                     type="button"
                     onClick={() => void handleSetup(false)}
                     disabled={applying !== null || !activeAdapter || nothingChecked}
-                    className="inline-flex items-center gap-1.5 px-3 min-h-9 rounded-md bg-[#2b64e0] hover:bg-[#3a72ec] text-xs font-semibold text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-1.5 px-3 min-h-9 rounded-md bg-[#2563eb] hover:bg-[#1d4ed8] text-xs font-semibold text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {applying === "apply" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                     <span>{activeAdapter?.status === "configured" ? "Apply again" : "Apply"}</span>
@@ -483,7 +477,7 @@ export function AgentSetup({ models, daemonPort, onCatalogStale }: AgentSetupPro
           )}
 
           {setupResult && (
-            <ul className="rounded-lg bg-[#111113] border border-[#23232a] p-3 space-y-1 text-[11px] font-mono">
+            <ul className="rounded-lg bg-[#0c0e14] border border-[#1c1f2b] p-3 space-y-1 text-[11px] font-mono">
               {setupResult.lines.length === 0 && <li className="text-[#71717a]">Nothing to change.</li>}
               {setupResult.lines.map((line, i) => (
                 <li

@@ -1,5 +1,5 @@
 import type { ModelItem, PingResult } from "../../types";
-import { Loader2, CheckCircle2, AlertTriangle, XCircle, Sparkles, Check, Copy, Zap, Eye } from "lucide-preact";
+import { Loader2, CheckCircle2, AlertTriangle, XCircle, Check, Copy, Brain, Eye } from "lucide-preact";
 import { formatTokens, getProviderBadgeColor } from "../../utils/models";
 
 const BLOCKED_TITLE = "Strict mode refuses this provider. Allow it under Settings > Allowed providers.";
@@ -71,7 +71,7 @@ export function ModelCatalogRow({ model, blocked, ping, copiedId, onCopy, onPing
   const isPinging = ping?.status === "pinging";
 
   return (
-    <tr className="hover:bg-[#1a1a20] transition-colors duration-150 group">
+    <tr className="hover:bg-[#131620] transition-colors duration-150 group border-b border-[#171922]">
       {/* Model info */}
       <td className="py-3 px-3 sm:px-4">
         <div className="flex flex-col gap-1 min-w-40 sm:min-w-50">
@@ -82,7 +82,7 @@ export function ModelCatalogRow({ model, blocked, ping, copiedId, onCopy, onPing
             <button
               type="button"
               onClick={() => onCopy(model.id)}
-              className="p-1 rounded text-[#71717a] hover:text-white hover:bg-[#23232b] active:scale-90 transition cursor-pointer shrink-0"
+              className="opacity-40 group-hover:opacity-100 p-1 rounded text-[#a1a1aa] hover:text-white hover:bg-[#23232b] active:scale-90 transition cursor-pointer shrink-0"
               title={copiedId === model.id ? "Copied!" : "Copy model ID"}
               aria-label={`Copy model ID ${model.id}`}
             >
@@ -113,13 +113,13 @@ export function ModelCatalogRow({ model, blocked, ping, copiedId, onCopy, onPing
       <td className="py-3 px-3 sm:px-4 whitespace-nowrap">
         <div className="flex flex-wrap items-center gap-1.5">
           {model.reasoning && (
-            <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-emerald-400 bg-emerald-950/60 border border-emerald-800/50 px-2 py-0.5 rounded-md">
-              <Sparkles className="h-3 w-3 shrink-0" /> Think
+            <span className="p-1 rounded bg-blue-950/50 border border-blue-900/40 text-blue-300 shrink-0 inline-flex items-center" title="Reasoning / Think capability">
+              <Brain className="h-3.5 w-3.5" />
             </span>
           )}
           {Array.isArray(model.input) && model.input.includes("image") && (
-            <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-amber-400 bg-amber-950/60 border border-amber-800/50 px-2 py-0.5 rounded-md">
-              <Eye className="h-3 w-3 shrink-0" /> Vision
+            <span className="p-1 rounded bg-teal-950/50 border border-teal-900/40 text-teal-300 shrink-0 inline-flex items-center" title="Vision / Image capability">
+              <Eye className="h-3.5 w-3.5" />
             </span>
           )}
           {!model.reasoning && !(Array.isArray(model.input) && model.input.includes("image")) && (
@@ -149,15 +149,10 @@ export function ModelCatalogRow({ model, blocked, ping, copiedId, onCopy, onPing
           type="button"
           onClick={() => onPingModel(model)}
           disabled={isPinging || blocked}
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#202026] hover:bg-[#282832] active:bg-[#1a1a20] border border-[#2a2a34] hover:border-[#383846] text-[11px] font-medium text-[#d4d4d8] hover:text-white transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center justify-center min-w-14 px-2.5 py-1 rounded-md bg-[#1c1d24] hover:bg-[#2563eb]/20 hover:text-blue-300 hover:border-blue-700/40 active:bg-[#181920] border border-[#282a35] text-[11px] font-mono text-[#a1a1aa] transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           title={blocked ? BLOCKED_TITLE : `Ping live response from ${model.id}`}
         >
-          {isPinging ? (
-            <Loader2 className="h-3 w-3 animate-spin text-[#3b82f6] shrink-0" />
-          ) : (
-            <Zap className="h-3 w-3 text-amber-400 shrink-0" />
-          )}
-          <span>Ping</span>
+          {isPinging ? <Loader2 className="h-3 w-3 animate-spin text-[#3b82f6]" /> : "Ping"}
         </button>
       </td>
     </tr>
@@ -181,7 +176,7 @@ export function ModelCard({ model, blocked, ping, copiedId, onCopy, onPingModel 
   const isPinging = ping?.status === "pinging";
 
   return (
-    <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-2.5 sm:p-3 transition-colors hover:border-[#2e2e38] flex flex-col gap-2 shadow-xs">
+    <div className="rounded-lg border border-[#1c1f2b] bg-[#10121a] p-2.5 sm:p-3 transition-colors hover:border-[#2b334a] flex flex-col gap-2 shadow-xs">
       {/* Top row: Model ID, Copy, Provider & Capability Badges */}
       <div className="flex items-center justify-between gap-1.5">
         <div className="flex items-center gap-1.5 min-w-0 flex-1">
@@ -215,13 +210,13 @@ export function ModelCard({ model, blocked, ping, copiedId, onCopy, onPingModel 
           )}
           {blocked && <BlockedBadge />}
           {model.reasoning && (
-            <span className="inline-flex items-center gap-0.5 text-[9px] font-medium text-emerald-400 bg-emerald-950/60 border border-emerald-800/50 px-1.5 py-0.2 rounded-md shrink-0">
-              <Sparkles className="h-2.5 w-2.5 shrink-0" /> Think
+            <span className="p-0.5 rounded bg-blue-950/50 border border-blue-900/40 text-blue-300 shrink-0 inline-flex items-center" title="Reasoning">
+              <Brain className="h-3 w-3" />
             </span>
           )}
           {Array.isArray(model.input) && model.input.includes("image") && (
-            <span className="inline-flex items-center gap-0.5 text-[9px] font-medium text-amber-400 bg-amber-950/60 border border-amber-800/50 px-1.5 py-0.2 rounded-md shrink-0">
-              <Eye className="h-2.5 w-2.5 shrink-0" /> Vision
+            <span className="p-0.5 rounded bg-teal-950/50 border border-teal-900/40 text-teal-300 shrink-0 inline-flex items-center" title="Vision">
+              <Eye className="h-3 w-3" />
             </span>
           )}
         </div>
@@ -248,15 +243,10 @@ export function ModelCard({ model, blocked, ping, copiedId, onCopy, onPingModel 
             type="button"
             onClick={() => onPingModel(model)}
             disabled={isPinging || blocked}
-            className="min-h-7 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-[#202026] hover:bg-[#282832] active:bg-[#1a1a20] border border-[#2a2a34] text-[11px] font-medium text-[#d4d4d8] hover:text-white transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            className="min-h-7 inline-flex items-center justify-center min-w-12 px-2 py-0.5 rounded-md bg-[#1c1d24] hover:bg-[#2563eb]/20 hover:text-blue-300 hover:border-blue-700/40 border border-[#282a35] text-[11px] font-mono text-[#a1a1aa] transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
             title={blocked ? BLOCKED_TITLE : `Ping live response from ${model.id}`}
           >
-            {isPinging ? (
-              <Loader2 className="h-3 w-3 animate-spin text-[#3b82f6] shrink-0" />
-            ) : (
-              <Zap className="h-3 w-3 text-amber-400 shrink-0" />
-            )}
-            <span>Ping</span>
+            {isPinging ? <Loader2 className="h-3 w-3 animate-spin text-[#3b82f6]" /> : "Ping"}
           </button>
         </div>
       </div>

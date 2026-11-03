@@ -1,6 +1,6 @@
 import { useState, useMemo } from "preact/hooks";
 import type { ModelItem, PingResult } from "../../types";
-import { ArrowUpDown, ArrowUp, ArrowDown, Zap, Info } from "lucide-preact";
+import { ArrowUpDown, ArrowUp, ArrowDown, Info } from "lucide-preact";
 import {
   filterAndSortModels,
   type CapabilityFilter,
@@ -276,7 +276,7 @@ export function ModelCatalog({
       />
 
       {/* Model listing: Mobile cards (< md) vs Desktop table (>= md) */}
-      <div className="rounded-xl border border-[#23232a] bg-[#16161a] overflow-hidden shadow-xs">
+      <div className="rounded-lg border border-[#1c1f2b] bg-[#10121a] overflow-hidden shadow-xs">
         {/* Mobile View: Cards Grid */}
         <div className="block md:hidden p-2.5 sm:p-3">
           {renderMobileCards()}
@@ -285,7 +285,7 @@ export function ModelCatalog({
         {/* Desktop View: Table */}
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-sm border-collapse">
-            <thead className="bg-[#121215] border-b border-[#23232a] text-[10px] sm:text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider select-none">
+            <thead className="bg-[#0c0e14] border-b border-[#1c1f2b] text-[11px] sm:text-xs font-mono text-[#94a3b8] select-none">
               <tr>
                 {/* Model column */}
                 <th
@@ -342,18 +342,14 @@ export function ModelCatalog({
                 >
                   <div className="flex items-center gap-1.5">
                     <span>Live Latency</span>
-                    {pingStats.total === 0 ? (
-                      <Zap className="h-3 w-3 text-amber-400/80 shrink-0" />
-                    ) : (
-                      getSortIcon("latency", sortField, sortAsc)
-                    )}
+                    {getSortIcon("latency", sortField, sortAsc)}
                   </div>
                 </th>
 
                 <th className="py-3 px-3 sm:px-4 text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#202026] text-xs">
+            <tbody className="divide-y divide-[#171a24] text-xs">
               {renderTableBody()}
             </tbody>
           </table>

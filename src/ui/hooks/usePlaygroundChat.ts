@@ -44,6 +44,7 @@ export function usePlaygroundChat({
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [pendingModel, setPendingModel] = useState<string | null>(null);
   const [pendingProtocol, setPendingProtocol] = useState<WireProtocol | null>(null);
+  const [attachedImages, setAttachedImages] = useState<string[]>([]);
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -66,6 +67,7 @@ export function usePlaygroundChat({
     setRawPayload(null);
     setGlobalError(null);
     setOpenReasoningMap({});
+    setAttachedImages([]);
   }
 
   function toggleReasoning(idx: number) {
@@ -195,7 +197,7 @@ export function usePlaygroundChat({
   async function handleSendMessage(e?: Event) {
     if (e) e.preventDefault();
     const promptToSend = userPrompt.trim();
-    if (!promptToSend || isLoading) return;
+    if ((!promptToSend && attachedImages.length === 0) || isLoading) return;
 
     handleStop();
     setIsLoading(true);
@@ -206,11 +208,15 @@ export function usePlaygroundChat({
 
     const updatedMessages: ChatMessage[] = [
       ...messages,
-      { role: "user", content: promptToSend },
+      {
+        role: "user",
+        content: promptToSend,
+        ...(attachedImages.length > 0 ? { images: attachedImages } : {}),
+      },
     ];
     setMessages(updatedMessages);
     setUserPrompt("");
-
+    setAttachedImages([]);
     const targetModel = selectedModel || models[0]?.id || "big-pickle";
     const targetProtocol = selectedProtocol;
     setPendingModel(targetModel);
@@ -297,5 +303,8 @@ export function usePlaygroundChat({
     handleStop,
     handleClearChat,
     toggleReasoning,
+    attachedImages,
+    onAttachImage: (dataUrl: string) => setAttachedImages((prev) => [...prev, dataUrl]),
+    onRemoveImage: (idx: number) => setAttachedImages((prev) => prev.filter((_, i) => i !== idx)),
   };
 }

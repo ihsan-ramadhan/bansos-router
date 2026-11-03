@@ -30,7 +30,7 @@ function CommandRow({ step, command }: { step: string; command: string }) {
   return (
     <div className="space-y-1">
       <p className="text-[11px] text-[#a1a1aa]">{step}</p>
-      <div className="flex items-center gap-2 rounded-lg bg-[#121215] border border-[#262630] pl-3 pr-1">
+      <div className="flex items-center gap-2 rounded-lg bg-[#0c0e14] border border-[#1c1f2b] pl-3 pr-1">
         <code className="flex-1 min-w-0 font-mono text-xs text-[#e4e4e7] py-2 select-all">
           {/* wrap only between words, so a flag like --bg never splits at its hyphen */}
           {command.split(" ").map((word, i) => (
@@ -100,7 +100,7 @@ export function UpdateNotice({ current, latest }: UpdateNoticeProps) {
           id="update-panel"
           role="dialog"
           aria-label={`bansos-router ${latest} is available`}
-          className="fixed left-3 right-3 top-15 sm:absolute sm:left-0 sm:right-auto sm:top-full sm:mt-2 sm:w-96 z-50 rounded-xl bg-[#16161a] border border-[#282832] shadow-2xl p-4 space-y-3"
+          className="fixed left-3 right-3 top-15 sm:absolute sm:left-0 sm:right-auto sm:top-full sm:mt-2 sm:w-96 z-50 rounded-xl bg-[#10121a] border border-[#1c1f2b] shadow-2xl p-4 space-y-3"
         >
           <div className="space-y-1">
             <p className="text-sm font-semibold text-white">bansos-router {latest} is out</p>

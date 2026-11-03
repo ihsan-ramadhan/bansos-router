@@ -64,14 +64,11 @@ export function LogsView({ active }: { active: boolean }) {
   }
 
   return (
-    <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 sm:p-5 shadow-xs space-y-4">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+    <div className="flex-1 min-h-0 rounded-xl border border-[#1c1f2b] bg-[#10121a] p-3.5 sm:p-4 shadow-xs flex flex-col space-y-3">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 shrink-0">
         <div className="space-y-1 min-w-0">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
-              <ScrollText className="h-4 w-4" />
-            </div>
-            <h2 className="text-sm sm:text-base font-bold text-white tracking-tight">Daemon log</h2>
+            <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">Daemon log</h2>
           </div>
           <p className="text-xs text-[#9393a0] break-all">
             Same output as <code className="font-mono">bansos logs</code>
@@ -86,13 +83,13 @@ export function LogsView({ active }: { active: boolean }) {
             placeholder="Filter, e.g. rejected"
             aria-label="Filter log lines"
             onInput={(e) => setFilter((e.target as HTMLInputElement).value)}
-            className="min-h-9 w-full sm:w-48 bg-[#121215] border border-[#262630] rounded-md px-3 text-xs text-white placeholder:text-[#5f5f6b]"
+            className="min-h-9 w-full sm:w-48 bg-[#0c0e14] border border-[#1c1f2b] rounded-md px-3 text-xs text-white placeholder:text-[#5f5f6b]"
           />
           <select
             value={count}
             aria-label="Number of lines"
             onChange={(e) => setCount(Number((e.target as HTMLSelectElement).value))}
-            className="min-h-9 bg-[#121215] border border-[#262630] rounded-md px-2 text-xs text-white cursor-pointer"
+            className="min-h-9 bg-[#0c0e14] border border-[#1c1f2b] rounded-md px-2 text-xs text-white cursor-pointer"
           >
             {LINE_CHOICES.map((n) => (
               <option key={n} value={n}>Last {n} lines</option>
@@ -102,7 +99,7 @@ export function LogsView({ active }: { active: boolean }) {
             type="button"
             onClick={() => setFollowing(!following)}
             aria-pressed={following}
-            className="inline-flex items-center gap-1.5 px-3 min-h-9 rounded-md bg-[#202026] hover:bg-[#282832] border border-[#2e2e38] text-xs font-medium text-[#d4d4d8] hover:text-white cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 min-h-9 rounded-md bg-[#131620] hover:bg-[#1a1e2b] border border-[#1c1f2b] text-xs font-medium text-[#d4d4d8] hover:text-white cursor-pointer"
           >
             {following ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
             <span>{following ? "Pause" : "Follow"}</span>
@@ -111,7 +108,7 @@ export function LogsView({ active }: { active: boolean }) {
             type="button"
             onClick={() => void copy()}
             disabled={shown.length === 0}
-            className="inline-flex items-center gap-1.5 px-3 min-h-9 rounded-md bg-[#202026] hover:bg-[#282832] border border-[#2e2e38] text-xs font-medium text-[#d4d4d8] hover:text-white cursor-pointer disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 px-3 min-h-9 rounded-md bg-[#131620] hover:bg-[#1a1e2b] border border-[#1c1f2b] text-xs font-medium text-[#d4d4d8] hover:text-white cursor-pointer disabled:opacity-40"
           >
             {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
             <span>{copied ? "Copied" : "Copy"}</span>
@@ -127,7 +124,7 @@ export function LogsView({ active }: { active: boolean }) {
           const el = e.currentTarget as HTMLPreElement;
           stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
         }}
-        className="h-[60vh] overflow-auto rounded-lg bg-[#111113] border border-[#23232a] p-3 text-[11.5px] leading-relaxed font-mono whitespace-pre-wrap break-all"
+        className="flex-1 min-h-0 overflow-auto rounded-lg bg-[#0c0e14] border border-[#1c1f2b] p-3 text-[11.5px] leading-relaxed font-mono whitespace-pre-wrap break-all"
       >
         {!loaded ? (
           <span className="inline-flex items-center gap-2 text-[#a1a1aa]"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading</span>

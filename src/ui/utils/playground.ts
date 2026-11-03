@@ -12,13 +12,26 @@ export function getEndpointLabel(protocol: WireProtocol): string {
 export function buildApiMessages(
   history: ChatMessage[],
   systemPrompt: string
-): Array<{ role: string; content: string }> {
-  const messages: Array<{ role: string; content: string }> = [];
+): Array<{ role: string; content: unknown }> {
+  const messages: Array<{ role: string; content: unknown }> = [];
   if (systemPrompt.trim()) {
     messages.push({ role: "system", content: systemPrompt.trim() });
   }
   for (const m of history) {
-    messages.push({ role: m.role, content: m.content });
+    if (m.images && m.images.length > 0) {
+      messages.push({
+        role: m.role,
+        content: [
+          { type: "text", text: m.content },
+          ...m.images.map((img) => ({
+            type: "image_url",
+            image_url: { url: img },
+          })),
+        ],
+      });
+    } else {
+      messages.push({ role: m.role, content: m.content });
+    }
   }
   return messages;
 }
@@ -71,7 +84,23 @@ export function buildPayloadForProtocol(options: BuildPayloadOptions): {
         model,
         messages: messages
           .filter((m) => m.role !== "system")
-          .map((m) => ({ role: m.role, content: m.content })),
+          .map((m) => {
+            if (m.images && m.images.length > 0) {
+              const parts: Array<Record<string, unknown>> = [];
+              for (const img of m.images) {
+                const match = img.match(/^data:([^;]+);base64,(.+)$/);
+                if (match) {
+                  parts.push({
+                    type: "image",
+                    source: { type: "base64", media_type: match[1], data: match[2] },
+                  });
+                }
+              }
+              if (m.content) parts.push({ type: "text", text: m.content });
+              return { role: m.role, content: parts };
+            }
+            return { role: m.role, content: m.content };
+          }),
         ...(systemPrompt.trim() ? { system: systemPrompt.trim() } : {}),
         max_tokens: maxTokens,
         temperature,

@@ -41,7 +41,7 @@ export function AutostartCard({ active }: { active: boolean }) {
   const on = Boolean(state?.enabled);
 
   return (
-    <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 sm:p-5 shadow-xs space-y-3">
+    <div className="rounded-xl border border-[#1c1f2b] bg-[#10121a] p-4 sm:p-5 shadow-xs space-y-3">
       <div className="flex items-center justify-between gap-4">
         <span id="autostart-label" className="min-w-0">
           <span className="block text-xs font-bold text-white tracking-tight uppercase">Start at login</span>

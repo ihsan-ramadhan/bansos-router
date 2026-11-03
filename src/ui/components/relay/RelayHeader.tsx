@@ -28,14 +28,11 @@ export function RelayHeader({
   onDismissNotification,
 }: RelayHeaderProps) {
   return (
-    <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 sm:p-5 shadow-xs space-y-4">
+    <div className="rounded-xl border border-[#1c1f2b] bg-[#10121a] p-4 sm:p-5 shadow-xs space-y-4">
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-teal-500/10 text-teal-400 border border-teal-500/20 shrink-0">
-              <Shield className="h-4 w-4" />
-            </div>
-            <h2 className="text-sm sm:text-base font-bold text-white tracking-tight">
+            <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">
               Relay Proxy
             </h2>
           </div>
@@ -44,7 +41,7 @@ export function RelayHeader({
           </p>
         </div>
 
-        <div className="flex items-center gap-3 self-stretch sm:self-auto justify-between sm:justify-end bg-[#121215] border border-[#23232a] px-3 py-2 rounded-xl shrink-0">
+        <div className="flex items-center gap-3 self-stretch sm:self-auto justify-between sm:justify-end bg-[#0c0e14] border border-[#1c1f2b] px-3 py-2 rounded-xl shrink-0">
           <div className="text-left sm:text-right">
             <div className="text-[10px] text-[#71717a] uppercase font-mono tracking-wider">
               Proxy Routing
@@ -78,7 +75,7 @@ export function RelayHeader({
 
       {/* Active relay summary */}
       {activeUrl && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-[#23232a] text-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-[#1c1f2b] text-xs">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-[10px] sm:text-[11px] font-mono text-[#71717a] uppercase tracking-wider shrink-0">
               Active Proxy:

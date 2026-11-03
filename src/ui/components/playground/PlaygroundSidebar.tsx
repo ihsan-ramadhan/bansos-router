@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Sparkles, Search } from "lucide-preact";
+import { ChevronDown, ChevronRight, Brain, Eye, Search } from "lucide-preact";
 import type { ModelItem, WireProtocol } from "../../types";
 import { formatProviderLabel } from "../../utils/playground";
 
@@ -48,8 +48,8 @@ export function PlaygroundSidebar({
     ? (window.location.hostname === "localhost" ? `127.0.0.1:${window.location.port || daemonPort}` : window.location.host)
     : `127.0.0.1:${daemonPort}`;
   return (
-    <div className="lg:col-span-4 space-y-3 sm:space-y-4">
-      <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-3.5 sm:p-4 shadow-xs space-y-4">
+    <div className="lg:col-span-4 h-full min-h-0 overflow-y-auto no-scrollbar space-y-3">
+      <div className="rounded-xl border border-[#1c1f2b] bg-[#10121a] p-3.5 sm:p-4 shadow-xs space-y-4">
         {/* Model Selector Dropdown */}
         <div className="space-y-1.5">
           <span className="text-[10px] sm:text-[11px] font-semibold text-[#8b8b96] uppercase tracking-wider block">
@@ -60,15 +60,22 @@ export function PlaygroundSidebar({
             <button
               type="button"
               onClick={onToggleModelDropdown}
-              className="w-full min-h-10.5 flex items-center justify-between bg-[#121215] hover:bg-[#18181d] border border-[#262630] hover:border-[#383846] rounded-lg px-3 py-2 text-xs font-mono text-white transition cursor-pointer"
+              className="w-full min-h-10.5 flex items-center justify-between bg-[#0c0e14] hover:bg-[#131620] border border-[#1c1f2b] hover:border-[#2b334a] rounded-lg px-3 py-2 text-xs font-mono text-white transition cursor-pointer"
             >
               <div className="flex items-center gap-2 truncate">
                 <span className="font-semibold truncate">{selectedModel || "Select Model..."}</span>
-                {activeModelObj?.reasoning && (
-                  <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.2 rounded bg-emerald-950/70 text-emerald-300 border border-emerald-800/40 shrink-0">
-                    <Sparkles className="h-2.5 w-2.5" /> Think
-                  </span>
-                )}
+                <div className="flex items-center gap-1 shrink-0">
+                  {activeModelObj?.reasoning && (
+                    <span className="p-0.5 text-blue-400" title="Reasoning">
+                      <Brain className="h-3 w-3" />
+                    </span>
+                  )}
+                  {Array.isArray(activeModelObj?.input) && activeModelObj.input.includes("image") && (
+                    <span className="p-0.5 text-teal-400" title="Vision">
+                      <Eye className="h-3 w-3" />
+                    </span>
+                  )}
+                </div>
               </div>
               <ChevronDown
                 className={`h-3.5 w-3.5 text-[#71717a] shrink-0 transition-transform duration-150 ${
@@ -86,8 +93,8 @@ export function PlaygroundSidebar({
                   className="fixed inset-0 z-20 cursor-default bg-transparent border-0"
                   onClick={onCloseModelDropdown}
                 />
-                <div className="absolute left-0 right-0 mt-1.5 max-h-72 rounded-xl bg-[#16161a] border border-[#282832] shadow-2xl z-30 flex flex-col overflow-hidden">
-                  <div className="p-2 border-b border-[#23232a] shrink-0">
+                <div className="absolute left-0 right-0 mt-1.5 max-h-72 rounded-xl bg-[#10121a] border border-[#1c1f2b] shadow-2xl z-30 flex flex-col overflow-hidden">
+                  <div className="p-2 border-b border-[#1c1f2b] shrink-0">
                     <div className="relative">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#71717a]" />
                       <input
@@ -95,7 +102,7 @@ export function PlaygroundSidebar({
                         value={modelSearchQuery}
                         onInput={(e) => onModelSearchQueryChange((e.target as HTMLInputElement).value)}
                         placeholder="Search models..."
-                        className="w-full pl-8 pr-3 py-1.5 bg-[#121215] border border-[#262630] rounded-md text-xs text-white placeholder-[#71717a] focus:outline-none focus:border-[#2b64e0]"
+                        className="w-full pl-8 pr-3 py-1.5 bg-[#0c0e14] border border-[#1c1f2b] rounded-md text-xs text-white placeholder-[#71717a] focus:outline-none focus:border-[#2563eb]"
                       />
                     </div>
                   </div>
@@ -149,11 +156,18 @@ export function PlaygroundSidebar({
                                   <span className="text-[10px] text-[#71717a] font-sans truncate">{m.name}</span>
                                 )}
                               </div>
-                              {m.reasoning && (
-                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950/60 text-emerald-400 shrink-0 ml-2">
-                                  Think
-                                </span>
-                              )}
+                              <div className="flex items-center gap-1 shrink-0 ml-2">
+                                {m.reasoning && (
+                                  <span className="p-0.5 text-blue-400" title="Reasoning">
+                                    <Brain className="h-3 w-3" />
+                                  </span>
+                                )}
+                                {Array.isArray(m.input) && m.input.includes("image") && (
+                                  <span className="p-0.5 text-teal-400" title="Vision">
+                                    <Eye className="h-3 w-3" />
+                                  </span>
+                                )}
+                              </div>
                             </button>
                           ))}
                         </div>
@@ -175,14 +189,14 @@ export function PlaygroundSidebar({
             </span>
           </span>
 
-          <div className="grid grid-cols-3 gap-1 bg-[#121215] p-1 rounded-lg border border-[#262630]">
+          <div className="grid grid-cols-3 gap-1 bg-[#0c0e14] p-1 rounded-lg border border-[#1c1f2b]">
             <button
               type="button"
               onClick={() => onSelectProtocol("chat")}
               className={`py-1.5 px-1 rounded text-center text-xs font-medium transition cursor-pointer truncate ${
                 selectedProtocol === "chat"
-                  ? "bg-[#2b64e0] text-white shadow-xs"
-                  : "text-[#9393a0] hover:text-white"
+                  ? "bg-[#2563eb] text-white shadow-xs"
+                  : "text-[#94a3b8] hover:text-white"
               }`}
             >
               Chat
@@ -192,8 +206,8 @@ export function PlaygroundSidebar({
               onClick={() => onSelectProtocol("responses")}
               className={`py-1.5 px-1 rounded text-center text-xs font-medium transition cursor-pointer truncate ${
                 selectedProtocol === "responses"
-                  ? "bg-purple-600 text-white shadow-xs"
-                  : "text-[#9393a0] hover:text-white"
+                  ? "bg-[#2563eb] text-white shadow-xs"
+                  : "text-[#94a3b8] hover:text-white"
               }`}
             >
               Responses
@@ -203,8 +217,8 @@ export function PlaygroundSidebar({
               onClick={() => onSelectProtocol("anthropic")}
               className={`py-1.5 px-1 rounded text-center text-xs font-medium transition cursor-pointer truncate ${
                 selectedProtocol === "anthropic"
-                  ? "bg-amber-600 text-white shadow-xs"
-                  : "text-[#9393a0] hover:text-white"
+                  ? "bg-[#2563eb] text-white shadow-xs"
+                  : "text-[#94a3b8] hover:text-white"
               }`}
             >
               Anthropic
@@ -252,14 +266,14 @@ export function PlaygroundSidebar({
                 onInput={(e) => onSystemPromptChange((e.target as HTMLTextAreaElement).value)}
                 placeholder="Optional persona, tone, or instructions for the model..."
                 rows={4}
-                className="w-full p-2.5 bg-[#121215] border border-[#262630] rounded-lg text-xs text-white placeholder-[#71717a] focus:outline-none focus:border-[#2b64e0] transition font-mono leading-relaxed"
+                className="w-full p-2.5 bg-[#0c0e14] border border-[#1c1f2b] rounded-lg text-xs text-white placeholder-[#71717a] focus:outline-none focus:border-[#2563eb] transition font-mono leading-relaxed"
               />
             </div>
           )}
         </div>
 
         {/* Chat Session Info */}
-        <div className="pt-2 border-t border-[#23232a] text-xs text-[#a1a1aa] space-y-1">
+        <div className="pt-2 border-t border-[#1c1f2b] text-xs text-[#a1a1aa] space-y-1">
           <div className="flex justify-between">
             <span>Daemon Endpoint</span>
             <span className="font-mono text-[#d4d4d8]">{endpointHost}</span>

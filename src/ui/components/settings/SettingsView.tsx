@@ -59,8 +59,8 @@ function Segmented<T extends string>({
             onClick={() => onChange(o.value)}
             className={`text-left rounded-lg border px-3 py-2.5 transition cursor-pointer min-h-11 ${
               selected
-                ? "border-[#2b64e0] bg-[#2b64e0]/10"
-                : "border-[#262630] bg-[#121215] hover:border-[#383846]"
+                ? "border-[#2563eb] bg-[#2563eb]/15"
+                : "border-[#1c1f2b] bg-[#0c0e14] hover:border-[#2b334a]"
             }`}
           >
             <span className={`block text-xs font-semibold ${selected ? "text-white" : "text-[#d4d4d8]"}`}>{o.title}</span>
@@ -131,7 +131,7 @@ export function SettingsView({ active, onApplied }: SettingsViewProps) {
 
   if (!config || !draft) {
     return (
-      <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-6 flex items-center gap-2 text-xs text-[#9393a0]">
+      <div className="rounded-xl border border-[#1c1f2b] bg-[#10121a] p-6 flex items-center gap-2 text-xs text-[#9393a0]">
         <Loader2 className="h-4 w-4 animate-spin" /> Loading settings
       </div>
     );
@@ -212,14 +212,11 @@ export function SettingsView({ active, onApplied }: SettingsViewProps) {
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 sm:p-5 shadow-xs space-y-4">
+      <div className="rounded-xl border border-[#1c1f2b] bg-[#10121a] p-4 sm:p-5 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="space-y-1 min-w-0">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
-                <Settings className="h-4 w-4" />
-              </div>
-              <h2 className="text-sm sm:text-base font-bold text-white tracking-tight">Settings</h2>
+              <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">Settings</h2>
             </div>
             <p className="text-xs text-[#9393a0] break-all">
               Saved to <code className="font-mono text-[#d4d4d8]">{config.path}</code>
@@ -293,8 +290,8 @@ export function SettingsView({ active, onApplied }: SettingsViewProps) {
         )}
       </div>
 
-      <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 sm:p-5 shadow-xs space-y-4">
-        <div className="border-b border-[#23232a] pb-3">
+      <div className="rounded-xl border border-[#1c1f2b] bg-[#10121a] p-4 sm:p-5 shadow-xs space-y-4">
+        <div className="border-b border-[#1c1f2b] pb-3">
           <span className="text-xs font-bold text-white tracking-tight uppercase">Security</span>
           <p className="text-[11px] text-[#71717a]">Applies as soon as you save. No restart needed.</p>
         </div>
@@ -312,7 +309,7 @@ export function SettingsView({ active, onApplied }: SettingsViewProps) {
         </Field>
 
         {security.mode === "normal" ? (
-          <div className="flex items-center justify-between gap-4 rounded-lg border border-[#262630] bg-[#121215] px-3 py-2.5">
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-[#1c1f2b] bg-[#0c0e14] px-3 py-2.5">
             <span id="failover-label">
               <span className="block text-xs font-semibold text-white">Cross-provider failover</span>
               <span className="block text-[11px] text-[#9393a0] mt-0.5">
@@ -373,12 +370,12 @@ export function SettingsView({ active, onApplied }: SettingsViewProps) {
                         })
                       }
                       className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-mono cursor-pointer min-h-10 ${
-                        on ? "border-[#2b64e0] bg-[#2b64e0]/10 text-white" : "border-[#262630] bg-[#121215] text-[#9393a0] hover:border-[#383846]"
+                        on ? "border-[#2563eb] bg-[#2563eb]/15 text-white" : "border-[#1c1f2b] bg-[#0c0e14] text-[#9393a0] hover:border-[#2b334a]"
                       }`}
                     >
                       <span
                         className={`inline-flex h-4 w-4 items-center justify-center rounded border ${
-                          on ? "bg-[#2b64e0] border-[#2b64e0]" : "border-[#71717a]"
+                          on ? "bg-[#2563eb] border-[#2563eb]" : "border-[#71717a]"
                         }`}
                       >
                         {on && <Check className="h-3 w-3 text-white" />}
@@ -393,8 +390,8 @@ export function SettingsView({ active, onApplied }: SettingsViewProps) {
         )}
       </div>
 
-      <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 sm:p-5 shadow-xs space-y-4">
-        <div className="border-b border-[#23232a] pb-3">
+      <div className="rounded-xl border border-[#1c1f2b] bg-[#10121a] p-4 sm:p-5 shadow-xs space-y-4">
+        <div className="border-b border-[#1c1f2b] pb-3">
           <span className="text-xs font-bold text-white tracking-tight uppercase">Daemon</span>
           <p className="text-[11px] text-[#71717a]">These apply after a restart.</p>
         </div>
@@ -404,7 +401,7 @@ export function SettingsView({ active, onApplied }: SettingsViewProps) {
             <select
               value={draft.refreshIntervalMs}
               onChange={(e) => setDraft({ ...draft, refreshIntervalMs: Number((e.target as HTMLSelectElement).value) })}
-              className="w-full min-h-10.5 bg-[#121215] border border-[#262630] rounded-lg px-3 text-xs text-white cursor-pointer"
+            className="w-full min-h-10.5 bg-[#0c0e14] border border-[#1c1f2b] rounded-lg px-3 text-xs text-white cursor-pointer focus:outline-none focus:border-[#2563eb]"
             >
               {refreshChoices.map((c) => (
                 <option key={c.value} value={c.value}>{c.label}</option>
@@ -423,7 +420,7 @@ export function SettingsView({ active, onApplied }: SettingsViewProps) {
               value={Number.isNaN(draft.port) ? "" : draft.port}
               disabled={config.flags.port}
               onInput={(e) => setDraft({ ...draft, port: Number((e.target as HTMLInputElement).value) })}
-              className="w-full min-h-10.5 bg-[#121215] border border-[#262630] rounded-lg px-3 text-xs font-mono text-white disabled:opacity-50"
+              className="w-full min-h-10.5 bg-[#0c0e14] border border-[#1c1f2b] rounded-lg px-3 text-xs font-mono text-white disabled:opacity-50 focus:outline-none focus:border-[#2563eb]"
             />
           </Field>
 
@@ -441,7 +438,7 @@ export function SettingsView({ active, onApplied }: SettingsViewProps) {
               disabled={config.flags.bind}
               spellcheck={false}
               onInput={(e) => setDraft({ ...draft, bind: (e.target as HTMLInputElement).value })}
-              className="w-full min-h-10.5 bg-[#121215] border border-[#262630] rounded-lg px-3 text-xs font-mono text-white disabled:opacity-50"
+              className="w-full min-h-10.5 bg-[#0c0e14] border border-[#1c1f2b] rounded-lg px-3 text-xs font-mono text-white disabled:opacity-50 focus:outline-none focus:border-[#2563eb]"
             />
           </Field>
         </div>

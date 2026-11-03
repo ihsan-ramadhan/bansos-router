@@ -167,8 +167,8 @@ export function RelayCardItem({
     <div
       className={`rounded-xl border p-3.5 space-y-3 transition-colors ${
         isActive
-          ? "bg-[#141419] border-[#2b64e0]/40"
-          : "bg-[#121215] border-[#23232a] hover:border-[#2e2e38]"
+          ? "bg-[#131620] border-[#2563eb]/40"
+          : "bg-[#0c0e14] border-[#1c1f2b] hover:border-[#2b334a]"
       }`}
     >
       {/* Top row: Status + Label + Probe */}
@@ -176,7 +176,7 @@ export function RelayCardItem({
         <div className="flex items-center gap-1.5 min-w-0">
           {statusBadge}
           {relay.label && (
-            <span className="px-2 py-0.5 rounded-md bg-[#202028] text-[11px] text-[#d4d4d8] border border-[#282832] truncate max-w-[140px]">
+            <span className="px-2 py-0.5 rounded-md bg-[#131620] text-[11px] text-[#d4d4d8] border border-[#1c1f2b] truncate max-w-[140px]">
               {relay.label}
             </span>
           )}

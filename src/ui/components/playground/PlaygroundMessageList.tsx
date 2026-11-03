@@ -1,4 +1,4 @@
-import { Bot, User, Sparkles, ChevronDown, Check, Copy, AlertCircle } from "lucide-preact";
+import { Bot, User, Brain, ChevronDown, Check, Copy, AlertCircle } from "lucide-preact";
 import type { ChatMessage } from "../../types";
 
 interface PlaygroundMessageListProps {
@@ -33,7 +33,7 @@ export function PlaygroundMessageList({
   if (messages.length === 0 && !isLoading) {
     return (
       <div className="flex-1 my-auto flex flex-col items-center justify-center text-center text-[#71717a] space-y-3 px-4 py-8">
-        <div className="p-3 rounded-2xl bg-[#121215] border border-[#23232a] text-emerald-400 shadow-inner">
+        <div className="p-3 rounded-2xl bg-[#0c0e14] border border-[#1c1f2b] text-emerald-400 shadow-inner">
           <Bot className="h-6 w-6 sm:h-7 sm:w-7" />
         </div>
         <div className="space-y-1">
@@ -53,8 +53,8 @@ export function PlaygroundMessageList({
           key={`msg-${idx}-${msg.role}`}
           className={`flex flex-col space-y-2 rounded-xl p-3 sm:p-3.5 border transition ${
             msg.role === "user"
-              ? "bg-[#181d28]/70 border-[#2b64e0]/30 ml-1.5 sm:ml-8"
-              : "bg-[#141418] border-[#24242e] mr-1.5 sm:mr-8"
+              ? "bg-[#131722] border-[#2563eb]/30 ml-1.5 sm:ml-8"
+              : "bg-[#0e1017] border-[#1c1f2b] mr-1.5 sm:mr-8"
           }`}
         >
           {/* Author */}
@@ -70,7 +70,7 @@ export function PlaygroundMessageList({
                   <Bot className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
                   <span className="text-white truncate">{msg.model ?? selectedModel}</span>
                   {msg.protocol && (
-                    <span className="px-1 rounded bg-[#262630] text-[10px] font-mono font-normal text-[#a1a1aa] shrink-0">
+                    <span className="px-1 rounded bg-[#131620] border border-[#1c1f2b] text-[10px] font-mono font-normal text-[#a1a1aa] shrink-0">
                       {msg.protocol}
                     </span>
                   )}
@@ -103,14 +103,14 @@ export function PlaygroundMessageList({
 
           {/* Thinking */}
           {msg.reasoning && (
-            <div className="rounded-lg border border-[#2a2a36] bg-[#101014] overflow-hidden text-[11px]">
+            <div className="rounded-lg border border-[#1c1f2b] bg-[#0c0e14] overflow-hidden text-[11px]">
               <button
                 type="button"
                 onClick={() => onToggleReasoning(idx)}
-                className="w-full flex items-center justify-between px-3 py-1.5 bg-[#16161c] text-emerald-400 hover:bg-[#1a1a22] transition cursor-pointer"
+                className="w-full flex items-center justify-between px-3 py-1.5 bg-[#10121a] text-blue-400 hover:bg-[#141620] transition cursor-pointer"
               >
                 <div className="flex items-center gap-1.5">
-                  <Sparkles className="h-3 w-3 shrink-0" />
+                  <Brain className="h-3 w-3 shrink-0 text-blue-400" />
                   <span>Thinking Process</span>
                 </div>
                 <ChevronDown
@@ -120,10 +120,23 @@ export function PlaygroundMessageList({
                 />
               </button>
               {openReasoningMap[idx] !== false && (
-                <div className="p-3 text-[#94a3b8] whitespace-pre-wrap leading-relaxed border-t border-[#202028] bg-[#0c0c10]">
+                <div className="p-3 text-[#94a3b8] whitespace-pre-wrap leading-relaxed border-t border-[#1c1f2b] bg-[#08090d]">
                   {msg.reasoning}
                 </div>
               )}
+            </div>
+          )}
+          {/* Attached images */}
+          {msg.images && msg.images.length > 0 && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              {msg.images.map((img, imgIdx) => (
+                <img
+                  key={imgIdx}
+                  src={img}
+                  alt="Attached image"
+                  className="max-h-48 max-w-xs rounded-lg border border-[#2a2d3d] object-contain bg-black/40"
+                />
+              ))}
             </div>
           )}
 
@@ -148,7 +161,7 @@ export function PlaygroundMessageList({
             <Bot className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
             <span className="text-white truncate">{pendingModel ?? selectedModel}</span>
             {pendingProtocol && (
-              <span className="px-1 rounded bg-[#262630] text-[10px] font-mono font-normal text-[#a1a1aa] shrink-0">
+              <span className="px-1 rounded bg-[#131620] border border-[#1c1f2b] text-[10px] font-mono font-normal text-[#a1a1aa] shrink-0">
                 {pendingProtocol}
               </span>
             )}
@@ -158,7 +171,7 @@ export function PlaygroundMessageList({
           {liveReasoning && (
             <div className="rounded-lg border border-[#2a2a36] bg-[#101014] overflow-hidden text-[11px]">
               <div className="px-3 py-1.5 bg-[#16161c] text-emerald-400 flex items-center gap-1.5 font-medium">
-                <Sparkles className="h-3 w-3 animate-spin shrink-0" />
+                <Brain className="h-3 w-3 shrink-0 text-blue-400" />
                 <span>Thinking...</span>
               </div>
               <div className="p-3 text-[#94a3b8] whitespace-pre-wrap leading-relaxed border-t border-[#202028] bg-[#0c0c10]">

@@ -34,10 +34,9 @@ export function HealthCard({ active }: { active: boolean }) {
   const problems = (report?.configWarnings.length ?? 0) + (error ? 1 : 0);
 
   return (
-    <div className="rounded-xl border border-[#23232a] bg-[#16161a] p-4 sm:p-5 shadow-xs space-y-4">
-      <div className="flex items-center justify-between gap-3 border-b border-[#23232a] pb-3">
+    <div className="rounded-xl border border-[#1c1f2b] bg-[#10121a] p-4 sm:p-5 shadow-xs space-y-4">
+      <div className="flex items-center justify-between gap-3 border-b border-[#1c1f2b] pb-3">
         <div className="flex items-center gap-2 min-w-0">
-          <Stethoscope className="h-4 w-4 text-[#3b82f6] shrink-0" />
           <div>
             <span className="text-xs font-bold text-white tracking-tight uppercase">Health check</span>
             <p className="text-[11px] text-[#71717a]">Same checks as <code className="font-mono">bansos doctor</code>.</p>
@@ -47,7 +46,7 @@ export function HealthCard({ active }: { active: boolean }) {
           type="button"
           onClick={() => void run()}
           disabled={loading}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md bg-[#202026] hover:bg-[#282832] border border-[#2e2e38] text-xs font-medium text-[#d4d4d8] hover:text-white cursor-pointer disabled:opacity-50 min-h-9 shrink-0"
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md bg-[#131620] hover:bg-[#1a1e2b] border border-[#1c1f2b] text-xs font-medium text-[#d4d4d8] hover:text-white cursor-pointer disabled:opacity-50 min-h-9 shrink-0"
         >
           {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
           <span>Run again</span>

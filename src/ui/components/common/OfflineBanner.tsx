@@ -17,7 +17,7 @@ export function OfflineBanner({ daemonAddress, loadingStatus, onRetry }: Offline
           <span className="font-semibold text-white block text-xs sm:text-sm">Daemon Disconnected</span>
           <span className="text-[#a1a1aa] block text-[11px] sm:text-xs">
             Cannot connect to Bansos Router daemon at{" "}
-            <code className="text-white font-mono bg-[#16161a] px-1 py-0.5 rounded border border-[#282832]">
+            <code className="text-white font-mono bg-[#0c0e14] px-1 py-0.5 rounded border border-[#1c1f2b]">
               {daemonAddress}
             </code>
             . Make sure the service is running.
@@ -25,7 +25,7 @@ export function OfflineBanner({ daemonAddress, loadingStatus, onRetry }: Offline
         </div>
       </div>
       <div className="flex items-center gap-2 self-stretch sm:self-auto shrink-0 font-mono w-full sm:w-auto justify-end">
-        <span className="px-2.5 py-1 rounded bg-[#16161a] border border-[#282832] text-white text-[11px] select-all truncate">
+        <span className="px-2.5 py-1 rounded bg-[#0c0e14] border border-[#1c1f2b] text-white text-[11px] select-all truncate">
           bansos start
         </span>
         <button

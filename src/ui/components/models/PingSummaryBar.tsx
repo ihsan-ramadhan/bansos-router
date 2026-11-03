@@ -20,7 +20,7 @@ export function PingSummaryBar({
   if (pingStats.total === 0) return null;
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2.5 px-3 sm:px-4 py-2.5 bg-[#16161a] border border-[#23232a] rounded-xl text-xs shadow-xs animate-in fade-in">
+    <div className="flex flex-wrap items-center justify-between gap-2.5 px-3 sm:px-4 py-2 sm:py-2.5 bg-[#10121a] border border-[#1c1f2b] rounded-lg text-xs shadow-xs animate-in fade-in">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-semibold text-[#8b8b96] uppercase tracking-wider text-[10px] sm:text-[11px] mr-1">
           Ping Filter:
@@ -32,8 +32,8 @@ export function PingSummaryBar({
           onClick={() => onSelectHealthChip("all")}
           className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
             activeHealthChip === "all"
-              ? "bg-[#2b64e0] text-white"
-              : "bg-[#202028] text-[#a1a1aa] hover:text-white"
+              ? "bg-[#2563eb] text-white shadow-xs"
+              : "bg-[#131620] text-[#a1a1aa] hover:text-white border border-[#1c1f2b]"
           }`}
         >
           All ({pingStats.total})
@@ -46,7 +46,7 @@ export function PingSummaryBar({
           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition border cursor-pointer ${
             activeHealthChip === "ok"
               ? "bg-emerald-950/90 text-emerald-300 border-emerald-500 shadow-xs"
-              : "bg-[#121215] border-[#262630] text-emerald-400 hover:border-emerald-700/60"
+              : "bg-[#0c0e14] border-[#1c1f2b] text-emerald-400 hover:border-emerald-700/60"
           }`}
           title="Click to filter verified operational models"
         >
@@ -62,7 +62,7 @@ export function PingSummaryBar({
             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition border cursor-pointer ${
               activeHealthChip === "429"
                 ? "bg-amber-950/90 text-amber-300 border-amber-500 shadow-xs"
-                : "bg-[#121215] border-[#262630] text-amber-400 hover:border-amber-700/60"
+              : "bg-[#0c0e14] border-[#1c1f2b] text-amber-400 hover:border-amber-700/60"
             }`}
             title="Click to filter 429 rate-limited models"
           >
@@ -79,7 +79,7 @@ export function PingSummaryBar({
             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition border cursor-pointer ${
               activeHealthChip === "error"
                 ? "bg-rose-950/90 text-rose-300 border-rose-500 shadow-xs"
-                : "bg-[#121215] border-[#262630] text-rose-400 hover:border-rose-700/60"
+              : "bg-[#0c0e14] border-[#1c1f2b] text-rose-400 hover:border-rose-700/60"
             }`}
             title="Click to filter offline or failing models"
           >

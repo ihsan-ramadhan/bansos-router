@@ -29,7 +29,7 @@ export function PlaygroundParameters({
   const [effortDropdownOpen, setEffortDropdownOpen] = useState(false);
 
   return (
-    <div className="mt-4 pt-4 border-t border-[#23232a] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 text-xs animate-in fade-in duration-150">
+    <div className="mt-4 pt-4 border-t border-[#1c1f2b] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 text-xs animate-in fade-in duration-150">
       <div>
         <div className="flex justify-between text-[#a1a1aa] mb-1.5">
           <span>Temperature</span>
@@ -82,7 +82,7 @@ export function PlaygroundParameters({
         <button
           type="button"
           onClick={() => setEffortDropdownOpen(!effortDropdownOpen)}
-          className="w-full flex items-center justify-between px-2.5 py-1.5 bg-[#121215] hover:bg-[#18181d] border border-[#262630] hover:border-[#383846] rounded-lg text-xs font-mono text-white focus:outline-none focus:border-[#2b64e0] transition cursor-pointer"
+          className="w-full flex items-center justify-between px-2.5 py-1.5 bg-[#0c0e14] hover:bg-[#131620] border border-[#1c1f2b] hover:border-[#2b334a] rounded-lg text-xs font-mono text-white focus:outline-none focus:border-[#2563eb] transition cursor-pointer"
         >
           <span>
             {reasoningEffort === "auto" && "Auto (Default)"}
@@ -102,7 +102,7 @@ export function PlaygroundParameters({
               className="fixed inset-0 z-20 cursor-default bg-transparent border-0"
               onClick={() => setEffortDropdownOpen(false)}
             />
-            <div className="absolute left-0 right-0 mt-1.5 rounded-xl bg-[#16161a] border border-[#282832] shadow-xl py-1 z-30 flex flex-col divide-y divide-[#202026]">
+            <div className="absolute left-0 right-0 mt-1.5 rounded-xl bg-[#10121a] border border-[#1c1f2b] shadow-xl py-1 z-30 flex flex-col divide-y divide-[#171922]">
               {[
                 { id: "auto", label: "Auto (Default)" },
                 { id: "low", label: "Low Effort" },

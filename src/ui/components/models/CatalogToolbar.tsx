@@ -1,14 +1,9 @@
 import {
   Search,
   Filter,
-  Activity,
   RotateCcw,
   ChevronDown,
   X,
-  Layers,
-  Brain,
-  Gauge,
-  Eye,
 } from "lucide-preact";
 import type { CapabilityFilter } from "../../utils/models";
 import { formatProviderLabel } from "../../utils/models";
@@ -47,7 +42,7 @@ export function CatalogToolbar({
   onRefreshCatalog,
 }: CatalogToolbarProps) {
   return (
-    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3 bg-[#16161a] border border-[#23232a] rounded-xl p-3 sm:p-3.5 shadow-xs">
+    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3 bg-[#10121a] border border-[#1c1f2b] rounded-lg p-2.5 sm:p-3 shadow-xs">
       {/* Search */}
       <div className="relative flex-1 min-w-0">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#71717a] shrink-0" />
@@ -56,7 +51,7 @@ export function CatalogToolbar({
           value={searchQuery}
           onInput={(e) => onSearchChange((e.target as HTMLInputElement).value)}
           placeholder="Search by model name or provider..."
-          className="w-full pl-9 pr-8 py-2 bg-[#121215] border border-[#262630] rounded-lg text-xs text-white placeholder-[#71717a] focus:outline-none focus:border-[#2b64e0] transition"
+          className="w-full pl-9 pr-8 py-2 bg-[#0c0e14] border border-[#1c1f2b] rounded-md text-xs text-white placeholder-[#64748b] focus:outline-none focus:border-[#2563eb] transition"
         />
         {searchQuery && (
           <button
@@ -103,10 +98,9 @@ export function CatalogToolbar({
             type="button"
             onClick={onPingAll}
             disabled={filteredCount === 0}
-            className="min-h-9.5 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#202028] hover:bg-[#282834] active:bg-[#1a1a20] border border-[#2c2c36] text-xs font-medium text-white transition disabled:opacity-50 cursor-pointer shrink-0"
+            className="min-h-9.5 flex items-center justify-center px-3 py-1.5 rounded-md bg-[#131620] hover:bg-[#1a1e2b] border border-[#1c1f2b] text-xs font-medium text-[#d4d4d8] hover:text-white transition disabled:opacity-50 cursor-pointer shrink-0"
             title="Ping live latency and status for visible models"
           >
-            <Activity className="h-3.5 w-3.5 text-amber-400 shrink-0" />
             <span className="whitespace-nowrap">Ping All</span>
           </button>
         )}
@@ -116,7 +110,7 @@ export function CatalogToolbar({
           type="button"
           onClick={onRefreshCatalog}
           disabled={refreshing}
-          className="min-h-9.5 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#2b64e0] hover:bg-[#3872ee] active:bg-[#2353be] text-xs font-medium text-white transition shadow-xs disabled:opacity-50 cursor-pointer shrink-0"
+          className="min-h-9.5 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md bg-[#2563eb] hover:bg-[#1d4ed8] active:bg-[#1e40af] text-xs font-medium text-white transition shadow-xs disabled:opacity-50 cursor-pointer shrink-0"
           title="Refresh models from upstream providers"
         >
           <RotateCcw className={`h-3.5 w-3.5 shrink-0 ${refreshing ? "animate-spin" : ""}`} />
@@ -145,7 +139,7 @@ function ProviderDropdown({
       <select
         value={selectedProvider}
         onChange={(e) => onSelectProvider((e.target as HTMLSelectElement).value)}
-        className="w-full sm:w-auto min-h-9.5 appearance-none bg-[#121215] hover:bg-[#18181d] border border-[#262630] hover:border-[#383846] rounded-lg pl-8 pr-7 py-1.5 text-xs font-medium text-[#d4d4d8] transition cursor-pointer"
+        className="w-full sm:w-auto min-h-9.5 appearance-none bg-[#0c0e14] hover:bg-[#131620] border border-[#1c1f2b] hover:border-[#2e3447] rounded-md pl-8 pr-7 py-1.5 text-xs font-medium text-[#d4d4d8] transition cursor-pointer"
         aria-label="Filter by provider"
       >
         <option value="all">All Providers ({totalModelsCount})</option>
@@ -177,78 +171,40 @@ export function CapabilityFilterChips({
   onSelectCapability,
   totalModelsCount,
 }: CapabilityFilterChipsProps) {
+  const chips = [
+    { id: "all", label: `All (${totalModelsCount})`, title: "All models" },
+    { id: "reasoning", label: "Reasoning", title: "Step-by-step thinking models" },
+    { id: "fast", label: "Fast", title: "Fast models without reasoning delay" },
+    { id: "megacontext", label: "≥ 256k", title: "Large context window (≥ 256k)" },
+    { id: "vision", label: "Vision", title: "Multimodal image input" },
+  ] as const;
+
   return (
-    <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5 px-0.5 text-xs">
-      <span className="text-xs font-medium text-[#a1a1aa] shrink-0 mr-0.5">
+    <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 text-xs">
+      <span className="text-xs font-medium text-[#8b8b96] shrink-0 mr-1">
         Capability:
       </span>
-      <button
-        type="button"
-        onClick={() => onSelectCapability("all")}
-        className={`shrink-0 px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
-          capabilityFilter === "all"
-            ? "bg-[#2b64e0] text-white"
-            : "bg-[#18181f] text-[#a1a1aa] hover:text-white border border-[#262630]"
-        }`}
-      >
-        All Models ({totalModelsCount})
-      </button>
-
-      <button
-        type="button"
-        onClick={() => onSelectCapability(capabilityFilter === "reasoning" ? "all" : "reasoning")}
-        className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition border cursor-pointer ${
-          capabilityFilter === "reasoning"
-            ? "bg-emerald-950/90 text-emerald-300 border-emerald-500 shadow-xs"
-            : "bg-[#18181f] border-[#262630] text-emerald-400 hover:border-emerald-700/60"
-        }`}
-        title="Filter models capable of step-by-step reasoning / thinking"
-      >
-        <Brain className="h-3.5 w-3.5 shrink-0" />
-        <span>Reasoning / Think</span>
-      </button>
-
-      <button
-        type="button"
-        onClick={() => onSelectCapability(capabilityFilter === "fast" ? "all" : "fast")}
-        className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition border cursor-pointer ${
-          capabilityFilter === "fast"
-            ? "bg-blue-950/90 text-blue-300 border-blue-500 shadow-xs"
-            : "bg-[#18181f] border-[#262630] text-blue-400 hover:border-blue-700/60"
-        }`}
-        title="Filter fast models for quick completions without reasoning delay"
-      >
-        <Gauge className="h-3.5 w-3.5 shrink-0" />
-        <span>Fast (Non-thinking)</span>
-      </button>
-
-      <button
-        type="button"
-        onClick={() => onSelectCapability(capabilityFilter === "megacontext" ? "all" : "megacontext")}
-        className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition border cursor-pointer ${
-          capabilityFilter === "megacontext"
-            ? "bg-purple-950/90 text-purple-300 border-purple-500 shadow-xs"
-            : "bg-[#18181f] border-[#262630] text-purple-400 hover:border-purple-700/60"
-        }`}
-        title="Filter models with ≥ 256k context window for large codebase indexing"
-      >
-        <Layers className="h-3.5 w-3.5 shrink-0" />
-        <span>Large Context (≥ 256k)</span>
-      </button>
-
-      <button
-        type="button"
-        onClick={() => onSelectCapability(capabilityFilter === "vision" ? "all" : "vision")}
-        className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition border cursor-pointer ${
-          capabilityFilter === "vision"
-            ? "bg-amber-950/90 text-amber-300 border-amber-500 shadow-xs"
-            : "bg-[#18181f] border-[#262630] text-amber-400 hover:border-amber-700/60"
-        }`}
-        title="Filter models that accept image input (vision / multimodal)"
-      >
-        <Eye className="h-3.5 w-3.5 shrink-0" />
-        <span>Vision</span>
-      </button>
+      {chips.map((chip) => {
+        const isActive = capabilityFilter === chip.id;
+        return (
+          <button
+            key={chip.id}
+            type="button"
+            onClick={() => onSelectCapability(chip.id === "all" ? "all" : isActive ? "all" : chip.id)}
+            title={chip.title}
+            className={`
+              shrink-0 px-2.5 py-1 rounded-md text-xs font-medium transition cursor-pointer
+              ${
+                isActive
+                  ? "bg-[#2563eb] text-white shadow-xs"
+                  : "bg-[#18181f] text-[#a1a1aa] hover:text-white hover:bg-[#202028] border border-[#272732]"
+              }
+            `}
+          >
+            {chip.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

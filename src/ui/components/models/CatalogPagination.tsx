@@ -29,7 +29,7 @@ export function CatalogPagination({
   const [pageSizeDropdownOpen, setPageSizeDropdownOpen] = useState(false);
 
   return (
-    <div className="bg-[#121215] border-t border-[#23232a] px-3 sm:px-4 py-3 flex flex-col sm:flex-row items-center justify-between text-xs text-[#71717a] gap-3">
+    <div className="bg-[#0c0e14] border-t border-[#1c1f2b] px-3 sm:px-4 py-3 flex flex-col sm:flex-row items-center justify-between text-xs text-[#a1a1aa] gap-3">
       <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 sm:gap-4 w-full sm:w-auto">
         <div className="text-center sm:text-left">
           Showing{" "}
@@ -52,7 +52,7 @@ export function CatalogPagination({
           <button
             type="button"
             onClick={() => setPageSizeDropdownOpen(!pageSizeDropdownOpen)}
-            className="flex items-center gap-1 bg-[#16161a] hover:bg-[#202028] border border-[#262630] rounded px-2 py-0.5 text-xs text-[#d4d4d8] hover:text-white transition cursor-pointer"
+          className="flex items-center gap-1 bg-[#131620] hover:bg-[#1a1e2b] border border-[#1c1f2b] rounded px-2 py-0.5 text-xs text-[#d4d4d8] hover:text-white transition cursor-pointer"
           >
             <span>{pageSize}</span>
             <ChevronDown className={`h-2.5 w-2.5 text-[#71717a] transition-transform duration-150 ${pageSizeDropdownOpen ? "rotate-180" : ""}`} />
@@ -67,7 +67,7 @@ export function CatalogPagination({
                 className="fixed inset-0 z-20 cursor-default bg-transparent border-0"
                 onClick={() => setPageSizeDropdownOpen(false)}
               />
-              <div className="absolute bottom-full mb-1.5 left-8 w-20 rounded-lg bg-[#16161a] border border-[#282832] shadow-xl p-1 z-30 flex flex-col">
+              <div className="absolute bottom-full mb-1.5 left-8 w-20 rounded-lg bg-[#10121a] border border-[#1c1f2b] shadow-xl p-1 z-30 flex flex-col">
                 {[5, 10, 20, 50].map((size) => (
                   <button
                     key={size}
@@ -98,7 +98,7 @@ export function CatalogPagination({
             type="button"
             onClick={() => onPageChange(1)}
             disabled={activePage <= 1}
-            className="p-1.5 rounded-md bg-[#16161a] hover:bg-[#202028] disabled:opacity-30 disabled:hover:bg-[#16161a] border border-[#262630] text-[#a1a1aa] hover:text-white transition cursor-pointer disabled:cursor-not-allowed"
+            className="p-1.5 rounded-md bg-[#131620] hover:bg-[#1a1e2b] disabled:opacity-30 disabled:hover:bg-[#131620] border border-[#1c1f2b] text-[#a1a1aa] hover:text-white transition cursor-pointer disabled:cursor-not-allowed"
             title="First Page"
             aria-label="First page"
           >
@@ -108,7 +108,7 @@ export function CatalogPagination({
             type="button"
             onClick={() => onPageChange(Math.max(1, activePage - 1))}
             disabled={activePage <= 1}
-            className="p-1.5 rounded-md bg-[#16161a] hover:bg-[#202028] disabled:opacity-30 disabled:hover:bg-[#16161a] border border-[#262630] text-[#a1a1aa] hover:text-white transition cursor-pointer disabled:cursor-not-allowed"
+            className="p-1.5 rounded-md bg-[#131620] hover:bg-[#1a1e2b] disabled:opacity-30 disabled:hover:bg-[#131620] border border-[#1c1f2b] text-[#a1a1aa] hover:text-white transition cursor-pointer disabled:cursor-not-allowed"
             title="Previous Page"
             aria-label="Previous page"
           >
@@ -124,7 +124,7 @@ export function CatalogPagination({
             type="button"
             onClick={() => onPageChange(Math.min(totalPages, activePage + 1))}
             disabled={activePage >= totalPages}
-            className="p-1.5 rounded-md bg-[#16161a] hover:bg-[#202028] disabled:opacity-30 disabled:hover:bg-[#16161a] border border-[#262630] text-[#a1a1aa] hover:text-white transition cursor-pointer disabled:cursor-not-allowed"
+            className="p-1.5 rounded-md bg-[#131620] hover:bg-[#1a1e2b] disabled:opacity-30 disabled:hover:bg-[#131620] border border-[#1c1f2b] text-[#a1a1aa] hover:text-white transition cursor-pointer disabled:cursor-not-allowed"
             title="Next Page"
             aria-label="Next page"
           >
@@ -134,7 +134,7 @@ export function CatalogPagination({
             type="button"
             onClick={() => onPageChange(totalPages)}
             disabled={activePage >= totalPages}
-            className="p-1.5 rounded-md bg-[#16161a] hover:bg-[#202028] disabled:opacity-30 disabled:hover:bg-[#16161a] border border-[#262630] text-[#a1a1aa] hover:text-white transition cursor-pointer disabled:cursor-not-allowed"
+            className="p-1.5 rounded-md bg-[#131620] hover:bg-[#1a1e2b] disabled:opacity-30 disabled:hover:bg-[#131620] border border-[#1c1f2b] text-[#a1a1aa] hover:text-white transition cursor-pointer disabled:cursor-not-allowed"
             title="Last Page"
             aria-label="Last page"
           >

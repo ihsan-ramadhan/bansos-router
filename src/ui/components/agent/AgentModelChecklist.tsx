@@ -31,8 +31,8 @@ function Checkbox({ state, onToggle, label }: { state: "all" | "some" | "none"; 
       />
       <span
         aria-hidden="true"
-        className={`pointer-events-none inline-flex h-4 w-4 items-center justify-center rounded border transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-[#60a5fa] peer-focus-visible:ring-offset-1 peer-focus-visible:ring-offset-[#16161a] ${
-          on ? "bg-[#2b64e0] border-[#2b64e0]" : "bg-[#121215] border-[#71717a] group-hover:border-[#a1a1aa]"
+        className={`pointer-events-none inline-flex h-4 w-4 items-center justify-center rounded border transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-[#60a5fa] peer-focus-visible:ring-offset-1 peer-focus-visible:ring-offset-[#10121a] ${
+          on ? "bg-[#2563eb] border-[#2563eb]" : "bg-[#0c0e14] border-[#242838] group-hover:border-[#3b82f6]"
         }`}
       >
         {state === "all" && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
@@ -92,7 +92,7 @@ export function AgentModelChecklist({ models, checked, onChange, onClose, search
             onClose();
           }
         }}
-        className="absolute left-0 right-0 top-full mt-1.5 rounded-xl bg-[#16161a] border border-[#282832] shadow-2xl p-2 z-30 space-y-2 max-h-[min(26rem,70vh)] flex flex-col"
+        className="absolute left-0 right-0 top-full mt-1.5 rounded-xl bg-[#10121a] border border-[#1c1f2b] shadow-2xl p-2 z-30 space-y-2 max-h-[min(26rem,70vh)] flex flex-col"
       >
         <div className="relative shrink-0">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#9393a0]" aria-hidden="true" />
@@ -103,7 +103,7 @@ export function AgentModelChecklist({ models, checked, onChange, onClose, search
             aria-label="Search models"
             onInput={(e) => onSearchChange((e.target as HTMLInputElement).value)}
             placeholder="Search model..."
-            className="w-full pl-8 pr-3 py-1.5 bg-[#121215] border border-[#262630] rounded-lg text-xs text-white placeholder-[#8b8b96] focus:outline-none focus:border-[#2b64e0]"
+            className="w-full pl-8 pr-3 py-1.5 bg-[#0c0e14] border border-[#1c1f2b] rounded-lg text-xs text-white placeholder-[#8b8b96] focus:outline-none focus:border-[#2563eb]"
           />
         </div>
 
@@ -155,14 +155,14 @@ export function AgentModelChecklist({ models, checked, onChange, onClose, search
           )}
         </div>
 
-        <div className="shrink-0 flex items-center justify-between gap-2 border-t border-[#23232a] pt-2 pl-2.5">
+        <div className="shrink-0 flex items-center justify-between gap-2 border-t border-[#1c1f2b] pt-2 pl-2.5">
           <span className="text-[11px] font-mono text-[#9393a0]" aria-live="polite">
             {picked === total ? `All ${total} models` : `${picked} of ${total} models`}
           </span>
           <button
             type="button"
             onClick={onClose}
-            className="px-3 min-h-11 sm:min-h-8 rounded-md bg-[#202026] hover:bg-[#282832] border border-[#2e2e38] text-xs font-medium text-[#d4d4d8] hover:text-white cursor-pointer"
+            className="px-3 min-h-11 sm:min-h-8 rounded-md bg-[#131620] hover:bg-[#1a1e2b] border border-[#1c1f2b] text-xs font-medium text-[#d4d4d8] hover:text-white cursor-pointer"
           >
             Done
           </button>

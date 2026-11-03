@@ -14,6 +14,7 @@ export interface ChatMessage {
   id?: string;
   role: "system" | "user" | "assistant";
   content: string;
+  images?: string[];
   reasoning?: string;
   protocol?: WireProtocol;
   model?: string;
