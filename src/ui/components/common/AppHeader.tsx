@@ -1,4 +1,4 @@
-import { PanelLeft } from "lucide-preact";
+import { PanelLeft, Sun, Moon } from "lucide-preact";
 import type { DaemonStatus } from "../../types";
 import { UpdateNotice } from "./UpdateNotice";
 
@@ -11,6 +11,8 @@ interface AppHeaderProps {
   isConnected: boolean;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
+  theme: "dark" | "light";
+  onToggleTheme: () => void;
 }
 
 export function AppHeader({
@@ -20,6 +22,8 @@ export function AppHeader({
   isConnected,
   sidebarOpen,
   onToggleSidebar,
+  theme,
+  onToggleTheme,
 }: AppHeaderProps) {
   let statusTextColor = "text-[#a1a1aa]";
   let statusLabel = "Connecting...";
@@ -64,13 +68,23 @@ export function AppHeader({
           </div>
         </div>
 
-        {/* Right: Status Indicator */}
-        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+        {/* Right: Status Indicator + Theme Toggle */}
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={onToggleTheme}
+            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+            title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+            className="h-8 w-8 sm:h-8.5 sm:w-8.5 flex items-center justify-center rounded-lg bg-[#131620] hover:bg-[#1a1e2b] border border-[#1e2330] text-[#a1a1aa] hover:text-white transition cursor-pointer"
+          >
+            {theme === "dark" ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4 text-[#2563eb]" />}
+          </button>
+
           <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-[#131620] border border-[#1e2330] text-xs shadow-xs">
             <span className="hidden sm:inline font-mono text-[#d4d4d8] text-[11px] sm:text-[12px] tracking-tight">
               {daemonAddress}
             </span>
-            <span className="inline-flex items-center sm:pl-2 sm:border-l sm:border-[#1e2330]">
+            <span className="inline-flex items-center sm:pl-2 sm:border-l border-[#1e2330]">
               <span className={`text-[11px] sm:text-xs font-medium ${statusTextColor}`}>
                 {statusLabel}
               </span>

@@ -10,6 +10,8 @@ import {
   MoreHorizontal,
   X,
   ChevronRight,
+  Sun,
+  Moon,
   type LucideIcon,
 } from "lucide-preact";
 import type { NavTab } from "./AppHeader";
@@ -17,6 +19,8 @@ import type { NavTab } from "./AppHeader";
 export interface MobileBottomNavProps {
   activeTab: NavTab;
   onSelectTab: (tab: NavTab) => void;
+  theme?: "dark" | "light";
+  onToggleTheme?: () => void;
 }
 
 interface BottomNavItem {
@@ -47,7 +51,7 @@ const MORE_ITEMS: readonly MoreSheetItem[] = [
   { id: "settings", label: "Settings", desc: "Security policy, failover & daemon port", icon: Settings },
 ];
 
-export function MobileBottomNav({ activeTab, onSelectTab }: MobileBottomNavProps) {
+export function MobileBottomNav({ activeTab, onSelectTab, theme = "dark", onToggleTheme }: MobileBottomNavProps) {
   const [visible, setVisible] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
   const lastScrollY = useRef(0);
@@ -215,8 +219,9 @@ export function MobileBottomNav({ activeTab, onSelectTab }: MobileBottomNavProps
       <nav
         id="mobile-bottom-nav"
         aria-label="Mobile Navigation"
+        style={{ bottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
         className={`
-          fixed bottom-3 inset-x-3 z-40 md:hidden
+          fixed inset-x-3 z-40 md:hidden
           max-w-sm mx-auto
           transition-all duration-300 ease-in-out
           ${
@@ -295,7 +300,8 @@ export function MobileBottomNav({ activeTab, onSelectTab }: MobileBottomNavProps
             role="dialog"
             aria-modal="true"
             aria-label="More navigation options"
-            className="fixed bottom-0 inset-x-0 z-50 md:hidden rounded-t-2xl bg-[#10121a] border-t border-x border-[#1c1f2b] p-4 pb-8 space-y-3 shadow-2xl animate-in slide-in-from-bottom duration-200 max-w-md mx-auto"
+            style={{ paddingBottom: "max(2rem, calc(1rem + env(safe-area-inset-bottom)))" }}
+            className="fixed bottom-0 inset-x-0 z-50 md:hidden rounded-t-2xl bg-[#10121a] border-t border-x border-[#1c1f2b] p-4 space-y-3 shadow-2xl animate-in slide-in-from-bottom duration-200 max-w-md mx-auto"
           >
             {/* Handle bar */}
             <div className="w-10 h-1 bg-[#2e3447] rounded-full mx-auto" aria-hidden="true" />
@@ -354,6 +360,21 @@ export function MobileBottomNav({ activeTab, onSelectTab }: MobileBottomNavProps
                   </button>
                 );
               })}
+
+            {/* Theme Toggle row in Sheet */}
+            {onToggleTheme && (
+              <div className="pt-2.5 border-t border-[#1c1f2b] flex items-center justify-between px-1">
+                <span className="text-xs font-medium text-[#8b8b96]">Theme Mode</span>
+                <button
+                  type="button"
+                  onClick={onToggleTheme}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#1c1f2b] bg-[#0c0e14] text-xs font-medium text-[#d4d4d8] hover:text-white cursor-pointer"
+                >
+                  {theme === "dark" ? <Sun className="h-3.5 w-3.5 text-amber-400" /> : <Moon className="h-3.5 w-3.5 text-[#2563eb]" />}
+                  <span>{theme === "dark" ? "Light" : "Dark"}</span>
+                </button>
+              </div>
+            )}
             </div>
           </div>
         </>

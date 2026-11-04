@@ -165,3 +165,409 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* disable all transitions during theme swap to eliminate visual tearing and staggered color flashes */
+html.theme-switching,
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  -webkit-transition: none !important;
+  -moz-transition: none !important;
+  -o-transition: none !important;
+  -ms-transition: none !important;
+  transition: none !important;
+}
+
+/* light mode theme palette (antislop clean paper theme) */
+html.light {
+  color-scheme: light;
+}
+
+html.light body {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+/* Header, navbars, and sidebar */
+html.light header {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
+}
+
+html.light aside {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+
+html.light aside button[aria-current="page"],
+html.light aside .bg-\[\#161822\] {
+  background-color: #eff6ff !important;
+  color: #1d4ed8 !important;
+  border-color: #bfdbfe !important;
+  font-weight: 600 !important;
+}
+
+html.light aside button[aria-current="page"] svg,
+html.light aside .bg-\[\#161822\] svg {
+  color: #2563eb !important;
+}
+
+html.light aside button:not([aria-current="page"]) {
+  color: #475569 !important;
+}
+
+html.light aside button:not([aria-current="page"]):hover {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+html.light aside button:not([aria-current="page"]) svg {
+  color: #64748b !important;
+}
+
+/* Main canvas & page surfaces */
+html.light .bg-\[\#08090d\],
+html.light .bg-\[\#090a0f\],
+html.light .bg-\[\#0b0c12\],
+html.light .bg-\[\#0c0c10\],
+html.light .bg-\[\#0d0d10\],
+html.light .bg-\[\#0e0e12\] {
+  background-color: #f8fafc !important;
+}
+
+/* Cards, containers, and modals */
+html.light .bg-\[\#0e1017\],
+html.light .bg-\[\#101014\],
+html.light .bg-\[\#10121a\],
+html.light .bg-\[\#141418\],
+html.light .bg-\[\#141824\],
+html.light .bg-\[\#16161c\],
+html.light .bg-\[\#161a26\],
+html.light .bg-\[\#18181c\] {
+  background-color: #ffffff !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04) !important;
+}
+
+/* Inset panels, table headers, secondary backgrounds */
+html.light .bg-\[\#0c0e14\],
+html.light .bg-\[\#111113\],
+html.light .bg-\[\#13151e\],
+html.light .bg-\[\#131620\],
+html.light .bg-\[\#14161f\],
+html.light .bg-\[\#141620\],
+html.light .bg-\[\#151822\],
+html.light .bg-\[\#181920\],
+html.light .bg-\[\#19191f\],
+html.light .bg-\[\#1a1a20\],
+html.light .bg-\[\#1a1d28\],
+html.light .bg-\[\#1a1e2b\],
+html.light .bg-\[\#1c1c22\],
+html.light .bg-\[\#1c1d24\],
+html.light .bg-\[\#18181f\],
+html.light .bg-\[\#202026\],
+html.light .bg-\[\#202028\],
+html.light .bg-\[\#22222a\],
+html.light .bg-\[\#23232b\],
+html.light .bg-\[\#282832\],
+html.light .bg-\[\#282834\],
+html.light .bg-\[\#2b2b36\],
+html.light .bg-\[\#2b334a\],
+html.light .bg-\[\#2e3447\] {
+  background-color: #f1f5f9 !important;
+  color: #334155 !important;
+}
+
+/* Active selected states (relay row, user message, selected pill) */
+html.light .bg-\[\#141419\],
+html.light .bg-\[\#131722\],
+html.light .bg-\[\#162038\],
+html.light .bg-\[\#2b64e0\]\/15,
+html.light .bg-\[\#2563eb\]\/15,
+html.light .bg-\[\#2563eb\]\/20 {
+  background-color: #eff6ff !important;
+  border-color: #bfdbfe !important;
+  color: #1d4ed8 !important;
+}
+
+/* All borders and dividers */
+html.light [class*="border-[#171922]"],
+html.light [class*="border-[#1c1f2b]"],
+html.light [class*="border-[#1e2330]"],
+html.light [class*="border-[#1f1f26]"],
+html.light [class*="border-[#202026]"],
+html.light [class*="border-[#202028]"],
+html.light [class*="border-[#222736]"],
+html.light [class*="border-[#23232e]"],
+html.light [class*="border-[#24242e]"],
+html.light [class*="border-[#242838]"],
+html.light [class*="border-[#272732]"],
+html.light [class*="border-[#282832]"],
+html.light [class*="border-[#282a35]"],
+html.light [class*="border-[#2a2a36]"],
+html.light [class*="border-[#2a2d3d]"],
+html.light [class*="border-[#2b334a]"],
+html.light [class*="border-[#2c2c36]"],
+html.light [class*="border-[#2e2e38]"],
+html.light [class*="border-[#2e3447]"],
+html.light [class*="divide-[#171922]"],
+html.light [class*="divide-[#202026]"] {
+  border-color: #e2e8f0 !important;
+}
+
+/* Typography (WCAG AA high-contrast) */
+html.light .text-white:not([class*="bg-[#2563eb]"]):not([class*="bg-[#2b64e0]"]):not([class*="bg-blue"]):not([class*="bg-rose"]):not([class*="bg-emerald"]),
+html.light .text-\[\#f8fafc\],
+html.light .text-\[\#f4f4f6\],
+html.light .text-\[\#f1f5f9\] {
+  color: #0f172a !important;
+}
+
+/* Primary solid buttons always maintain crisp white text */
+html.light .bg-\[\#2563eb\],
+html.light .bg-\[\#2563eb\] *,
+html.light .bg-\[\#2b64e0\],
+html.light .bg-\[\#2b64e0\] *,
+html.light .bg-blue-600,
+html.light .bg-blue-600 *,
+html.light .bg-emerald-600,
+html.light .bg-emerald-600 *,
+html.light .bg-rose-600,
+html.light .bg-rose-600 * {
+  color: #ffffff !important;
+}
+
+html.light .text-\[\#e4e4e7\],
+html.light .text-\[\#d4d4d8\],
+html.light .text-\[\#cbd5e1\] {
+  color: #334155 !important;
+}
+
+html.light .text-\[\#a1a1aa\],
+html.light .text-\[\#94a3b8\],
+html.light .text-\[\#9393a0\],
+html.light .text-\[\#8b8b96\],
+html.light .text-\[\#71717a\],
+html.light .text-\[\#64748b\],
+html.light .text-\[\#60606b\],
+html.light .text-\[\#5f5f6b\],
+html.light .text-\[\#52525c\],
+html.light .text-\[\#52525b\],
+html.light .text-\[\#3f3f46\] {
+  color: #475569 !important;
+}
+
+/* Status badges & capability chips in light mode */
+html.light .bg-emerald-950\/40,
+html.light .bg-emerald-950\/60 {
+  background-color: #ecfdf5 !important;
+  border-color: #a7f3d0 !important;
+  color: #047857 !important;
+}
+
+html.light .bg-amber-950\/40,
+html.light .bg-amber-950\/50,
+html.light .bg-amber-950\/60 {
+  background-color: #fffbeb !important;
+  border-color: #fde68a !important;
+  color: #b45309 !important;
+}
+
+html.light .bg-rose-950\/40,
+html.light .bg-rose-950\/50,
+html.light .bg-rose-950\/60 {
+  background-color: #fff1f2 !important;
+  border-color: #fecdd3 !important;
+  color: #be123c !important;
+}
+
+html.light .bg-blue-950\/40,
+html.light .bg-blue-950\/50,
+html.light .bg-blue-950\/60,
+html.light .bg-blue-950\/70 {
+  background-color: #eff6ff !important;
+  border-color: #bfdbfe !important;
+  color: #1d4ed8 !important;
+}
+
+html.light .bg-teal-950\/50,
+html.light .bg-teal-950\/60 {
+  background-color: #f0fdf4 !important;
+  border-color: #bbf7d0 !important;
+  color: #047857 !important;
+}
+
+html.light .bg-indigo-950\/60 {
+  background-color: #eef2ff !important;
+  border-color: #c7d2fe !important;
+  color: #4338ca !important;
+}
+
+html.light .bg-violet-950\/60 {
+  background-color: #f5f3ff !important;
+  border-color: #ddd6fe !important;
+  color: #6d28d9 !important;
+}
+
+html.light .bg-sky-950\/60 {
+  background-color: #f0f9ff !important;
+  border-color: #bae6fd !important;
+  color: #0369a1 !important;
+}
+
+html.light .bg-slate-900\/60 {
+  background-color: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #334155 !important;
+}
+
+/* Badge text colors */
+html.light .text-blue-300 {
+  color: #1d4ed8 !important;
+}
+
+html.light .text-indigo-300 {
+  color: #4338ca !important;
+}
+
+html.light .text-teal-300 {
+  color: #047857 !important;
+}
+
+html.light .text-amber-300,
+html.light .text-amber-300\/90 {
+  color: #b45309 !important;
+}
+
+html.light .text-slate-300 {
+  color: #334155 !important;
+}
+/* Semantic status text in light mode */
+html.light .text-emerald-400 {
+  color: #059669 !important;
+}
+
+html.light .text-amber-400,
+html.light .text-amber-200 {
+  color: #b45309 !important;
+}
+
+html.light .text-rose-400,
+html.light .text-rose-300 {
+  color: #dc2626 !important;
+}
+
+html.light .text-blue-400,
+html.light .text-\[\#60a5fa\],
+html.light .text-\[\#7cb4fb\],
+html.light .text-\[\#93c5fd\],
+html.light .text-\[\#a5ccfc\] {
+  color: #2563eb !important;
+}
+
+/* Form controls, inputs, textareas */
+html.light input:not([type="checkbox"]):not([type="radio"]),
+html.light select,
+html.light textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+html.light input:focus,
+html.light select:focus,
+html.light textarea:focus {
+  border-color: #2563eb !important;
+  outline: none !important;
+}
+
+html.light input::placeholder,
+html.light textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Hover states */
+html.light tr:hover,
+html.light .hover\:bg-\[\#13151e\]:hover,
+html.light .hover\:bg-\[\#131620\]:hover,
+html.light .hover\:bg-\[\#14161f\]:hover,
+html.light .hover\:bg-\[\#141620\]:hover,
+html.light .hover\:bg-\[\#151822\]:hover,
+html.light .hover\:bg-\[\#19191f\]:hover,
+html.light .hover\:bg-\[\#1a1e2b\]:hover,
+html.light .hover\:bg-\[\#202026\]:hover,
+html.light .hover\:bg-\[\#202028\]:hover,
+html.light .hover\:bg-\[\#23232b\]:hover,
+html.light .hover\:bg-\[\#282832\]:hover,
+html.light .hover\:bg-\[\#282834\]:hover,
+html.light .hover\:bg-\[\#2b2b36\]:hover,
+html.light .hover\:bg-\[\#2b334a\]:hover {
+  background-color: #f1f5f9 !important;
+}
+
+html.light .hover\:text-white:hover {
+  color: #0f172a !important;
+}
+
+/* Pre & code terminal boxes in light mode */
+html.light pre.bg-\[\#0c0e14\],
+html.light pre.bg-\[\#0e0e12\] {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+/* Mobile bottom navigation */
+html.light #mobile-bottom-nav > div {
+  background-color: rgba(255, 255, 255, 0.96) !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05) !important;
+}
+
+html.light #mobile-nav-sheet {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* Danger & maintenance zones in light mode */
+html.light .bg-\[\#0e0a0d\],
+html.light [class*="border-rose-950"] {
+  background-color: #fff1f2 !important;
+  border-color: #fecdd3 !important;
+}
+
+html.light .text-rose-300 {
+  color: #be123c !important;
+}
+
+html.light .text-\[\#8c7479\] {
+  color: #9f1239 !important;
+}
+
+/* Clear Activity History button in light mode */
+html.light .bg-rose-950\/20 {
+  background-color: #ffffff !important;
+  border-color: #fca5a5 !important;
+  color: #b91c1c !important;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
+}
+
+html.light .bg-rose-950\/20:hover {
+  background-color: #ffe4e6 !important;
+  border-color: #f87171 !important;
+  color: #991b1b !important;
+}
+
+/* Secondary action buttons in light mode */
+html.light .bg-\[\#1c1f2b\] {
+  background-color: #ffffff !important;
+  color: #1e293b !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
+}
+
+html.light .bg-\[\#1c1f2b\]:hover {
+  background-color: #f8fafc !important;
+  border-color: #94a3b8 !important;
+  color: #0f172a !important;
+}

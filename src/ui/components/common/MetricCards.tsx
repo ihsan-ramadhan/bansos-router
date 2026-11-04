@@ -44,7 +44,7 @@ export function MetricCards({ status, loading, daemonAddress }: MetricCardsProps
     <div className="rounded-lg border border-[#1c1f2b] bg-[#10121a] px-3.5 py-2 sm:py-2.5 shadow-xs flex flex-wrap items-center justify-between gap-y-2 gap-x-4 text-xs font-mono">
       {/* Models breakdown */}
       <div className="flex items-center gap-2 shrink-0">
-        <span className="text-[#64748b] hidden sm:inline">Models:</span>
+        <span className="text-[#64748b]">Models:</span>
         <span className="font-bold text-white">{usableCount}</span>
         <span className="text-[#94a3b8] hidden lg:inline">
           ({usable.length > 0 ? usable.map((p) => `${formatProviderShort(p.id)} ${p.models}`).join(" · ") : "no models"})

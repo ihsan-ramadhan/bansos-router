@@ -38,6 +38,17 @@ function initialActiveTab(): NavTab {
   }
 }
 
+type ThemeMode = "dark" | "light";
+
+function initialTheme(): ThemeMode {
+  if (typeof window === "undefined") return "dark";
+  try {
+    const saved = localStorage.getItem("bansos_theme");
+    if (saved === "light" || saved === "dark") return saved;
+  } catch {}
+  return "dark";
+}
+
 export function App() {
   const [activeTab, setActiveTab] = useState<NavTab>(initialActiveTab);
 
@@ -48,6 +59,52 @@ export function App() {
         localStorage.setItem("bansos_active_tab", tab);
       } catch {}
     }
+  };
+  const [theme, setTheme] = useState<ThemeMode>(initialTheme);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (theme === "light") {
+      root.classList.remove("dark");
+      root.classList.add("light");
+      metaTheme?.setAttribute("content", "#ffffff");
+    } else {
+      root.classList.remove("light");
+      root.classList.add("dark");
+      metaTheme?.setAttribute("content", "#090a0f");
+    }
+    try {
+      localStorage.setItem("bansos_theme", theme);
+    } catch {}
+  }, [theme]);
+
+  const toggleTheme = () => {
+    // Disable all transitions during theme swap to eliminate visual tearing and staggered color flashes
+    const next = theme === "dark" ? "light" : "dark";
+    if (typeof document !== "undefined") {
+      const root = document.documentElement;
+      root.classList.add("theme-switching");
+      if (next === "light") {
+        root.classList.remove("dark");
+        root.classList.add("light");
+      } else {
+        root.classList.remove("light");
+        root.classList.add("dark");
+      }
+      const metaTheme = document.querySelector('meta[name="theme-color"]');
+      metaTheme?.setAttribute("content", next === "light" ? "#ffffff" : "#090a0f");
+      try {
+        localStorage.setItem("bansos_theme", next);
+      } catch {}
+      setTheme(next);
+      setTimeout(() => {
+        root.classList.remove("theme-switching");
+      }, 50);
+      return;
+    }
+    setTheme(next);
   };
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
@@ -138,6 +195,8 @@ export function App() {
         isConnected={isConnected}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={toggleSidebar}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
 
       <div className="flex-1 flex min-h-0 pt-14 md:overflow-hidden">
@@ -222,7 +281,12 @@ export function App() {
       </div>
 
       {/* Floating Bottom Nav on Mobile */}
-      <MobileBottomNav activeTab={activeTab} onSelectTab={selectTab} />
+      <MobileBottomNav
+        activeTab={activeTab}
+        onSelectTab={selectTab}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+      />
     </div>
   );
 }
