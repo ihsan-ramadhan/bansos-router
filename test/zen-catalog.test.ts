@@ -22,7 +22,7 @@ test("a model is built from the index with sane defaults", () => {
 test("pdf survives only on the wire that can carry it", () => {
   const rich = { modalities: { input: ["text", "image", "audio", "video", "pdf"] } };
 
-  const onResponses = zenModelFromIndex("muse-spark-1.3-contributor-free", rich);
+  const onResponses = zenModelFromIndex("crouton-alpha-free", rich);
   assert.deepEqual(onResponses.input, ["text", "image", "pdf"]);
 
   const onChat = zenModelFromIndex("mimo-v2.6-flash-free", rich);
@@ -50,19 +50,19 @@ test("reasoning effort is never derived from the index", () => {
 });
 
 test("the wire api is carried over from the seed, the rest comes from the index", () => {
-  const m = zenModelFromIndex("muse-spark-1.3-contributor-free", {
-    limit: { context: 1_048_576, output: 131_072 },
+  const m = zenModelFromIndex("crouton-alpha-free", {
+    limit: { context: 1_048_576, output: 270_000 },
     modalities: { input: ["text", "image", "pdf"] },
   });
 
   assert.equal(m.wireApi, "responses", "no index carries this, only the seed does");
   assert.equal(m.contextWindow, 1_048_576, "the published figure is used as-is");
-  assert.equal(m.maxTokens, 131_072);
+  assert.equal(m.maxTokens, 270_000);
   assert.deepEqual(m.input, ["text", "image", "pdf"]);
 });
 
 test("an index entry missing its limits keeps the seeded figures", () => {
-  const seeded = ZEN_MODELS.find((m) => m.id === "muse-spark-1.3-contributor-free")!;
+  const seeded = ZEN_MODELS.find((m) => m.id === "crouton-alpha-free")!;
   const m = zenModelFromIndex(seeded.id, { modalities: { input: ["text"] } });
 
   assert.equal(m.name, seeded.name);
@@ -72,7 +72,7 @@ test("an index entry missing its limits keeps the seeded figures", () => {
 });
 
 test("an index entry missing its modalities keeps the seeded ones", () => {
-  const seeded = ZEN_MODELS.find((m) => m.id === "muse-spark-1.3-contributor-free")!;
+  const seeded = ZEN_MODELS.find((m) => m.id === "crouton-alpha-free")!;
   const m = zenModelFromIndex(seeded.id, {});
   assert.deepEqual(m.input, seeded.input);
 });

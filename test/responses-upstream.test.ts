@@ -246,11 +246,11 @@ test("responsesToChatStream marks a truncated response as finish_reason length",
   assert.equal(chunks[chunks.length - 1].choices[0].finish_reason, "length");
 });
 
-test("muse spark is seeded on the responses wire and is the smart default", () => {
-  const muse = SEEDED_MODELS.find((m) => m.id === "muse-spark-1.3-contributor-free");
-  assert.ok(muse, "muse-spark-1.3-contributor-free must be seeded");
-  assert.equal(muse.wireApi, "responses");
-  assert.equal(pickSmartDefaultModel(SEEDED_MODELS), "muse-spark-1.3-contributor-free");
+test("crouton alpha is seeded on the responses wire", () => {
+  const crouton = SEEDED_MODELS.find((m) => m.id === "crouton-alpha-free");
+  assert.ok(crouton, "crouton-alpha-free must be seeded");
+  assert.equal(crouton.wireApi, "responses");
+  assert.equal(pickSmartDefaultModel(SEEDED_MODELS), "deepseek-v4.1-flash-free");
 });
 
 test("toChatResponse leaves a non-JSON reply readable instead of consuming it", async () => {

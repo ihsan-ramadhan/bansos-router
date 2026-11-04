@@ -13,11 +13,14 @@ import {
 } from "../security/policy";
 import { checkUpdate, VERSION } from "../update";
 import type { RuntimeCatalog } from "./catalog";
+import type { ActivityStore, ActivityEvent } from "./activity";
+import { loadRelayState, saveRelayState, type RelayState } from "../relay/egress";
 import { CONFIG_FILE, LOG_FILE, loadConfig, loadConfigWarnings, readRawConfig, writeJsonAtomic } from "./state";
 
 export interface AdminOptions {
   security: SecurityConfig;
   catalog: RuntimeCatalog;
+  activity?: ActivityStore;
   port: number;
   requestedPort?: number;
   bind: string;
@@ -42,6 +45,9 @@ export const ADMIN_PATHS = new Set([
   "/bansos/doctor",
   "/bansos/adapters/apply",
   "/bansos/autostart",
+  "/bansos/backup",
+  "/bansos/restore",
+  "/bansos/activity/clear",
 ]);
 
 const MIN_REFRESH_MS = 60_000;
@@ -265,6 +271,99 @@ function portFree(port: number, bind: string): Promise<boolean> {
   });
 }
 
+export function createBackup(opts: AdminOptions, rawUrl?: string): Record<string, unknown> {
+  const file = opts.configFile ?? CONFIG_FILE;
+  const config = loadConfig(file);
+  let include = ["config", "activity", "relay"];
+  if (rawUrl) {
+    try {
+      const parsed = new URL(rawUrl, "http://127.0.0.1");
+      const incParam = parsed.searchParams.get("include");
+      if (incParam) include = incParam.split(",").map((s) => s.trim().toLowerCase());
+    } catch {}
+  }
+  const inc = new Set(include);
+  const data: Record<string, unknown> = {};
+  if (inc.has("config")) {
+    data.config = config;
+  }
+  if (inc.has("activity")) {
+    data.activity = {
+      updatedAt: Date.now(),
+      events: opts.activity ? opts.activity.getAllEvents() : [],
+    };
+  }
+  if (inc.has("relay")) {
+    data.relay = loadRelayState();
+  }
+  return {
+    version: 1,
+    generator: "bansos-router",
+    timestamp: new Date().toISOString(),
+    daemon: {
+      version: VERSION,
+      platform: process.platform,
+    },
+    data,
+  };
+}
+
+export function restoreBackup(opts: AdminOptions, body: unknown): AdminResult {
+  if (!isRecord(body)) return { status: 400, body: { error: { message: "body must be a JSON object" } } };
+  const rawData = isRecord(body.data) ? body.data : body;
+  const options = isRecord(body.options) ? body.options : {};
+  const wantConfig = options.restoreConfig !== false && rawData.config !== undefined;
+  const wantActivity = options.restoreActivity !== false && (rawData.activity !== undefined || Array.isArray(rawData.events));
+  const wantRelay = options.restoreRelay !== false && rawData.relay !== undefined;
+  let configRestored = false;
+  let restartRequired: string[] = [];
+  let activityCount = 0;
+  let relayRestored = false;
+
+  if (wantConfig) {
+    if (!isRecord(rawData.config)) return { status: 400, body: { error: { message: "data.config must be an object" } } };
+    const res = saveConfig(opts, rawData.config);
+    if (res.status !== 200) return res;
+    configRestored = true;
+    const resBody = res.body as { restartRequired?: string[] };
+    if (Array.isArray(resBody?.restartRequired)) restartRequired = resBody.restartRequired;
+  }
+
+  if (wantActivity && opts.activity) {
+    let eventsList: unknown[] = [];
+    if (isRecord(rawData.activity) && Array.isArray(rawData.activity.events)) {
+      eventsList = rawData.activity.events;
+    } else if (Array.isArray(rawData.events)) {
+      eventsList = rawData.events;
+    }
+    const replace = Boolean(options.replaceActivity);
+    activityCount = opts.activity.importEvents(eventsList as ActivityEvent[], replace);
+  }
+
+  if (wantRelay && isRecord(rawData.relay)) {
+    const r = rawData.relay as unknown as RelayState;
+    saveRelayState({
+      enabled: Boolean(r.enabled),
+      url: typeof r.url === "string" ? r.url : "",
+      relays: Array.isArray(r.relays) ? r.relays : [],
+    });
+    relayRestored = true;
+  }
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      restored: {
+        config: configRestored,
+        activityCount,
+        relay: relayRestored,
+      },
+      restartRequired,
+    },
+  };
+}
+
 export async function handleAdmin(
   req: http.IncomingMessage,
   method: string,
@@ -343,6 +442,20 @@ export async function handleAdmin(
   if (url === "/bansos/adapters/apply" && method === "POST") {
     const parsed = await readJson();
     return parsed.ok ? applySetup(opts, parsed.value) : badJson;
+  }
+
+  if (url === "/bansos/backup" && method === "GET") {
+    return { status: 200, body: createBackup(opts, rawUrl) };
+  }
+
+  if (url === "/bansos/restore" && method === "POST") {
+    const parsed = await readJson();
+    return parsed.ok ? restoreBackup(opts, parsed.value) : badJson;
+  }
+
+  if (url === "/bansos/activity/clear" && method === "POST") {
+    opts.activity?.clear();
+    return { status: 200, body: { ok: true, cleared: true } };
   }
 
   return { status: 405, body: { error: { message: "method not allowed" } } };

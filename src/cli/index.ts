@@ -65,6 +65,8 @@ Commands:
   relay       manage relay egress
   autostart   start the daemon when you log in (on/off/status)
   doctor      diagnose setup
+  backup      export config, usage history, and relay state to json
+  restore     restore config and usage history from a backup file
 
 Global flags:
   --json      structured output on status / models / ping (agent-friendly)
@@ -274,6 +276,21 @@ Requires a running daemon (bansos start). Aggregates cover the last 60 days,
 kept in ~/.bansos/activity.json across restarts. Use the "Activity" tab in the web UI for a live, per-request feed.
 Exit codes: 0 daemon reachable, 1 daemon unreachable.
 `,
+  backup: `bansos backup - export config, usage history, and relay state
+
+Usage:
+  bansos backup [file.json]
+
+Defaults to bansos-backup-YYYY-MM-DD.json in current directory, or - for stdout.
+Exit codes: 0 success, 1 failure.
+`,
+  restore: `bansos restore - restore config and usage history from a backup file
+
+Usage:
+  bansos restore <file.json>
+
+Exit codes: 0 success, 1 failure.
+`,
 };
 
 function isDaemonFlag(a: string | undefined): boolean {
@@ -333,6 +350,10 @@ async function main(): Promise<number> {
       return runAutostart(args.slice(1), json);
     case "doctor":
       return runDoctor(args.slice(1));
+    case "backup":
+      return runBackup(args.slice(1));
+    case "restore":
+      return runRestore(args.slice(1));
     case "--version":
     case "-v":
       console.log(VERSION);
@@ -910,6 +931,85 @@ async function runStatusOrModels(cmd: "status" | "models" | "refresh", json: boo
   } catch {
     if (json) console.log(JSON.stringify({ ok: false, error: `daemon not reachable at ${base}` }));
     else console.error(`bansos: daemon not reachable at ${base}. Start it with "bansos start"`);
+    return 1;
+  }
+}
+
+async function runBackup(argv: string[]): Promise<number> {
+  const base = `http://${effectiveBind()}:${effectivePort()}`;
+  let outPath = argv.find((a) => !a.startsWith("-"));
+  let res: Response;
+  try {
+    res = await fetch(`${base}/bansos/backup`);
+    if (!res.ok) {
+      console.error(`bansos backup: daemon returned HTTP ${res.status}`);
+      return 1;
+    }
+  } catch {
+    console.error(`bansos backup: daemon not reachable at ${base}. Start it with "bansos start"`);
+    return 1;
+  }
+  const body = await res.json();
+  const formatted = JSON.stringify(body, null, 2);
+  if (!outPath) {
+    outPath = `bansos-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  }
+  if (outPath === "-") {
+    process.stdout.write(formatted + "\n");
+    return 0;
+  }
+  try {
+    fs.writeFileSync(outPath, formatted);
+    console.log(`Backup written to ${outPath}`);
+    return 0;
+  } catch (err) {
+    console.error(`bansos backup: failed to write ${outPath}: ${(err as Error).message}`);
+    return 1;
+  }
+}
+
+async function runRestore(argv: string[]): Promise<number> {
+  const filePath = argv.find((a) => !a.startsWith("-"));
+  if (!filePath) {
+    console.error("Usage: bansos restore <backup-file.json>");
+    return 1;
+  }
+  if (!fs.existsSync(filePath)) {
+    console.error(`bansos restore: file not found: ${filePath}`);
+    return 1;
+  }
+  let parsed: unknown;
+  try {
+    const text = fs.readFileSync(filePath, "utf8");
+    parsed = JSON.parse(text);
+  } catch (err) {
+    console.error(`bansos restore: failed to parse JSON in ${filePath}: ${(err as Error).message}`);
+    return 1;
+  }
+  const base = `http://${effectiveBind()}:${effectivePort()}`;
+  try {
+    const res = await fetch(`${base}/bansos/restore`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data: parsed }),
+    });
+    if (!res.ok) {
+      const errBody = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+      console.error(`bansos restore: daemon returned HTTP ${res.status}: ${errBody?.error?.message ?? "unknown error"}`);
+      return 1;
+    }
+    const result = (await res.json()) as { restored: { config: boolean; activityCount: number; relay: boolean }; restartRequired: string[] };
+    const parts: string[] = [];
+    if (result.restored.config) parts.push("config");
+    if (result.restored.activityCount > 0) parts.push(`${result.restored.activityCount} activity events`);
+    if (result.restored.relay) parts.push("relay");
+    console.log(`Restored: ${parts.join(", ") || "no components found"}`);
+    if (result.restartRequired.length > 0) {
+      console.log(`Restart required to apply changes to: ${result.restartRequired.join(", ")} (run: bansos restart)`);
+    }
+    return 0;
+  } catch {
+    console.error(`bansos restore: daemon not reachable at ${base}. Start it with "bansos start"`);
     return 1;
   }
 }

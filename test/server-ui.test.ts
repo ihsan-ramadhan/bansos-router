@@ -268,8 +268,8 @@ test("render writes only the picked models and upstreams, and refuses bad picks"
     const picked = await opencodeModels("upstream=zen&models=kilo-auto/free");
     assert.deepEqual(new Set(picked.ids), new Set([...zen, "kilo-auto/free"]));
 
-    const alias = await opencodeModels("models=laguna-xs-2.1:free");
-    assert.deepEqual(alias.ids, ["poolside/laguna-xs-2.1:free"], "a bare alias resolves to its full id");
+    const alias = await opencodeModels("models=dots-3-note-preview:free");
+    assert.deepEqual(alias.ids, ["dots-studio/dots-3-note-preview:free"], "a bare alias resolves to its full id");
 
     assert.equal((await opencodeModels("")).ids.length, SEEDED_MODELS.length, "no pick keeps every model");
 

@@ -58,3 +58,32 @@ export interface SetupResult {
   lines: SetupLine[];
   harness?: { id: string; status: HarnessState; path?: string };
 }
+
+export interface BackupData {
+  version: number;
+  generator: string;
+  timestamp: string;
+  daemon: { version: string; platform: string };
+  data: {
+    config?: Record<string, unknown>;
+    activity?: { updatedAt: number; events: unknown[] };
+    relay?: { enabled: boolean; url: string; relays: unknown[] };
+  };
+}
+
+export interface RestoreOptions {
+  restoreConfig?: boolean;
+  restoreActivity?: boolean;
+  restoreRelay?: boolean;
+  replaceActivity?: boolean;
+}
+
+export interface RestoreResponse {
+  ok: boolean;
+  restored: {
+    config: boolean;
+    activityCount: number;
+    relay: boolean;
+  };
+  restartRequired: string[];
+}

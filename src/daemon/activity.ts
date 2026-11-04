@@ -136,6 +136,56 @@ export class ActivityStore {
     return filtered.slice(-limit).reverse();
   }
 
+  getAllEvents(): ActivityEvent[] {
+    return [...this.events];
+  }
+
+  clear(): void {
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+    this.events = [];
+    this.nextId = 1;
+    this.flushToDisk();
+  }
+
+  importEvents(incoming: ActivityEvent[], replace = false): number {
+    if (!Array.isArray(incoming)) return 0;
+    const now = Date.now();
+    const valid = incoming.filter(
+      (e) =>
+        e &&
+        typeof e === "object" &&
+        typeof e.timestamp === "number" &&
+        now - e.timestamp <= MAX_RETENTION_MS &&
+        typeof e.model === "string" &&
+        typeof e.upstream === "string" &&
+        (e.status === "ok" || e.status === "error"),
+    );
+    if (replace) {
+      this.events = valid;
+    } else {
+      const seen = new Set(this.events.map((e) => `${e.timestamp}_${e.model}_${e.upstream}`));
+      for (const e of valid) {
+        const key = `${e.timestamp}_${e.model}_${e.upstream}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          this.events.push(e);
+        }
+      }
+    }
+    this.events.sort((a, b) => a.timestamp - b.timestamp);
+    if (this.events.length > this.cap) {
+      this.events = this.events.slice(-this.cap);
+    }
+    if (this.events.length > 0) {
+      this.nextId = Math.max(...this.events.map((e) => e.id || 0)) + 1;
+    }
+    this.flushToDisk();
+    return valid.length;
+  }
+
   getUsage(window: TimeWindow = "all"): UsageStats {
     const filtered = this.filterByWindow(this.events, window);
     let totalRequests = 0;

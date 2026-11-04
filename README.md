@@ -46,7 +46,7 @@ Supported harnesses for `bansos setup`: `claude-code`, `aider`, `opencode`, `cod
 
 Using both is harmless but redundant: the IDs differ (`bansos` vs `bansosr`), so you get two providers listing the same models. Prefer one.
 
-Open `http://127.0.0.1:17070` in your browser for the Web UI dashboard: model catalog with live latency ping, harness setup (preview or apply in one click), relay manager, playground, activity and usage, daemon logs, and settings (security mode, catalog refresh, port and bind, restart, health check).
+Open `http://127.0.0.1:17070` in your browser for the Web UI dashboard: model catalog with live latency ping, harness setup (preview or apply in one click), relay manager, playground, activity and usage, daemon logs, and settings (security mode, catalog refresh, port and bind, autostart, backup and data management, restart, health check).
 
 ### Start at login
 
@@ -103,6 +103,8 @@ docker compose up -d
 | `bansos relay <on\|off\|status\|url\|use\|list\|remove>` | Manage relay egress (`relay deploy` is listed in the help but not implemented yet) |
 | `bansos autostart <on\|off\|status> [--json]` | Start the daemon when you log in (systemd / launchd / Startup folder) |
 | `bansos doctor` | Diagnose daemon reachability, relay, security config, autostart, harness config validity and available updates |
+| `bansos backup [file.json]` | Export daemon configuration, usage history, and relay state to JSON (defaults to `bansos-backup-YYYY-MM-DD.json` or `-` for stdout) |
+| `bansos restore <file.json>` | Restore configuration and usage history from a backup JSON file |
 | `bansos --version` | Print version |
 | `bansos <command> --help` / `bansos help <command>` | Per-command usage, defaults, exit codes, examples |
 | `bansosd` | Alias for the daemon (e.g. `bansosd --bg`) |
@@ -169,7 +171,7 @@ To write only some models, pass `--models <id,...>` and/or `--upstream <id,...>`
 
 The model list changes as upstreams rotate their free tiers, so it lives on its own page: [ihsan-ramadhan.github.io/bansos-router](https://ihsan-ramadhan.github.io/bansos-router/). A GitHub Action runs the daemon's own catalog check every six hours and publishes the result there, with reasoning, vision, context and max output for each model, and as [`models.json`](https://ihsan-ramadhan.github.io/bansos-router/models.json). It checks from a GitHub datacenter, so run `bansos models` or `bansos ping` to see what your machine can reach.
 
-Muse Spark answers only on the Responses API (`/v1/responses`) and returns HTTP 500 on chat completions. bansos-router translates the upstream leg both ways, so Muse works from any harness: chat completions, Responses, and Anthropic clients all see their usual wire format, tool calls included.
+Responses wire models (such as `crouton-alpha-free` on OpenCode Zen) accept inputs on the Responses API (`/v1/responses`) and support multimodal PDF input. bansos-router translates the upstream leg both ways, so responses-wire models work seamlessly from any harness: chat completions, Responses, and Anthropic clients all see their usual wire format, tool calls included.
 
 Notes:
 

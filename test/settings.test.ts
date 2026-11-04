@@ -377,11 +377,77 @@ test("strict mode lists and configures only models an allowed upstream serves", 
     assert.equal(status.modelCount, kiloIds.length);
     const render = await (await fetch(`${d.baseUrl}/bansos/adapters/render?id=aider`)).json();
     const text = JSON.stringify(render.config);
-    assert.ok(!text.includes("muse-spark"), "the smart default skips a blocked zen model");
+    assert.ok(!text.includes("deepseek-v4.1-flash-free"), "the smart default skips a blocked zen model");
     assert.ok(kiloIds.some((id) => text.includes(id)));
     const pinned = await postJson(`${d.baseUrl}/bansos/adapters/apply`, { id: "aider", model: "big-pickle" });
     assert.equal(pinned.status, 400, "pinning a blocked model is refused instead of writing a config that 403s");
     assert.match((await pinned.json()).error.message, /zen, which strict mode blocks/);
+  } finally {
+    await d.close();
+  }
+});
+
+test("backup exports config, activity events, and relay state", async () => {
+  const d = await startDaemon(BASE_CONFIG);
+  try {
+    const res = await fetch(`${d.baseUrl}/bansos/backup`);
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { version: number; generator: string; data: { config: unknown; activity: unknown; relay: unknown } };
+    assert.equal(body.version, 1);
+    assert.equal(body.generator, "bansos-router");
+    assert.ok(body.data.config);
+    assert.ok(body.data.activity);
+    assert.ok(body.data.relay);
+  } finally {
+    await d.close();
+  }
+});
+
+test("restore applies config, activity, and relay state", async () => {
+  const d = await startDaemon(BASE_CONFIG);
+  try {
+    const payload = {
+      data: {
+        config: { refreshIntervalMs: 900_000, security: { mode: "normal", dlp: "block" } },
+        activity: {
+          events: [
+            {
+              id: 1,
+              timestamp: Date.now(),
+              kind: "chat",
+              model: "test-model",
+              requestedModel: "test-model",
+              upstream: "zen",
+              inputTokens: 10,
+              outputTokens: 20,
+              durationMs: 50,
+              status: "ok",
+            },
+          ],
+        },
+        relay: { enabled: true, url: "https://relay.example.com", relays: [] },
+      },
+      options: { replaceActivity: true },
+    };
+    const res = await postJson(`${d.baseUrl}/bansos/restore`, payload);
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { ok: boolean; restored: { config: boolean; activityCount: number; relay: boolean } };
+    assert.equal(body.ok, true);
+    assert.equal(body.restored.config, true);
+    assert.equal(body.restored.activityCount, 1);
+    assert.equal(body.restored.relay, true);
+
+    // verify activity was imported
+    const eventsRes = await fetch(`${d.baseUrl}/bansos/events`);
+    const eventsBody = (await eventsRes.json()) as { events: Array<{ model: string }> };
+    assert.equal(eventsBody.events.length, 1);
+    assert.equal(eventsBody.events[0]?.model, "test-model");
+
+    // test wipe activity
+    const clearRes = await postJson(`${d.baseUrl}/bansos/activity/clear`, {});
+    assert.equal(clearRes.status, 200);
+    const afterClear = (await (await fetch(`${d.baseUrl}/bansos/events`)).json()) as { events: unknown[] };
+    assert.equal(afterClear.events.length, 0);
   } finally {
     await d.close();
   }

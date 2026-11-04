@@ -1993,6 +1993,7 @@ export function createServer(opts: ServerOptions): http.Server {
     bind: "127.0.0.1",
     refreshIntervalMs: 0,
     ...opts.admin,
+    activity,
     security,
     catalog,
     port,

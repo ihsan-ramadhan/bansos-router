@@ -6,6 +6,7 @@ import { fetchConfig, restartDaemon, saveConfig } from "../../services/api";
 import { getNotificationClasses } from "../../utils/relay";
 import { HealthCard } from "./HealthCard";
 import { AutostartCard } from "./AutostartCard";
+import { BackupCard } from "./BackupCard";
 
 interface SettingsViewProps {
   active: boolean;
@@ -466,6 +467,8 @@ export function SettingsView({ active, onApplied }: SettingsViewProps) {
       </div>
 
       <AutostartCard active={active} />
+
+      <BackupCard onRestored={() => void load()} />
 
       <HealthCard active={active} />
     </div>

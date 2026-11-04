@@ -32,6 +32,8 @@ export const OVH_MODELS: ModelDef[] = [
   ovhModel("Qwen3.5-9B", "Qwen3.5 9B", true, 262_144, 65_536, true),
   ovhModel("Mistral-Small-3.2-24B-Instruct-2506", "Mistral Small 3.2 24B", false, 131_072, 16_384, true),
   ovhModel("Meta-Llama-3_3-70B-Instruct", "Llama 3.3 70B", false, 131_072, 16_384, false),
+  ovhModel("Qwen2.5-VL-72B-Instruct", "Qwen2.5 VL 72B", false, 32_768, 32_768, true),
+  ovhModel("Mistral-Nemo-Instruct-2407", "Mistral Nemo Instruct", false, 65_536, 16_384, false),
 ];
 
 interface OvhApiModel {

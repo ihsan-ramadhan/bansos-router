@@ -13,6 +13,9 @@ import type {
   SetupResult,
   AutostartState,
   ModelPick,
+  BackupData,
+  RestoreOptions,
+  RestoreResponse,
 } from "../types";
 
 const BASE_URL = "";
@@ -185,5 +188,31 @@ export async function setAutostart(enabled: boolean): Promise<AutostartState> {
     body: JSON.stringify({ enabled }),
   });
   if (!res.ok) throw new Error(await errorMessage(res, `HTTP ${res.status}: Failed to change start-at-login`));
+  return res.json();
+}
+
+export async function fetchBackup(include?: string[]): Promise<BackupData> {
+  const query = include && include.length ? `?include=${encodeURIComponent(include.join(","))}` : "";
+  const res = await fetch(`${BASE_URL}/bansos/backup${query}`);
+  if (!res.ok) throw new Error(await errorMessage(res, `HTTP ${res.status}: Failed to export backup`));
+  return res.json();
+}
+
+export async function restoreBackup(payload: { data: unknown; options?: RestoreOptions }): Promise<RestoreResponse> {
+  const res = await fetch(`${BASE_URL}/bansos/restore`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `HTTP ${res.status}: Failed to restore backup`));
+  return res.json();
+}
+
+export async function clearActivity(): Promise<{ ok: boolean; cleared: boolean }> {
+  const res = await fetch(`${BASE_URL}/bansos/activity/clear`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `HTTP ${res.status}: Failed to clear activity`));
   return res.json();
 }
