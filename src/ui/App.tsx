@@ -129,7 +129,7 @@ export function App() {
   );
 
   return (
-    <div className="h-screen flex flex-col bg-[#08090d] text-[#f8fafc] overflow-hidden">
+    <div className="min-h-screen md:h-screen flex flex-col bg-[#08090d] text-[#f8fafc] md:overflow-hidden">
       {/* Top Navbar */}
       <AppHeader
         status={status}
@@ -140,15 +140,15 @@ export function App() {
         onToggleSidebar={toggleSidebar}
       />
 
-      <div className="flex-1 flex min-h-0 pt-14 overflow-hidden">
+      <div className="flex-1 flex min-h-0 pt-14 md:overflow-hidden">
         <AppSidebar
           activeTab={activeTab}
           onSelectTab={selectTab}
           isOpen={sidebarOpen}
         />
 
-        <div className="flex-1 min-w-0 flex flex-col overflow-y-auto">
-          <main className="flex-1 min-h-0 w-full px-3 sm:px-6 py-3.5 sm:py-4 pb-24 md:pb-4 flex flex-col space-y-3 sm:space-y-4">
+        <div id="main-content-scroll" className="flex-1 min-w-0 flex flex-col md:overflow-y-auto">
+          <main className="flex-1 min-h-0 w-full px-3 sm:px-6 py-3.5 sm:py-4 pb-4 flex flex-col space-y-3 sm:space-y-4">
         {/* Offline Alert Banner */}
         {!isConnected && !isConnecting && (
           <OfflineBanner

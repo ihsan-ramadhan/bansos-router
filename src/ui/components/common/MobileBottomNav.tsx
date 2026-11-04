@@ -51,6 +51,14 @@ export function MobileBottomNav({ activeTab, onSelectTab }: MobileBottomNavProps
   const [visible, setVisible] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
   const lastScrollY = useRef(0);
+  const touchStartY = useRef(0);
+  const touchLastY = useRef(0);
+
+  // Always reveal nav when active tab changes
+  useEffect(() => {
+    setVisible(true);
+    lastScrollY.current = 0;
+  }, [activeTab]);
 
   // Close sheet on Escape key
   useEffect(() => {
@@ -74,41 +82,125 @@ export function MobileBottomNav({ activeTab, onSelectTab }: MobileBottomNavProps
     };
   }, [sheetOpen]);
 
-  // Scroll detection to auto-hide / auto-show the floating nav
+  // Scroll and touch detection to auto-hide / auto-show the floating nav
   useEffect(() => {
-    lastScrollY.current = window.scrollY;
+    const getScrollY = (): number => {
+      if (typeof window === "undefined") return 0;
+      const winY = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+      if (winY > 0) return winY;
+      const scrollEl = document.getElementById("main-content-scroll");
+      return scrollEl?.scrollTop ?? 0;
+    };
+
+    const getMaxScroll = (): number => {
+      if (typeof window === "undefined") return 0;
+      const docMax = Math.max(
+        0,
+        (document.documentElement.scrollHeight || document.body.scrollHeight || 0) - window.innerHeight,
+      );
+      if (docMax > 0) return docMax;
+      const scrollEl = document.getElementById("main-content-scroll");
+      return scrollEl ? Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight) : 0;
+    };
+
+    lastScrollY.current = getScrollY();
 
     let ticking = false;
+
+    const onScrollChange = (currentY: number, maxScroll: number) => {
+      if (sheetOpen) {
+        setVisible(true);
+        return;
+      }
+
+      // Always visible near top of content
+      if (currentY <= 30) {
+        setVisible(true);
+        lastScrollY.current = currentY;
+        return;
+      }
+
+      // Stay visible when reaching or near bottom boundary
+      if (maxScroll > 0 && maxScroll - currentY <= 30) {
+        setVisible(true);
+        lastScrollY.current = currentY;
+        return;
+      }
+
+      const diff = currentY - lastScrollY.current;
+
+      // Scrolling down: hide when moved more than 8px
+      if (diff > 8) {
+        setVisible(false);
+        lastScrollY.current = currentY;
+      }
+      // Scrolling up: reveal immediately when moved more than 6px
+      else if (diff < -6) {
+        setVisible(true);
+        lastScrollY.current = currentY;
+      }
+    };
+
     const handleScroll = () => {
       if (ticking) return;
       ticking = true;
 
       window.requestAnimationFrame(() => {
-        const currentY = window.scrollY;
-        const diff = currentY - lastScrollY.current;
-
-        // When the bottom sheet is open, keep nav visible
-        if (sheetOpen) {
-          setVisible(true);
-        } else if (currentY < 30) {
-          // Always visible near the top of the page
-          setVisible(true);
-        } else if (diff > 8) {
-          // Scrolling down: hide
-          setVisible(false);
-        } else if (diff < -4) {
-          // Scrolling up even slightly: reveal
-          setVisible(true);
-        }
-
-        lastScrollY.current = currentY;
+        const currentY = getScrollY();
+        const maxScroll = getMaxScroll();
+        onScrollChange(currentY, maxScroll);
         ticking = false;
       });
     };
 
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, [sheetOpen]);
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches && e.touches[0]) {
+        touchStartY.current = e.touches[0].clientY;
+        touchLastY.current = e.touches[0].clientY;
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (sheetOpen || !e.touches || !e.touches[0]) return;
+      const currentTouchY = e.touches[0].clientY;
+      const touchDiff = currentTouchY - touchLastY.current;
+      touchLastY.current = currentTouchY;
+
+      const currentScrollTop = getScrollY();
+
+      // When near top, keep visible
+      if (currentScrollTop <= 30) {
+        setVisible(true);
+        return;
+      }
+
+      // Finger moving down -> content scrolling up -> reveal
+      if (touchDiff > 8) {
+        setVisible(true);
+      }
+      // Finger moving up -> content scrolling down -> hide
+      else if (touchDiff < -8) {
+        setVisible(false);
+      }
+    };
+
+    const scrollEl = document.getElementById("main-content-scroll");
+    if (scrollEl) {
+      scrollEl.addEventListener("scroll", handleScroll, { passive: true });
+    }
+    window.addEventListener("scroll", handleScroll, { capture: true, passive: true });
+    window.addEventListener("touchstart", handleTouchStart, { passive: true });
+    window.addEventListener("touchmove", handleTouchMove, { passive: true });
+
+    return () => {
+      if (scrollEl) {
+        scrollEl.removeEventListener("scroll", handleScroll);
+      }
+      window.removeEventListener("scroll", handleScroll, { capture: true });
+      window.removeEventListener("touchstart", handleTouchStart);
+      window.removeEventListener("touchmove", handleTouchMove);
+    };
+  }, [sheetOpen, activeTab]);
 
   const isMoreActive = MORE_ITEMS.some((item) => item.id === activeTab);
 
