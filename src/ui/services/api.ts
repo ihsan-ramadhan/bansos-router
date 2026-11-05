@@ -7,6 +7,7 @@ import type {
   RelayUpdatePayload,
   UsageStats,
   ActivityEvent,
+  InFlightRequest,
   ConfigState,
   DaemonSettings,
   DoctorReport,
@@ -115,11 +116,19 @@ export async function fetchUsage(window: "today" | "7d" | "30d" | "60d" | "all" 
   return res.json();
 }
 
-export async function fetchEvents(limit = 100, window: "today" | "7d" | "30d" | "60d" | "all" = "all"): Promise<ActivityEvent[]> {
+export interface EventsData {
+  events: ActivityEvent[];
+  inFlight: InFlightRequest[];
+}
+
+export async function fetchEvents(limit = 100, window: "today" | "7d" | "30d" | "60d" | "all" = "all"): Promise<EventsData> {
   const res = await fetch(`${BASE_URL}/bansos/events?limit=${limit}&window=${window}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch events`);
-  const body = (await res.json()) as { events: ActivityEvent[] };
-  return body.events;
+  const body = (await res.json()) as { events?: ActivityEvent[]; inFlight?: InFlightRequest[] };
+  return {
+    events: body.events ?? [],
+    inFlight: body.inFlight ?? [],
+  };
 }
 
 async function errorMessage(res: Response, fallback: string): Promise<string> {

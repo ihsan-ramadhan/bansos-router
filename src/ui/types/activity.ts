@@ -15,8 +15,17 @@ export interface ActivityEvent {
   status: ActivityStatus;
   statusCode?: number;
   failoverFrom?: string;
+  client?: string;
 }
 
+export interface InFlightRequest {
+  id: number;
+  timestamp: number;
+  client: string;
+  model: string;
+  requestedModel: string;
+  upstream: string;
+}
 export interface ModelActivity {
   requests: number;
   ok: number;

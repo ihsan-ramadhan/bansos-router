@@ -224,6 +224,33 @@ interface CorsAwareResponse extends http.ServerResponse {
 function corsFor(res: http.ServerResponse): Record<string, string> {
   return (res as CorsAwareResponse).bansosCors ?? {};
 }
+export function detectHarness(req: http.IncomingMessage, kind: ActivityKind): string {
+  const ua = (req.headers["user-agent"] || "").toLowerCase();
+
+  if (ua.includes("oh-my-pi") || ua.includes("omp/") || ua.includes("omp ") || ua === "omp") {
+    return "omp";
+  }
+  if (ua.startsWith("pi/") || ua.includes("pi/") || ua.includes("pi-coding-agent") || ua.includes("pi-bansos")) {
+    return "pi";
+  }
+  if (ua.includes("claude-code") || ua.includes("claude_code") || ua.includes("claude-cli") || ua.includes("anthropic")) {
+    return "claude-code";
+  }
+  if (ua.includes("opencode")) return "opencode";
+  if (ua.includes("aider")) return "aider";
+  if (ua.includes("codex")) return "codex";
+  if (ua.includes("goose")) return "goose";
+  if (ua.includes("cline")) return "cline";
+  if (ua.includes("roo")) return "roo";
+  if (ua.includes("continue")) return "continue";
+  if (ua.includes("hermes")) return "hermes";
+  if (ua.includes("jcode")) return "jcode";
+  if (ua.includes("openclaw")) return "openclaw";
+  if (ua.includes("curl")) return "curl";
+  if (kind === "anthropic") return "claude-code";
+  if (kind === "responses") return "codex";
+  return "pi";
+}
 
 // DNS-rebinding guard: loopback clients must present a loopback Host
 let ownAddresses: Set<string> | null = null;
@@ -345,8 +372,14 @@ function serveStaticUi(res: http.ServerResponse, reqPath: string): void {
   if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
     const ext = path.extname(filePath).toLowerCase();
     const contentType = MIME_TYPES[ext] ?? "application/octet-stream";
+    const cacheControl = relativePath.startsWith("assets/")
+      ? "public, max-age=31536000, immutable"
+      : relativePath === "index.html"
+      ? "no-cache"
+      : "public, max-age=3600";
     res.writeHead(200, {
       "content-type": contentType,
+      "cache-control": cacheControl,
       ...securityHeaders(),
       ...corsFor(res),
     });
@@ -356,7 +389,7 @@ function serveStaticUi(res: http.ServerResponse, reqPath: string): void {
     return;
   }
 
-  if (relativePath.startsWith("assets/") || relativePath.startsWith("fonts/")) {
+  if (relativePath.startsWith("assets/") || relativePath.startsWith("fonts/") || relativePath.startsWith("harnesses/")) {
     sendJson(res, 404, { error: { message: "asset not found" } });
     return;
   }
@@ -366,6 +399,7 @@ function serveStaticUi(res: http.ServerResponse, reqPath: string): void {
   if (fs.existsSync(indexPath) && fs.statSync(indexPath).isFile()) {
     res.writeHead(200, {
       "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-cache",
       ...securityHeaders(),
       ...corsFor(res),
     });
@@ -760,6 +794,7 @@ export function logUsageTransform(
   requestedModel?: string,
   activity?: ActivityStore,
   kind: ActivityKind = "chat",
+  client?: string,
 ): Transform {
   let tail = "";
   let reported = false;
@@ -784,6 +819,7 @@ export function logUsageTransform(
               durationMs: Date.now() - startedAt,
               status: "ok",
               ...(requestedModel && requestedModel !== model ? { failoverFrom: requestedModel } : {}),
+              ...(client ? { client } : {}),
             });
           }
         }
@@ -1390,6 +1426,7 @@ async function handleChat(
   security: SecurityConfig,
   signal: AbortSignal,
 ): Promise<void> {
+  const client = detectHarness(req, "chat");
   let bodyText: string;
   try {
     bodyText = await readBody(req);
@@ -1422,6 +1459,20 @@ async function handleChat(
   }
 
   const callerTools = callerToolsFromBody(body);
+  const inFlightId = activity.startRequest({
+    timestamp: requestStartedAt,
+    client,
+    model: parsed.value.model,
+    requestedModel: parsed.value.model,
+    upstream: catalog.resolve(parsed.value.model)?.source ?? "unknown",
+  });
+  let inFlightClosed = false;
+  const finishInFlight = () => {
+    if (inFlightClosed) return;
+    inFlightClosed = true;
+    activity.endRequest(inFlightId);
+  };
+  res.on("close", finishInFlight);
   const result = await runChatForward(
     req,
     catalog,
@@ -1442,6 +1493,7 @@ async function handleChat(
       durationMs: Date.now() - requestStartedAt,
       status: "error",
       statusCode: result.status,
+      client,
     });
     sendJson(res, result.status, {
       error: { message: result.message, type: result.type ?? "upstream_error", status: result.status },
@@ -1497,6 +1549,7 @@ async function handleChat(
           durationMs: Date.now() - requestStartedAt,
           status: "ok",
           ...(current.id !== model.id ? { failoverFrom: model.id } : {}),
+          client,
         });
       }
     } catch {
@@ -1510,8 +1563,7 @@ async function handleChat(
     const src = Readable.fromWeb(
       upstreamRes.body as import("node:stream/web").ReadableStream,
     );
-    const usageTx = logUsageTransform(current.id, currentUpstream.id, log, requestStartedAt, model.id, activity, "chat");
-    // a mid-stream upstream failure ends the client response, not the daemon; client abort releases the upstream
+    const usageTx = logUsageTransform(current.id, currentUpstream.id, log, requestStartedAt, model.id, activity, "chat", client);
     const failStream = () => {
       if (signal.aborted) {
         try {
@@ -1553,6 +1605,7 @@ async function handleResponses(
   security: SecurityConfig,
   signal: AbortSignal,
 ): Promise<void> {
+  const client = detectHarness(req, "responses");
   let bodyText: string;
   try {
     bodyText = await readBody(req);
@@ -1624,6 +1677,20 @@ async function handleResponses(
   }
 
   const callerTools = callerToolsFromBody(sanitizedBody);
+  const inFlightId = activity.startRequest({
+    timestamp: requestStartedAt,
+    client,
+    model: parsed.value.model,
+    requestedModel: parsed.value.model,
+    upstream: catalog.resolve(parsed.value.model)?.source ?? "unknown",
+  });
+  let inFlightClosed = false;
+  const finishInFlight = () => {
+    if (inFlightClosed) return;
+    inFlightClosed = true;
+    activity.endRequest(inFlightId);
+  };
+  res.on("close", finishInFlight);
   const result = await runChatForward(
     req,
     catalog,
@@ -1644,6 +1711,7 @@ async function handleResponses(
       durationMs: Date.now() - requestStartedAt,
       status: "error",
       statusCode: result.status,
+      client,
     });
     sendJson(res, result.status, {
       error: { message: result.message, type: result.type ?? "upstream_error", status: result.status },
@@ -1690,6 +1758,7 @@ async function handleResponses(
         durationMs: Date.now() - requestStartedAt,
         status: "ok",
         ...(current.id !== resolved.id ? { failoverFrom: resolved.id } : {}),
+        client,
       });
     }
     const out = renderResponse(json, current.id);
@@ -1763,6 +1832,7 @@ async function handleResponses(
       durationMs: Date.now() - requestStartedAt,
       status: "ok",
       ...(current.id !== resolved.id ? { failoverFrom: resolved.id } : {}),
+      client,
     });
   }
   res.end();
@@ -1777,6 +1847,7 @@ async function handleAnthropic(
   security: SecurityConfig,
   signal: AbortSignal,
 ): Promise<void> {
+  const client = detectHarness(req, "anthropic");
   let bodyText: string;
   try {
     bodyText = await readBody(req);
@@ -1820,6 +1891,20 @@ async function handleAnthropic(
   }
 
   const callerTools = callerToolsFromBody(chatBody);
+  const inFlightId = activity.startRequest({
+    timestamp: requestStartedAt,
+    client,
+    model: parsed.value.model,
+    requestedModel: parsed.value.model,
+    upstream: model?.source ?? "unknown",
+  });
+  let inFlightClosed = false;
+  const finishInFlight = () => {
+    if (inFlightClosed) return;
+    inFlightClosed = true;
+    activity.endRequest(inFlightId);
+  };
+  res.on("close", finishInFlight);
   const result = await runChatForward(
     req,
     catalog,
@@ -1840,6 +1925,7 @@ async function handleAnthropic(
       durationMs: Date.now() - requestStartedAt,
       status: "error",
       statusCode: result.status,
+      client,
     });
     sendAnthropicError(res, result.status, result.message, result.secretTypes);
     return;
@@ -1883,6 +1969,7 @@ async function handleAnthropic(
         durationMs: Date.now() - requestStartedAt,
         status: "ok",
         ...(current.id !== model.id ? { failoverFrom: model.id } : {}),
+        client,
       });
     }
     sendJson(res, upstreamRes.status === 200 ? 200 : upstreamRes.status, message);
@@ -1956,6 +2043,7 @@ async function handleAnthropic(
       durationMs: Date.now() - requestStartedAt,
       status: "ok",
       ...(current.id !== model.id ? { failoverFrom: model.id } : {}),
+      client,
     });
   }
   res.end();
@@ -2201,7 +2289,7 @@ export function createServer(opts: ServerOptions): http.Server {
       const limitParam = Number(parsedUrl.searchParams.get("limit"));
       const window = (parsedUrl.searchParams.get("window") || "all") as import("./activity").TimeWindow;
       const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 500) : 100;
-      sendJson(res, 200, { events: activity.getEvents(limit, window) });
+      sendJson(res, 200, { events: activity.getEvents(limit, window), inFlight: activity.getInFlight() });
       return;
     }
 
@@ -2328,6 +2416,7 @@ export function createServer(opts: ServerOptions): http.Server {
         url === "/index.html" ||
         cleanUrl.startsWith("/assets/") ||
         cleanUrl.startsWith("/fonts/") ||
+        cleanUrl.startsWith("/harnesses/") ||
         url === "/favicon.ico" ||
         url === "/favicon.svg" ||
         url === "/favicon.png" ||

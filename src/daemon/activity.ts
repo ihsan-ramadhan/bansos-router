@@ -19,6 +19,7 @@ export interface ActivityEvent {
   status: ActivityStatus;
   statusCode?: number;
   failoverFrom?: string;
+  client?: string;
 }
 
 export interface ModelActivity {
@@ -42,8 +43,16 @@ export interface UsageStats {
   perUpstream: Record<string, { requests: number; ok: number }>;
 }
 
-export type TimeWindow = "today" | "7d" | "30d" | "60d" | "all";
+export interface InFlightRequest {
+  id: number;
+  timestamp: number;
+  client: string;
+  model: string;
+  requestedModel: string;
+  upstream: string;
+}
 
+export type TimeWindow = "today" | "7d" | "30d" | "60d" | "all";
 export interface ActivityInput {
   kind: ActivityKind;
   model: string;
@@ -56,6 +65,7 @@ export interface ActivityInput {
   status: ActivityStatus;
   statusCode?: number;
   failoverFrom?: string;
+  client?: string;
 }
 
 export const ACTIVITY_FILE = path.join(BANSOS_DIR, "activity.json");
@@ -63,10 +73,11 @@ const MAX_RETENTION_MS = 60 * 24 * 60 * 60 * 1000; // 60 days
 
 export class ActivityStore {
   private events: ActivityEvent[] = [];
+  private inFlight = new Map<number, InFlightRequest>();
   private nextId = 1;
+  private nextInFlightId = 1;
   private readonly cap: number;
   private saveTimeout: NodeJS.Timeout | null = null;
-
   constructor(cap = 5000) {
     this.cap = cap;
     this.loadFromDisk();
@@ -138,6 +149,24 @@ export class ActivityStore {
 
   getAllEvents(): ActivityEvent[] {
     return [...this.events];
+  }
+
+  startRequest(input: Omit<InFlightRequest, "id">): number {
+    const id = this.nextInFlightId++;
+    this.inFlight.set(id, { id, ...input });
+    return id;
+  }
+
+  endRequest(id: number): void {
+    this.inFlight.delete(id);
+  }
+
+  getInFlight(): InFlightRequest[] {
+    const now = Date.now();
+    for (const [id, req] of this.inFlight.entries()) {
+      if (now - req.timestamp > 120_000) this.inFlight.delete(id);
+    }
+    return Array.from(this.inFlight.values());
   }
 
   clear(): void {

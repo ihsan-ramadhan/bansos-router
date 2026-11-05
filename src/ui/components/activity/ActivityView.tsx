@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { RefreshCw } from "lucide-preact";
-import type { ActivityEvent, UsageStats } from "../../types";
+import type { ActivityEvent, UsageStats, InFlightRequest } from "../../types";
 import { fetchEvents, fetchUsage } from "../../services/api";
+import { LiveRouting } from "./LiveRouting";
 
 function formatNumber(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return String(n);
 }
 
@@ -27,6 +27,28 @@ const KIND_LABEL: Record<ActivityEvent["kind"], string> = {
   responses: "Responses",
   anthropic: "Anthropic",
 };
+
+const HTTP_STATUS_LABELS: Record<number, string> = {
+  200: "200 OK",
+  201: "201 Created",
+  204: "204 No Content",
+  400: "400 Bad Request",
+  401: "401 Unauthorized",
+  403: "403 Forbidden",
+  404: "404 Not Found",
+  408: "408 Request Timeout",
+  422: "422 Unprocessable Entity",
+  429: "429 Too Many Requests",
+  500: "500 Internal Server Error",
+  502: "502 Bad Gateway",
+  503: "503 Service Unavailable",
+  504: "504 Gateway Timeout",
+};
+
+function statusLabel(code?: number): string {
+  if (!code) return "Error";
+  return HTTP_STATUS_LABELS[code] ?? `HTTP ${code}`;
+}
 
 interface StatCardProps {
   label: string;
@@ -62,17 +84,17 @@ interface AggregateRowProps {
 function ModelRow({ label, requests, ok, inputTokens, outputTokens, cachedTokens, sub }: AggregateRowProps) {
   return (
     <tr className="border-b border-[#202026] last:border-0">
-      <td className="py-2.5 px-3 sm:px-4">
-        <div className="text-xs font-medium text-white font-mono truncate max-w-45 sm:max-w-65">
+      <td className="py-2 px-2.5 sm:px-3">
+        <div className="text-xs font-medium text-white font-mono truncate max-w-36 sm:max-w-50" title={label}>
           {label}
         </div>
-        {sub && <div className="text-[10px] text-[#a1a1aa] truncate max-w-45 sm:max-w-65">{sub}</div>}
+        {sub && <div className="text-[10px] text-[#a1a1aa] truncate max-w-36 sm:max-w-50">{sub}</div>}
       </td>
-      <td className="py-2.5 px-3 sm:px-4 text-right text-xs text-[#d4d4d8] font-mono">{requests}</td>
-      <td className="py-2.5 px-3 sm:px-4 text-right text-xs text-[#d4d4d8] font-mono">{ok}</td>
-      <td className="py-2.5 px-3 sm:px-4 text-right text-xs text-[#d4d4d8] font-mono">{formatNumber(inputTokens)}</td>
-      <td className="py-2.5 px-3 sm:px-4 text-right text-xs text-[#d4d4d8] font-mono">{formatNumber(cachedTokens)}</td>
-      <td className="py-2.5 px-3 sm:px-4 text-right text-xs text-[#d4d4d8] font-mono">{formatNumber(outputTokens)}</td>
+      <td className="py-2 px-2.5 sm:px-3 text-right text-xs text-[#d4d4d8] font-mono">{requests}</td>
+      <td className="py-2 px-2.5 sm:px-3 text-right text-xs text-[#d4d4d8] font-mono">{ok}</td>
+      <td className="py-2 px-2.5 sm:px-3 text-right text-xs text-[#d4d4d8] font-mono">{formatNumber(inputTokens)}</td>
+      <td className="py-2 px-2.5 sm:px-3 text-right text-xs text-emerald-400 font-medium">{formatNumber(cachedTokens)}</td>
+      <td className="py-2 px-2.5 sm:px-3 text-right text-xs text-[#d4d4d8] font-mono">{formatNumber(outputTokens)}</td>
     </tr>
   );
 }
@@ -81,6 +103,7 @@ export function ActivityView() {
   const [window, setWindow] = useState<"today" | "7d" | "30d" | "60d" | "all">("today");
   const [usage, setUsage] = useState<UsageStats | null>(null);
   const [events, setEvents] = useState<ActivityEvent[]>([]);
+  const [inFlight, setInFlight] = useState<InFlightRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -88,9 +111,10 @@ export function ActivityView() {
   async function load(showSpinner = false) {
     try {
       if (showSpinner) setRefreshing(true);
-      const [u, e] = await Promise.all([fetchUsage(window), fetchEvents(100, window)]);
+      const [u, evData] = await Promise.all([fetchUsage(window), fetchEvents(100, window)]);
       setUsage(u);
-      setEvents(e);
+      setEvents(evData.events);
+      setInFlight(evData.inFlight);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load activity");
@@ -102,7 +126,7 @@ export function ActivityView() {
 
   useEffect(() => {
     void load();
-    const timer = setInterval(() => void load(), 3000);
+    const timer = setInterval(() => void load(), 1000);
     return () => clearInterval(timer);
   }, [window]);
 
@@ -175,6 +199,7 @@ export function ActivityView() {
         </div>
       )}
 
+      <LiveRouting events={events} inFlight={inFlight} usage={usage} loading={loading} error={error} />
       {/* Usage summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-4">
         <StatCard
@@ -226,12 +251,12 @@ export function ActivityView() {
               <table className="w-full text-left border-collapse">
                 <thead className="bg-[#0c0e14] text-[11px] sm:text-xs font-medium text-[#a1a1aa]">
                   <tr>
-                    <th className="py-2.5 px-3 sm:px-4">Model</th>
-                    <th className="py-2.5 px-3 sm:px-4 text-right">Reqs</th>
-                    <th className="py-2.5 px-3 sm:px-4 text-right">OK</th>
-                    <th className="py-2.5 px-3 sm:px-4 text-right">In</th>
-                    <th className="py-2.5 px-3 sm:px-4 text-right">Cached</th>
-                    <th className="py-2.5 px-3 sm:px-4 text-right">Out</th>
+                    <th className="py-2 px-2.5 sm:px-3">Model</th>
+                    <th className="py-2 px-2.5 sm:px-3 text-right">Reqs</th>
+                    <th className="py-2 px-2.5 sm:px-3 text-right">OK</th>
+                    <th className="py-2 px-2.5 sm:px-3 text-right">In</th>
+                    <th className="py-2 px-2.5 sm:px-3 text-right">Cached</th>
+                    <th className="py-2 px-2.5 sm:px-3 text-right">Out</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#171922] text-xs">
@@ -250,12 +275,12 @@ export function ActivityView() {
                 {usage && topModels.length > 0 && (
                   <tfoot className="border-t border-[#1c1f2b] bg-[#0c0e14] text-xs font-medium text-[#e4e4e7]">
                     <tr>
-                      <td className="py-2.5 px-3 sm:px-4 text-[#a1a1aa]">Total</td>
-                      <td className="py-2.5 px-3 sm:px-4 text-right font-mono text-[#d4d4d8]">{usage.totalRequests}</td>
-                      <td className="py-2.5 px-3 sm:px-4 text-right font-mono text-[#d4d4d8]">{usage.okRequests}</td>
-                      <td className="py-2.5 px-3 sm:px-4 text-right font-mono text-[#d4d4d8]">{formatNumber(usage.totalInputTokens)}</td>
-                      <td className="py-2.5 px-3 sm:px-4 text-right font-mono text-emerald-400 font-semibold">{formatNumber(usage.totalCachedTokens)}</td>
-                      <td className="py-2.5 px-3 sm:px-4 text-right font-mono text-[#d4d4d8]">{formatNumber(usage.totalOutputTokens)}</td>
+                      <td className="py-2 px-2.5 sm:px-3 text-[#a1a1aa]">Total</td>
+                      <td className="py-2 px-2.5 sm:px-3 text-right font-mono text-[#d4d4d8]">{usage.totalRequests}</td>
+                      <td className="py-2 px-2.5 sm:px-3 text-right font-mono text-[#d4d4d8]">{usage.okRequests}</td>
+                      <td className="py-2 px-2.5 sm:px-3 text-right font-mono text-[#d4d4d8]">{formatNumber(usage.totalInputTokens)}</td>
+                      <td className="py-2 px-2.5 sm:px-3 text-right font-mono text-emerald-400 font-semibold">{formatNumber(usage.totalCachedTokens)}</td>
+                      <td className="py-2 px-2.5 sm:px-3 text-right font-mono text-[#d4d4d8]">{formatNumber(usage.totalOutputTokens)}</td>
                     </tr>
                   </tfoot>
                 )}
@@ -280,21 +305,21 @@ export function ActivityView() {
               <table className="w-full text-left border-collapse">
                 <thead className="bg-[#0c0e14] text-[11px] sm:text-xs font-medium text-[#a1a1aa]">
                   <tr>
-                    <th className="py-2.5 px-3 sm:px-4">Upstream</th>
-                    <th className="py-2.5 px-3 sm:px-4 text-right">Reqs</th>
-                    <th className="py-2.5 px-3 sm:px-4 text-right">OK</th>
+                    <th className="py-2 px-2.5 sm:px-3">Upstream</th>
+                    <th className="py-2 px-2.5 sm:px-3 text-right">Reqs</th>
+                    <th className="py-2 px-2.5 sm:px-3 text-right">OK</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#171922] text-xs">
                   {topUpstreams.map((u) => (
                     <tr key={u.upstream} className="border-b border-[#171922] last:border-0">
-                      <td className="py-2.5 px-3 sm:px-4">
-                        <div className="text-xs font-medium text-white font-mono truncate max-w-50">
+                      <td className="py-2 px-2.5 sm:px-3">
+                        <div className="text-xs font-medium text-white font-mono truncate max-w-40 sm:max-w-50">
                           {u.upstream}
                         </div>
                       </td>
-                      <td className="py-2.5 px-3 sm:px-4 text-right text-xs text-[#d4d4d8] font-mono">{u.requests}</td>
-                      <td className="py-2.5 px-3 sm:px-4 text-right text-xs text-[#d4d4d8] font-mono">{u.ok}</td>
+                      <td className="py-2 px-2.5 sm:px-3 text-right text-xs text-[#d4d4d8] font-mono">{u.requests}</td>
+                      <td className="py-2 px-2.5 sm:px-3 text-right text-xs text-[#d4d4d8] font-mono">{u.ok}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -325,44 +350,53 @@ export function ActivityView() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full text-left border-collapse table-fixed">
               <thead className="bg-[#0c0e14] text-[11px] sm:text-xs font-medium text-[#a1a1aa]">
                 <tr>
-                  <th className="py-2.5 px-3 sm:px-4">When</th>
-                  <th className="py-2.5 px-3 sm:px-4">Status</th>
-                  <th className="py-2.5 px-3 sm:px-4">Type</th>
-                  <th className="py-2.5 px-3 sm:px-4">Model</th>
-                  <th className="py-2.5 px-3 sm:px-4">Upstream</th>
-                  <th className="py-2.5 px-3 sm:px-4 text-right">In/Out</th>
-                  <th className="py-2.5 px-3 sm:px-4 text-right">Latency</th>
+                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] whitespace-nowrap w-[68px] sm:w-[13%]">When</th>
+                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] text-center w-[52px] sm:w-[11%]">Status</th>
+                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] text-center w-[56px] sm:w-[11%]">Type</th>
+                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] whitespace-nowrap w-[120px] sm:w-[23%]">Model</th>
+                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] whitespace-nowrap w-[64px] sm:w-[11%]">Upstream</th>
+                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] text-right whitespace-nowrap w-[100px] sm:w-[16%]">In/Out</th>
+                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] text-right whitespace-nowrap w-[68px] sm:w-[15%]">Latency</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#202026] text-xs">
                 {events.map((e) => (
-                  <tr key={e.id} className="border-b border-[#202026] last:border-0">
-                    <td className="py-2.5 px-3 sm:px-4 text-[#a1a1aa] whitespace-nowrap">{timeAgo(e.timestamp)}</td>
-                    <td className="py-2.5 px-3 sm:px-4">
+                  <tr key={e.id} className="border-b border-[#202026] last:border-0 hover:bg-[#131620]/60 transition-colors">
+                    <td className="py-2 px-1.5 sm:px-2 text-[#a1a1aa] text-[11px] whitespace-nowrap">{timeAgo(e.timestamp)}</td>
+                    <td className="py-2 px-1.5 sm:px-2 text-center">
                       {e.status === "ok" ? (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-800/40 font-mono">
-                          200 OK
+                        <span
+                          title={statusLabel(e.statusCode ?? 200)}
+                          className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-800/40 font-mono cursor-default"
+                        >
+                          {e.statusCode ?? 200}
                         </span>
                       ) : e.statusCode === 429 ? (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-950/40 text-amber-400 border border-amber-800/40 font-mono">
+                        <span
+                          title={statusLabel(429)}
+                          className="text-[10px] px-1.5 py-0.5 rounded bg-amber-950/40 text-amber-400 border border-amber-800/40 font-mono cursor-default"
+                        >
                           429
                         </span>
                       ) : (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-950/40 text-rose-400 border border-rose-800/40 font-mono">
-                          {e.statusCode ? `ERR ${e.statusCode}` : "ERR"}
+                        <span
+                          title={statusLabel(e.statusCode)}
+                          className="text-[10px] px-1.5 py-0.5 rounded bg-rose-950/40 text-rose-400 border border-rose-800/40 font-mono cursor-default"
+                        >
+                          {e.statusCode ?? "ERR"}
                         </span>
                       )}
                     </td>
-                    <td className="py-2.5 px-3 sm:px-4">
+                    <td className="py-2 px-1.5 sm:px-2 text-center">
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#202028] text-[#a1a1aa] border border-[#2c2c36] font-medium">
                         {KIND_LABEL[e.kind]}
                       </span>
                     </td>
-                    <td className="py-2.5 px-3 sm:px-4">
-                      <div className="font-mono text-[#e4e4e7] truncate max-w-40 sm:max-w-55">
+                    <td className="py-2 px-1.5 sm:px-2">
+                      <div className="font-mono text-[#e4e4e7] text-[11px] sm:text-xs truncate max-w-44 sm:max-w-56" title={e.model}>
                         {e.model}
                         {e.failoverFrom && (
                           <span className="text-[10px] text-amber-400/90" title={`failed over from ${e.failoverFrom}`}>
@@ -371,11 +405,11 @@ export function ActivityView() {
                         )}
                       </div>
                     </td>
-                    <td className="py-2.5 px-3 sm:px-4 font-mono text-[#a1a1aa] truncate max-w-30">{e.upstream}</td>
-                    <td className="py-2.5 px-3 sm:px-4 text-right font-mono text-[#d4d4d8] whitespace-nowrap">
+                    <td className="py-2 px-1.5 sm:px-2 font-mono text-[#a1a1aa] text-[11px] sm:text-xs truncate max-w-24 sm:max-w-30">{e.upstream}</td>
+                    <td className="py-2 px-1.5 sm:px-2 text-right font-mono text-[11px] sm:text-xs text-[#d4d4d8] whitespace-nowrap">
                       {formatNumber(e.inputTokens)}/{formatNumber(e.outputTokens)}
                     </td>
-                    <td className="py-2.5 px-3 sm:px-4 text-right font-mono text-[#d4d4d8] whitespace-nowrap">
+                    <td className="py-2 px-1.5 sm:px-2 text-right font-mono text-[11px] sm:text-xs text-[#d4d4d8] whitespace-nowrap">
                       {formatDuration(e.durationMs)}
                     </td>
                   </tr>

@@ -37,7 +37,6 @@
     color: #ffffff;
   }
 
-  /* Interactive elements */
   button,
   [role="button"],
   select,
@@ -55,13 +54,11 @@
     cursor: not-allowed;
   }
 
-  /* Reset focus rings */
   *:focus-visible {
     outline: 1px solid #2b64e0;
     outline-offset: 1px;
   }
 
-  /* Remove number input spin buttons */
   input[type="number"]::-webkit-outer-spin-button,
   input[type="number"]::-webkit-inner-spin-button {
     -webkit-appearance: none;
@@ -73,7 +70,6 @@
     appearance: textfield;
   }
 
-  /* Reset appearance on forms */
   input:not([type="range"]):not([type="checkbox"]), select, textarea, button {
     font-family: inherit;
     appearance: none;
@@ -81,7 +77,6 @@
     -moz-appearance: none;
   }
 
-  /* Custom Slider Styling */
   input[type="range"] {
     -webkit-appearance: none;
     appearance: none;
@@ -128,12 +123,10 @@
     background: #60a5fa;
   }
 
-  /* Remove textarea resize handles */
   textarea {
     resize: none;
   }
 
-  /* Custom scrollbar */
   * {
     scrollbar-width: thin;
     scrollbar-color: rgba(43, 100, 224, 0.35) transparent;
@@ -157,28 +150,20 @@
   }
 }
 
-/* Utility for hiding scrollbar when needed */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
 .no-scrollbar {
-  -ms-overflow-style: none;
   scrollbar-width: none;
 }
 
-/* disable all transitions during theme swap to eliminate visual tearing and staggered color flashes */
 html.theme-switching,
 html.theme-switching *,
 html.theme-switching *::before,
 html.theme-switching *::after {
-  -webkit-transition: none !important;
-  -moz-transition: none !important;
-  -o-transition: none !important;
-  -ms-transition: none !important;
   transition: none !important;
 }
 
-/* light mode theme palette (antislop clean paper theme) */
 html.light {
   color-scheme: light;
 }
@@ -188,7 +173,6 @@ html.light body {
   color: #0f172a;
 }
 
-/* Header, navbars, and sidebar */
 html.light header {
   background-color: #ffffff !important;
   border-color: #e2e8f0 !important;
@@ -226,7 +210,6 @@ html.light aside button:not([aria-current="page"]) svg {
   color: #64748b !important;
 }
 
-/* Main canvas & page surfaces */
 html.light .bg-\[\#08090d\],
 html.light .bg-\[\#090a0f\],
 html.light .bg-\[\#0b0c12\],
@@ -236,7 +219,6 @@ html.light .bg-\[\#0e0e12\] {
   background-color: #f8fafc !important;
 }
 
-/* Cards, containers, and modals */
 html.light .bg-\[\#0e1017\],
 html.light .bg-\[\#101014\],
 html.light .bg-\[\#10121a\],
@@ -249,8 +231,26 @@ html.light .bg-\[\#18181c\] {
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04) !important;
 }
 
-/* Inset panels, table headers, secondary backgrounds */
-html.light .bg-\[\#0c0e14\],
+html.light .bg-\[\#0c0e14\] {
+  background-color: #f8fafc !important;
+  color: #475569 !important;
+}
+
+html.light thead.bg-\[\#0c0e14\] {
+  background-color: #f8fafc !important;
+  box-shadow: inset 0 -1px 0 #e2e8f0 !important;
+}
+
+html.light thead.bg-\[\#0c0e14\] th {
+  color: #475569 !important;
+  font-weight: 600 !important;
+}
+
+html.light tfoot.bg-\[\#0c0e14\] {
+  background-color: #f8fafc !important;
+  box-shadow: inset 0 1px 0 #e2e8f0 !important;
+}
+
 html.light .bg-\[\#111113\],
 html.light .bg-\[\#13151e\],
 html.light .bg-\[\#131620\],
@@ -278,7 +278,6 @@ html.light .bg-\[\#2e3447\] {
   color: #334155 !important;
 }
 
-/* Active selected states (relay row, user message, selected pill) */
 html.light .bg-\[\#141419\],
 html.light .bg-\[\#131722\],
 html.light .bg-\[\#162038\],
@@ -290,7 +289,6 @@ html.light .bg-\[\#2563eb\]\/20 {
   color: #1d4ed8 !important;
 }
 
-/* All borders and dividers */
 html.light [class*="border-[#171922]"],
 html.light [class*="border-[#1c1f2b]"],
 html.light [class*="border-[#1e2330]"],
@@ -315,7 +313,6 @@ html.light [class*="divide-[#202026]"] {
   border-color: #e2e8f0 !important;
 }
 
-/* Typography (WCAG AA high-contrast) */
 html.light .text-white:not([class*="bg-[#2563eb]"]):not([class*="bg-[#2b64e0]"]):not([class*="bg-blue"]):not([class*="bg-rose"]):not([class*="bg-emerald"]),
 html.light .text-\[\#f8fafc\],
 html.light .text-\[\#f4f4f6\],
@@ -323,7 +320,6 @@ html.light .text-\[\#f1f5f9\] {
   color: #0f172a !important;
 }
 
-/* Primary solid buttons always maintain crisp white text */
 html.light .bg-\[\#2563eb\],
 html.light .bg-\[\#2563eb\] *,
 html.light .bg-\[\#2b64e0\],
@@ -357,7 +353,6 @@ html.light .text-\[\#3f3f46\] {
   color: #475569 !important;
 }
 
-/* Status badges & capability chips in light mode */
 html.light .bg-emerald-950\/40,
 html.light .bg-emerald-950\/60 {
   background-color: #ecfdf5 !important;
@@ -421,7 +416,6 @@ html.light .bg-slate-900\/60 {
   color: #334155 !important;
 }
 
-/* Badge text colors */
 html.light .text-blue-300 {
   color: #1d4ed8 !important;
 }
@@ -442,7 +436,6 @@ html.light .text-amber-300\/90 {
 html.light .text-slate-300 {
   color: #334155 !important;
 }
-/* Semantic status text in light mode */
 html.light .text-emerald-400 {
   color: #059669 !important;
 }
@@ -452,8 +445,7 @@ html.light .text-amber-200 {
   color: #b45309 !important;
 }
 
-html.light .text-rose-400,
-html.light .text-rose-300 {
+html.light .text-rose-400 {
   color: #dc2626 !important;
 }
 
@@ -465,7 +457,6 @@ html.light .text-\[\#a5ccfc\] {
   color: #2563eb !important;
 }
 
-/* Form controls, inputs, textareas */
 html.light input:not([type="checkbox"]):not([type="radio"]),
 html.light select,
 html.light textarea {
@@ -486,7 +477,6 @@ html.light textarea::placeholder {
   color: #94a3b8 !important;
 }
 
-/* Hover states */
 html.light tr:hover,
 html.light .hover\:bg-\[\#13151e\]:hover,
 html.light .hover\:bg-\[\#131620\]:hover,
@@ -509,7 +499,6 @@ html.light .hover\:text-white:hover {
   color: #0f172a !important;
 }
 
-/* Pre & code terminal boxes in light mode */
 html.light pre.bg-\[\#0c0e14\],
 html.light pre.bg-\[\#0e0e12\] {
   background-color: #ffffff !important;
@@ -517,7 +506,6 @@ html.light pre.bg-\[\#0e0e12\] {
   color: #0f172a !important;
 }
 
-/* Mobile bottom navigation */
 html.light #mobile-bottom-nav > div {
   background-color: rgba(255, 255, 255, 0.96) !important;
   border-color: #e2e8f0 !important;
@@ -529,7 +517,6 @@ html.light #mobile-nav-sheet {
   border-color: #e2e8f0 !important;
 }
 
-/* Danger & maintenance zones in light mode */
 html.light .bg-\[\#0e0a0d\],
 html.light [class*="border-rose-950"] {
   background-color: #fff1f2 !important;
@@ -544,7 +531,6 @@ html.light .text-\[\#8c7479\] {
   color: #9f1239 !important;
 }
 
-/* Clear Activity History button in light mode */
 html.light .bg-rose-950\/20 {
   background-color: #ffffff !important;
   border-color: #fca5a5 !important;
@@ -558,7 +544,6 @@ html.light .bg-rose-950\/20:hover {
   color: #991b1b !important;
 }
 
-/* Secondary action buttons in light mode */
 html.light .bg-\[\#1c1f2b\] {
   background-color: #ffffff !important;
   color: #1e293b !important;
@@ -570,4 +555,136 @@ html.light .bg-\[\#1c1f2b\]:hover {
   background-color: #f8fafc !important;
   border-color: #94a3b8 !important;
   color: #0f172a !important;
+}
+
+.route-line {
+  stroke: #64748b;
+  stroke-linecap: round;
+  stroke-dasharray: 3 3;
+}
+
+.route-line-active {
+  stroke: #2563eb;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: none;
+  stroke-width: 2.25;
+  filter: drop-shadow(0 0 6px rgba(37, 99, 235, 0.8)) drop-shadow(0 0 12px rgba(37, 99, 235, 0.35));
+  animation: route-line-glow-fade 0.4s ease-out forwards;
+}
+
+html.light .route-line-active {
+  stroke: #1d4ed8;
+  filter: drop-shadow(0 0 5px rgba(29, 78, 216, 0.65)) drop-shadow(0 0 10px rgba(29, 78, 216, 0.25));
+}
+
+@keyframes route-line-glow-fade {
+  0% {
+    opacity: 0;
+    stroke-width: 1;
+  }
+  100% {
+    opacity: 1;
+    stroke-width: 2.25;
+  }
+}
+
+.route-line-last {
+  stroke: #2563eb;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: none;
+  stroke-width: 1.75;
+  filter: drop-shadow(0 0 4px rgba(37, 99, 235, 0.45));
+  transition: stroke 0.4s ease, opacity 0.4s ease;
+}
+
+html.light .route-line-last {
+  stroke: #1d4ed8;
+  filter: drop-shadow(0 0 3px rgba(29, 78, 216, 0.35));
+}
+
+.route-courier {
+  color: #3b82f6;
+}
+
+html.light .route-line {
+  stroke: #94a3b8;
+}
+
+html.light .route-courier {
+  color: #1d4ed8;
+}
+
+@keyframes courier-motor-bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1.5px);
+  }
+}
+
+.courier-motor-bounce {
+  animation: courier-motor-bounce 0.28s infinite ease-in-out;
+  transform-origin: center bottom;
+}
+
+.courier-flip-return {
+  transform: scaleX(-1);
+  transform-origin: center center;
+}
+
+@keyframes smoke-puff-motion {
+  0% {
+    opacity: 0.8;
+    transform: translate(0, 0) scale(0.4);
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-10px, -4px) scale(1.6);
+  }
+}
+
+.courier-smoke-puff {
+  fill: #cbd5e1;
+  opacity: 0;
+  animation: smoke-puff-motion 0.75s infinite ease-out;
+  transform-origin: 5px 30px;
+}
+
+html.light .courier-smoke-puff {
+  fill: #94a3b8;
+}
+
+.puff-1 {
+  animation-delay: 0s;
+}
+
+.puff-2 {
+  animation-delay: 0.25s;
+}
+
+.puff-3 {
+  animation-delay: 0.5s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-courier,
+  .courier-motor-bounce,
+  .courier-smoke-puff {
+    animation: none !important;
+    display: none;
+  }
+}
+
+html.light .harness-icon-white-adapt {
+  filter: invert(1) brightness(0.15) !important;
+}
+
+html:not(.light) .harness-icon-black-adapt {
+  filter: invert(1) brightness(1.8) !important;
 }
