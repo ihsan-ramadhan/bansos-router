@@ -18,6 +18,12 @@ Free, keyless coding models for every coding harness, through one local daemon. 
 
 </div>
 
+<div align="center">
+
+<img src="assets/dashboard.png" alt="bansos-router dashboard: free model catalog with live latency, health filters and per-model capabilities" width="900" />
+
+</div>
+
 ## Quick start
 
 ```bash
