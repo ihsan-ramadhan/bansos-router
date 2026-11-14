@@ -3,11 +3,7 @@ import { RefreshCw } from "lucide-preact";
 import type { ActivityEvent, UsageStats, InFlightRequest } from "../../types";
 import { fetchEvents, fetchUsage } from "../../services/api";
 import { LiveRouting } from "./LiveRouting";
-
-function formatNumber(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  return String(n);
-}
+import { exactTitle, formatCount, formatExact } from "../../utils/format";
 
 function formatDuration(ms: number): string {
   if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
@@ -54,16 +50,17 @@ interface StatCardProps {
   label: string;
   value: string;
   hint?: string;
+  exact?: string;
   className?: string;
 }
 
-function StatCard({ label, value, hint, className = "" }: StatCardProps) {
+function StatCard({ label, value, hint, exact, className = "" }: StatCardProps) {
   return (
     <div className={`rounded-xl border border-[#1c1f2b] bg-[#10121a] p-3 sm:p-4 shadow-xs flex flex-col justify-between ${className}`}>
       <span className="text-xs font-medium text-[#8b8b96] block mb-1.5">
         {label}
       </span>
-      <div className="text-base sm:text-lg font-bold text-white tracking-tight font-mono truncate">
+      <div className="text-base sm:text-lg font-bold text-white tracking-tight font-mono truncate" title={exact}>
         {value}
       </div>
       {hint && <div className="text-[11px] sm:text-xs text-[#a1a1aa] mt-1.5 truncate">{hint}</div>}
@@ -90,11 +87,11 @@ function ModelRow({ label, requests, ok, inputTokens, outputTokens, cachedTokens
         </div>
         {sub && <div className="text-[10px] text-[#a1a1aa] truncate max-w-36 sm:max-w-50">{sub}</div>}
       </td>
-      <td className="py-2 px-2.5 sm:px-3 text-right text-xs text-[#d4d4d8] font-mono">{requests}</td>
-      <td className="py-2 px-2.5 sm:px-3 text-right text-xs text-[#d4d4d8] font-mono">{ok}</td>
-      <td className="py-2 px-2.5 sm:px-3 text-right text-xs text-[#d4d4d8] font-mono">{formatNumber(inputTokens)}</td>
-      <td className="py-2 px-2.5 sm:px-3 text-right text-xs text-emerald-400 font-medium">{formatNumber(cachedTokens)}</td>
-      <td className="py-2 px-2.5 sm:px-3 text-right text-xs text-[#d4d4d8] font-mono">{formatNumber(outputTokens)}</td>
+      <td className="py-2 px-1.5 sm:px-2 text-right text-xs text-[#d4d4d8] font-mono whitespace-nowrap" title={exactTitle(requests)}>{formatCount(requests)}</td>
+      <td className="py-2 px-1.5 sm:px-2 text-right text-xs text-[#d4d4d8] font-mono whitespace-nowrap" title={exactTitle(ok)}>{formatCount(ok)}</td>
+      <td className="py-2 px-1.5 sm:px-2 text-right text-xs text-[#d4d4d8] font-mono whitespace-nowrap" title={exactTitle(inputTokens)}>{formatCount(inputTokens)}</td>
+      <td className="py-2 px-1.5 sm:px-2 text-right text-xs text-emerald-400 font-medium whitespace-nowrap" title={exactTitle(cachedTokens)}>{formatCount(cachedTokens)}</td>
+      <td className="py-2 px-1.5 sm:px-2 text-right text-xs text-[#d4d4d8] font-mono whitespace-nowrap" title={exactTitle(outputTokens)}>{formatCount(outputTokens)}</td>
     </tr>
   );
 }
@@ -204,17 +201,20 @@ export function ActivityView() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-4">
         <StatCard
           label="Requests"
-          value={usage ? formatNumber(usage.totalRequests) : "-"}
-          hint={usage ? `${usage.okRequests} ok · ${usage.errorRequests} err` : undefined}
+          value={usage ? formatCount(usage.totalRequests) : "-"}
+          exact={usage ? exactTitle(usage.totalRequests) : undefined}
+          hint={usage ? `${formatCount(usage.okRequests)} ok · ${formatCount(usage.errorRequests)} err` : undefined}
         />
         <StatCard
           label="Tokens In"
-          value={usage ? formatNumber(usage.totalInputTokens) : "-"}
+          value={usage ? formatCount(usage.totalInputTokens) : "-"}
+          exact={usage ? exactTitle(usage.totalInputTokens) : undefined}
           hint="prompt tokens"
         />
         <StatCard
           label="Tokens Cached"
-          value={usage ? formatNumber(usage.totalCachedTokens) : "-"}
+          value={usage ? formatCount(usage.totalCachedTokens) : "-"}
+          exact={usage ? exactTitle(usage.totalCachedTokens) : undefined}
           hint={
             usage && usage.totalInputTokens > 0
               ? `${Math.round((usage.totalCachedTokens / usage.totalInputTokens) * 100)}% prompt cache`
@@ -223,7 +223,8 @@ export function ActivityView() {
         />
         <StatCard
           label="Tokens Out"
-          value={usage ? formatNumber(usage.totalOutputTokens) : "-"}
+          value={usage ? formatCount(usage.totalOutputTokens) : "-"}
+          exact={usage ? exactTitle(usage.totalOutputTokens) : undefined}
           hint="completion tokens"
         />
         <StatCard
@@ -252,11 +253,11 @@ export function ActivityView() {
                 <thead className="bg-[#0c0e14] text-[11px] sm:text-xs font-medium text-[#a1a1aa]">
                   <tr>
                     <th className="py-2 px-2.5 sm:px-3">Model</th>
-                    <th className="py-2 px-2.5 sm:px-3 text-right">Reqs</th>
-                    <th className="py-2 px-2.5 sm:px-3 text-right">OK</th>
-                    <th className="py-2 px-2.5 sm:px-3 text-right">In</th>
-                    <th className="py-2 px-2.5 sm:px-3 text-right">Cached</th>
-                    <th className="py-2 px-2.5 sm:px-3 text-right">Out</th>
+                    <th className="py-2 px-1.5 sm:px-2 text-right">Reqs</th>
+                    <th className="py-2 px-1.5 sm:px-2 text-right">OK</th>
+                    <th className="py-2 px-1.5 sm:px-2 text-right">In</th>
+                    <th className="py-2 px-1.5 sm:px-2 text-right">Cached</th>
+                    <th className="py-2 px-1.5 sm:px-2 text-right">Out</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#171922] text-xs">
@@ -276,11 +277,11 @@ export function ActivityView() {
                   <tfoot className="border-t border-[#1c1f2b] bg-[#0c0e14] text-xs font-medium text-[#e4e4e7]">
                     <tr>
                       <td className="py-2 px-2.5 sm:px-3 text-[#a1a1aa]">Total</td>
-                      <td className="py-2 px-2.5 sm:px-3 text-right font-mono text-[#d4d4d8]">{usage.totalRequests}</td>
-                      <td className="py-2 px-2.5 sm:px-3 text-right font-mono text-[#d4d4d8]">{usage.okRequests}</td>
-                      <td className="py-2 px-2.5 sm:px-3 text-right font-mono text-[#d4d4d8]">{formatNumber(usage.totalInputTokens)}</td>
-                      <td className="py-2 px-2.5 sm:px-3 text-right font-mono text-emerald-400 font-semibold">{formatNumber(usage.totalCachedTokens)}</td>
-                      <td className="py-2 px-2.5 sm:px-3 text-right font-mono text-[#d4d4d8]">{formatNumber(usage.totalOutputTokens)}</td>
+                      <td className="py-2 px-1.5 sm:px-2 text-right font-mono text-[#d4d4d8] whitespace-nowrap" title={exactTitle(usage.totalRequests)}>{formatCount(usage.totalRequests)}</td>
+                      <td className="py-2 px-1.5 sm:px-2 text-right font-mono text-[#d4d4d8] whitespace-nowrap" title={exactTitle(usage.okRequests)}>{formatCount(usage.okRequests)}</td>
+                      <td className="py-2 px-1.5 sm:px-2 text-right font-mono text-[#d4d4d8] whitespace-nowrap" title={exactTitle(usage.totalInputTokens)}>{formatCount(usage.totalInputTokens)}</td>
+                      <td className="py-2 px-1.5 sm:px-2 text-right font-mono text-emerald-400 font-semibold whitespace-nowrap" title={exactTitle(usage.totalCachedTokens)}>{formatCount(usage.totalCachedTokens)}</td>
+                      <td className="py-2 px-1.5 sm:px-2 text-right font-mono text-[#d4d4d8] whitespace-nowrap" title={exactTitle(usage.totalOutputTokens)}>{formatCount(usage.totalOutputTokens)}</td>
                     </tr>
                   </tfoot>
                 )}
@@ -306,8 +307,8 @@ export function ActivityView() {
                 <thead className="bg-[#0c0e14] text-[11px] sm:text-xs font-medium text-[#a1a1aa]">
                   <tr>
                     <th className="py-2 px-2.5 sm:px-3">Upstream</th>
-                    <th className="py-2 px-2.5 sm:px-3 text-right">Reqs</th>
-                    <th className="py-2 px-2.5 sm:px-3 text-right">OK</th>
+                    <th className="py-2 px-1.5 sm:px-2 text-right">Reqs</th>
+                    <th className="py-2 px-1.5 sm:px-2 text-right">OK</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#171922] text-xs">
@@ -318,8 +319,8 @@ export function ActivityView() {
                           {u.upstream}
                         </div>
                       </td>
-                      <td className="py-2 px-2.5 sm:px-3 text-right text-xs text-[#d4d4d8] font-mono">{u.requests}</td>
-                      <td className="py-2 px-2.5 sm:px-3 text-right text-xs text-[#d4d4d8] font-mono">{u.ok}</td>
+                      <td className="py-2 px-1.5 sm:px-2 text-right text-xs text-[#d4d4d8] font-mono">{u.requests}</td>
+                      <td className="py-2 px-1.5 sm:px-2 text-right text-xs text-[#d4d4d8] font-mono">{u.ok}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -353,13 +354,13 @@ export function ActivityView() {
             <table className="w-full text-left border-collapse table-fixed">
               <thead className="bg-[#0c0e14] text-[11px] sm:text-xs font-medium text-[#a1a1aa]">
                 <tr>
-                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] whitespace-nowrap w-[68px] sm:w-[13%]">When</th>
-                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] text-center w-[52px] sm:w-[11%]">Status</th>
-                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] text-center w-[56px] sm:w-[11%]">Type</th>
-                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] whitespace-nowrap w-[120px] sm:w-[23%]">Model</th>
-                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] whitespace-nowrap w-[64px] sm:w-[11%]">Upstream</th>
-                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] text-right whitespace-nowrap w-[100px] sm:w-[16%]">In/Out</th>
-                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] text-right whitespace-nowrap w-[68px] sm:w-[15%]">Latency</th>
+                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] whitespace-nowrap w-17 sm:w-[13%]">When</th>
+                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] text-center w-13 sm:w-[11%]">Status</th>
+                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] text-center w-14 sm:w-[11%]">Type</th>
+                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] whitespace-nowrap w-30 sm:w-[23%]">Model</th>
+                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] whitespace-nowrap w-16 sm:w-[11%]">Upstream</th>
+                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] text-right whitespace-nowrap w-25 sm:w-[16%]">In/Out</th>
+                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] text-right whitespace-nowrap w-17 sm:w-[15%]">Latency</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#202026] text-xs">
@@ -407,7 +408,9 @@ export function ActivityView() {
                     </td>
                     <td className="py-2 px-1.5 sm:px-2 font-mono text-[#a1a1aa] text-[11px] sm:text-xs truncate max-w-24 sm:max-w-30">{e.upstream}</td>
                     <td className="py-2 px-1.5 sm:px-2 text-right font-mono text-[11px] sm:text-xs text-[#d4d4d8] whitespace-nowrap">
-                      {formatNumber(e.inputTokens)}/{formatNumber(e.outputTokens)}
+                      <span title={`${formatExact(e.inputTokens)} in / ${formatExact(e.outputTokens)} out`}>
+                        {formatCount(e.inputTokens)}/{formatCount(e.outputTokens)}
+                      </span>
                     </td>
                     <td className="py-2 px-1.5 sm:px-2 text-right font-mono text-[11px] sm:text-xs text-[#d4d4d8] whitespace-nowrap">
                       {formatDuration(e.durationMs)}

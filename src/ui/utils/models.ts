@@ -1,4 +1,5 @@
 import type { ModelItem, PingResult, FilterAndSortOptions } from "../types";
+import { formatCount } from "./format";
 
 export type CapabilityFilter = "all" | "reasoning" | "fast" | "megacontext" | "vision";
 export type HealthFilter = "all" | "ok" | "429" | "error";
@@ -6,9 +7,7 @@ export type ModelSortField = "default" | "model" | "reasoning" | "context" | "ma
 
 export function formatTokens(tokens?: number): string {
   if (!tokens) return "-";
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(tokens % 1_000_000 === 0 ? 0 : 1)}M`;
-  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}k`;
-  return String(tokens);
+  return formatCount(tokens);
 }
 
 export function formatProviderLabel(provider: string): string {

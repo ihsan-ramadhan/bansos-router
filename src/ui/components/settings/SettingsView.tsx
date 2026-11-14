@@ -239,7 +239,7 @@ export function SettingsView({ active, onApplied }: SettingsViewProps) {
                   <button
                     type="button"
                     onClick={() => void handleRestart()}
-                    className="px-3 py-2 rounded-md bg-amber-600 hover:bg-amber-500 text-xs font-semibold text-white cursor-pointer min-h-9"
+                    className="px-3 py-2 rounded-md bg-amber-700 hover:bg-amber-800 text-xs font-semibold text-white cursor-pointer min-h-9"
                   >
                     Restart now
                   </button>

@@ -73,7 +73,7 @@ export function RelayRowItem({
       <td className="py-3 px-3 whitespace-nowrap">{statusBadge}</td>
 
       {/* URL */}
-      <td className="py-3 px-3 font-mono text-white text-xs break-all min-w-[180px]">{relay.url}</td>
+      <td className="py-3 px-3 font-mono text-white text-xs break-all min-w-45">{relay.url}</td>
 
       {/* Health / Latency badge */}
       <td className="py-3 px-3 whitespace-nowrap">
@@ -176,7 +176,7 @@ export function RelayCardItem({
         <div className="flex items-center gap-1.5 min-w-0">
           {statusBadge}
           {relay.label && (
-            <span className="px-2 py-0.5 rounded-md bg-[#131620] text-[11px] text-[#d4d4d8] border border-[#1c1f2b] truncate max-w-[140px]">
+            <span className="px-2 py-0.5 rounded-md bg-[#131620] text-[11px] text-[#d4d4d8] border border-[#1c1f2b] truncate max-w-35">
               {relay.label}
             </span>
           )}
@@ -201,7 +201,7 @@ export function RelayCardItem({
           type="button"
           onClick={() => onProbe(relay.url)}
           disabled={updating || probeInfo?.probing}
-          className="min-h-[34px] inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-[#1a1a20] hover:bg-[#22222a] border border-[#282832] text-xs font-medium text-[#d4d4d8] hover:text-white transition cursor-pointer disabled:opacity-50"
+          className="min-h-8.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-[#1a1a20] hover:bg-[#22222a] border border-[#282832] text-xs font-medium text-[#d4d4d8] hover:text-white transition cursor-pointer disabled:opacity-50"
         >
           {probeInfo?.probing ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin text-[#3b82f6]" />
@@ -217,14 +217,14 @@ export function RelayCardItem({
               type="button"
               onClick={() => onSetActive(relay.url)}
               disabled={updating}
-              className="min-h-[34px] inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-[#202028] hover:bg-[#282834] text-xs font-medium text-emerald-400 border border-emerald-800/40 hover:border-emerald-700 transition cursor-pointer disabled:opacity-50"
+              className="min-h-8.5 inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-[#202028] hover:bg-[#282834] text-xs font-medium text-emerald-400 border border-emerald-800/40 hover:border-emerald-700 transition cursor-pointer disabled:opacity-50"
             >
               <Check className="h-3.5 w-3.5" />
               <span>Use Node</span>
             </button>
           ) : (
             <span
-              className={`min-h-[34px] px-3 py-1 rounded-lg text-xs font-medium border flex items-center gap-1.5 ${
+              className={`min-h-8.5 px-3 py-1 rounded-lg text-xs font-medium border flex items-center gap-1.5 ${
                 isEnabled
                   ? "bg-emerald-950/60 text-emerald-400 border-emerald-800/40"
                   : "bg-amber-950/60 text-amber-400 border-amber-800/40"
@@ -245,7 +245,7 @@ export function RelayCardItem({
             type="button"
             onClick={() => onRemove(relay.url)}
             disabled={updating}
-            className="min-h-[34px] min-w-[34px] flex items-center justify-center p-1.5 rounded-lg text-[#71717a] hover:text-rose-400 hover:bg-rose-950/40 transition cursor-pointer disabled:opacity-50"
+            className="min-h-8.5 min-w-8.5 flex items-center justify-center p-1.5 rounded-lg text-[#71717a] hover:text-rose-400 hover:bg-rose-950/40 transition cursor-pointer disabled:opacity-50"
             title="Delete relay"
             aria-label="Delete relay"
           >

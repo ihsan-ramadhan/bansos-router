@@ -370,10 +370,16 @@ html.light .bg-amber-950\/60 {
 
 html.light .bg-rose-950\/40,
 html.light .bg-rose-950\/50,
-html.light .bg-rose-950\/60 {
+html.light .bg-rose-950\/60,
+html.light .bg-rose-950\/70 {
   background-color: #fff1f2 !important;
   border-color: #fecdd3 !important;
   color: #be123c !important;
+}
+
+html.light .bg-rose-950\/70:hover {
+  background-color: #ffe4e6 !important;
+  border-color: #fda4af !important;
 }
 
 html.light .bg-blue-950\/40,
@@ -436,8 +442,9 @@ html.light .text-amber-300\/90 {
 html.light .text-slate-300 {
   color: #334155 !important;
 }
-html.light .text-emerald-400 {
-  color: #059669 !important;
+html.light .text-emerald-400,
+html.light .text-emerald-300 {
+  color: #047857 !important;
 }
 
 html.light .text-amber-400,
@@ -446,7 +453,7 @@ html.light .text-amber-200 {
 }
 
 html.light .text-rose-400 {
-  color: #dc2626 !important;
+  color: #be123c !important;
 }
 
 html.light .text-blue-400,
@@ -523,7 +530,8 @@ html.light [class*="border-rose-950"] {
   border-color: #fecdd3 !important;
 }
 
-html.light .text-rose-300 {
+html.light .text-rose-300,
+html.light .text-rose-200 {
   color: #be123c !important;
 }
 
@@ -555,6 +563,14 @@ html.light .bg-\[\#1c1f2b\]:hover {
   background-color: #f8fafc !important;
   border-color: #94a3b8 !important;
   color: #0f172a !important;
+}
+
+html:not(.light) .text-\[\#52525b\],
+html:not(.light) .text-\[\#5f5f6b\],
+html:not(.light) .text-\[\#60606b\],
+html:not(.light) .text-\[\#64748b\],
+html:not(.light) .text-\[\#71717a\] {
+  color: #8b8b96 !important;
 }
 
 .route-line {
@@ -605,7 +621,7 @@ html.light .route-line-last {
 }
 
 .route-courier {
-  color: #3b82f6;
+  color: #f97316;
 }
 
 html.light .route-line {
@@ -613,7 +629,7 @@ html.light .route-line {
 }
 
 html.light .route-courier {
-  color: #1d4ed8;
+  color: #ea580c;
 }
 
 @keyframes courier-motor-bounce {

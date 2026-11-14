@@ -284,8 +284,6 @@ export function App() {
       <MobileBottomNav
         activeTab={activeTab}
         onSelectTab={selectTab}
-        theme={theme}
-        onToggleTheme={toggleTheme}
       />
     </div>
   );

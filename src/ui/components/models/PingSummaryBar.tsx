@@ -10,6 +10,8 @@ interface PingSummaryBarProps {
   onClearPings?: () => void;
 }
 
+const CHIP_BASE = "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition border cursor-pointer";
+
 export function PingSummaryBar({
   pingStats,
   activeHealthChip,
@@ -26,26 +28,24 @@ export function PingSummaryBar({
           Ping Filter:
         </span>
 
-        {/* Filter: All */}
         <button
           type="button"
           onClick={() => onSelectHealthChip("all")}
-          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
+          className={`${CHIP_BASE} ${
             activeHealthChip === "all"
-              ? "bg-[#2563eb] text-white shadow-xs"
-              : "bg-[#131620] text-[#a1a1aa] hover:text-white border border-[#1c1f2b]"
+              ? "bg-[#2563eb] text-[#f8fafc] border-[#2563eb]"
+              : "bg-[#131620] text-[#a1a1aa] border-[#1c1f2b] hover:text-white"
           }`}
         >
           All ({pingStats.total})
         </button>
 
-        {/* Filter: OK */}
         <button
           type="button"
           onClick={() => onSelectHealthChip(activeHealthChip === "ok" ? "all" : "ok")}
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition border cursor-pointer ${
+          className={`${CHIP_BASE} ${
             activeHealthChip === "ok"
-              ? "bg-emerald-950/90 text-emerald-300 border-emerald-500 shadow-xs"
+              ? "bg-emerald-950/60 text-emerald-300 border-emerald-500"
               : "bg-[#0c0e14] border-[#1c1f2b] text-emerald-400 hover:border-emerald-700/60"
           }`}
           title="Click to filter verified operational models"
@@ -54,32 +54,30 @@ export function PingSummaryBar({
           <span>{pingStats.ok} Operational</span>
         </button>
 
-        {/* Filter: 429 */}
         {pingStats.rateLimited > 0 && (
           <button
             type="button"
             onClick={() => onSelectHealthChip(activeHealthChip === "429" ? "all" : "429")}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition border cursor-pointer ${
+            className={`${CHIP_BASE} ${
               activeHealthChip === "429"
-                ? "bg-amber-950/90 text-amber-300 border-amber-500 shadow-xs"
-              : "bg-[#0c0e14] border-[#1c1f2b] text-amber-400 hover:border-amber-700/60"
+                ? "bg-amber-950/60 text-amber-300 border-amber-500"
+                : "bg-[#0c0e14] border-[#1c1f2b] text-amber-400 hover:border-amber-700/60"
             }`}
-            title="Click to filter 429 rate-limited models"
+            title="Click to filter rate-limited models (429)"
           >
             <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
             <span>{pingStats.rateLimited} Rate Limited (429)</span>
           </button>
         )}
 
-        {/* Filter: Error */}
         {pingStats.error > 0 && (
           <button
             type="button"
             onClick={() => onSelectHealthChip(activeHealthChip === "error" ? "all" : "error")}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition border cursor-pointer ${
+            className={`${CHIP_BASE} ${
               activeHealthChip === "error"
-                ? "bg-rose-950/90 text-rose-300 border-rose-500 shadow-xs"
-              : "bg-[#0c0e14] border-[#1c1f2b] text-rose-400 hover:border-rose-700/60"
+                ? "bg-rose-950/60 text-rose-300 border-rose-500"
+                : "bg-[#0c0e14] border-[#1c1f2b] text-rose-400 hover:border-rose-700/60"
             }`}
             title="Click to filter offline or failing models"
           >
@@ -88,7 +86,6 @@ export function PingSummaryBar({
           </button>
         )}
 
-        {/* Probing state */}
         {pingStats.probing > 0 && (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[#60a5fa] font-mono text-[11px]">
             <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />

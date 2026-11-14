@@ -323,7 +323,7 @@ export function BackupCard({ onRestored }: BackupCardProps) {
               type="button"
               disabled={restoring || (!restoreConfig && !restoreActivity && !restoreRelay)}
               onClick={() => void handleApplyRestore()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white cursor-pointer disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-800 text-xs font-semibold text-white cursor-pointer disabled:opacity-40"
             >
               {restoring ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
               <span>{restoring ? "Restoring..." : "Restore Selected"}</span>

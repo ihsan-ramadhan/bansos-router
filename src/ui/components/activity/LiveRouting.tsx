@@ -5,6 +5,7 @@ import { diffEvents, routePath, sCurvePath, buildTripRoute, verticalBusPath, bui
 import { fetchAdapters } from "../../services/api";
 import { HarnessLogo } from "./HarnessLogo";
 import { CourierMotor } from "./CourierMotor";
+import { formatCount, formatExact } from "../../utils/format";
 interface GuideLine {
   d: string;
   upstream?: string;
@@ -422,7 +423,7 @@ export function LiveRouting({ events, inFlight, usage, loading, error }: LiveRou
 
       <div
         ref={stageRef}
-        className="relative px-3 sm:px-4 py-4 sm:py-4 min-h-[272px] sm:min-h-[176px]"
+        className="relative px-3 sm:px-4 py-4 sm:py-4 min-h-68 sm:min-h-44"
         aria-busy={loading ? "true" : undefined}
       >
         <svg className="pointer-events-none absolute inset-0 h-full w-full z-0" aria-hidden="true">
@@ -439,15 +440,15 @@ export function LiveRouting({ events, inFlight, usage, loading, error }: LiveRou
           <div className="flex justify-center sm:justify-start w-full sm:w-auto">
             <div
               data-node="harness"
-              className="rounded-2xl border border-[#1c1f2b] bg-[#10121a] p-3 sm:p-3.5 w-48 sm:w-36 min-h-[96px] sm:min-h-[116px] flex flex-col items-center justify-center text-center shadow-xs"
+              className="rounded-2xl border border-[#1c1f2b] bg-[#10121a] p-3 sm:p-3.5 w-48 sm:w-36 min-h-24 sm:min-h-29 flex flex-col items-center justify-center text-center shadow-xs"
             >
               <div className="mb-1 sm:mb-2">
                 <HarnessLogo name={activeHarness} className="h-7 w-7 sm:h-8 sm:w-8" />
               </div>
-              <span className="text-xs font-bold text-white font-mono truncate max-w-[140px] sm:max-w-none">
+              <span className="text-xs font-bold text-white font-mono truncate max-w-35 sm:max-w-none">
                 {harnessDisplayName}
               </span>
-              <span className="text-[10px] text-[#8b8b96] font-mono truncate mt-0.5 sm:mt-1 max-w-[140px] sm:max-w-[110px]" title={requestedModelLabel}>
+              <span className="text-[10px] text-[#8b8b96] font-mono truncate mt-0.5 sm:mt-1 max-w-35 sm:max-w-27.5" title={requestedModelLabel}>
                 {requestedModelLabel}
               </span>
             </div>
@@ -456,13 +457,16 @@ export function LiveRouting({ events, inFlight, usage, loading, error }: LiveRou
           <div className="flex justify-center w-full sm:w-auto">
             <div
               data-node="router"
-              className="rounded-2xl border border-[#2563eb]/40 bg-[#10121a] p-3 sm:p-3.5 w-52 sm:w-40 min-h-[96px] sm:min-h-[116px] flex flex-col items-center justify-center text-center shadow-[0_0_15px_rgba(37,99,235,0.08)]"
+              className="rounded-2xl border border-[#2563eb]/40 bg-[#10121a] p-3 sm:p-3.5 w-52 sm:w-40 min-h-24 sm:min-h-29 flex flex-col items-center justify-center text-center shadow-[0_0_15px_rgba(37,99,235,0.08)]"
             >
               <img src="/favicon.png" alt="bansos-router" className="h-6 w-6 sm:h-7 sm:w-7 rounded-md border border-[#2e2e38] mb-1 sm:mb-2" />
               <span className="text-xs font-bold text-white font-mono">bansos-router</span>
               <span className="text-[10px] text-[#8b8b96] font-mono mt-0.5">127.0.0.1:17070</span>
-              <span className="text-[9px] px-2 py-0.5 mt-1 sm:mt-1.5 rounded-full bg-[#131620] border border-[#1e2330] text-[#a1a1aa] font-mono shadow-xs">
-                {usage ? `${usage.totalRequests} req` : "routing"}
+              <span
+                className="text-[9px] px-2 py-0.5 mt-1 sm:mt-1.5 rounded-full bg-[#131620] border border-[#1e2330] text-[#a1a1aa] font-mono shadow-xs"
+                title={usage ? formatExact(usage.totalRequests) : undefined}
+              >
+                {usage ? `${formatCount(usage.totalRequests)} req` : "routing"}
               </span>
             </div>
           </div>
@@ -497,8 +501,8 @@ export function LiveRouting({ events, inFlight, usage, loading, error }: LiveRou
                           {upstream.name}
                         </span>
                       </div>
-                      <span className="text-[10px] font-mono text-[#8b8b96] shrink-0">
-                        {upstream.requests} req
+                      <span className="text-[10px] font-mono text-[#8b8b96] shrink-0" title={formatExact(upstream.requests)}>
+                        {formatCount(upstream.requests)} req
                       </span>
                     </div>
                   );
