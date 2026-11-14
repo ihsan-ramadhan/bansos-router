@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// copies the root package.json version into the pi extension: npm run sync-version
+// copies the root package.json version into the lockfile and the pi extension: npm run sync-version
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -39,6 +39,16 @@ const updated = src.replace(
 if (updated !== src) {
   fs.writeFileSync(indexPath, updated);
   console.log(`extensions/pi/src/index.ts -> ${version}`);
+}
+
+// 4. package-lock.json (root entry and its "" package)
+const rootLockPath = path.join(root, "package-lock.json");
+const rootLock = JSON.parse(fs.readFileSync(rootLockPath, "utf8"));
+if (rootLock.version !== version || rootLock.packages?.[""]?.version !== version) {
+  rootLock.version = version;
+  if (rootLock.packages?.[""]) rootLock.packages[""].version = version;
+  fs.writeFileSync(rootLockPath, JSON.stringify(rootLock, null, 2) + "\n");
+  console.log(`package-lock.json -> ${version}`);
 }
 
 console.log(`version synced: ${version}`);
