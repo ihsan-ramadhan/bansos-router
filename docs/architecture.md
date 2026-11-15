@@ -122,7 +122,7 @@ The core server, run via `bansos start` (foreground or `--bg`) or the
 | `bansos stop [--all]` | Stop the daemon in `~/.bansos/state.json`; `--all` also scans for every other bansos daemon. SIGTERM, then SIGKILL after 5 s; exits 1 if a daemon survives |
 | `bansos restart` | Restart through systemd or launchd when `bansos autostart` runs the daemon, otherwise stop and `start --bg` with the flags recorded in `state.json`; refuses when only unrecorded daemons are running |
 | `bansos logs [--activity]` | Tail the daemon log, or the request feed |
-| `bansos usage [--json]` | Request and token totals over the last 60 days |
+| `bansos usage [--json]` | Request and token totals over the full history |
 | `bansos autostart on/off/status` | Start the daemon at login via a systemd user service, a LaunchAgent, or the Windows Startup folder |
 | `bansosd` | Alias bin for the daemon (same entry file as `bansos`) |
 
@@ -177,9 +177,9 @@ never wipe it):
 
 ```
 ~/.bansos/
-├── config.json        # port, bind, refresh interval, security, local gateways
+├── config.json        # port, bind, refresh interval, security, body cap, local gateways
 ├── state.json         # pid, port, bind, start time and start flags of the running daemon
-├── activity.json      # request feed + token usage (rolling 60 days)
+├── activity/          # events-YYYY-MM.jsonl (append-only) + usage-YYYY-MM.json rollups
 ├── relay-state.json   # saved relays + active relay + enabled flag
 ├── pi-models.json     # last catalog the pi extension saw (offline fallback)
 ├── update-check.json  # npm version check cache (24 h)
@@ -189,6 +189,14 @@ never wipe it):
 State files are plain JSON. The keyless upstreams need no secrets; the one
 exception is an optional `apiKey` for a local gateway in `config.json`
 (`localUpstreams`).
+
+`activity/` holds two families: `events-YYYY-MM.jsonl` is append-only (nothing
+is pruned or rewritten, so history is never lost to a retention window) and
+`usage-YYYY-MM.json` is a per-day rollup that makes `/bansos/usage` a directory
+read instead of an event replay. A legacy `activity.json` is imported once at
+start and renamed `activity.json.migrated`. `maxBodyBytes` (default 10 MB,
+clamped to 1 MB–256 MB) caps an inbound request body, so base64 screenshots and
+PDFs fit once raised.
 
 ## 6. Security model
 
@@ -304,7 +312,7 @@ bansos-router/
 │   │   ├── index.ts        # entry, port bump, lifecycle, in-place restart
 │   │   ├── server.ts       # http server + routing + static UI serving
 │   │   ├── admin.ts        # settings, restart, logs, doctor, setup apply
-│   │   ├── activity.ts     # request feed + usage (activity.json)
+│   │   ├── activity.ts     # request feed + usage (activity/ JSONL + rollups)
 │   │   ├── catalog.ts      # model registry + liveness + cooldowns
 │   │   ├── rate-limit.ts
 │   │   └── state.ts        # ~/.bansos persistence

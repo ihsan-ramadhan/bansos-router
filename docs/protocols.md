@@ -22,8 +22,8 @@
 | `GET /bansos/relay` | bansos JSON | saved relay nodes and active state |
 | `POST /bansos/relay` | bansos JSON | update relay state (toggle, add, remove, use) |
 | `POST /bansos/relay/probe` | bansos JSON | reachability and latency of a relay node |
-| `GET /bansos/usage` | bansos JSON | usage totals (`?window=`) |
-| `GET /bansos/events` | bansos JSON | request feed (`?limit=`, `?window=`) |
+| `GET /bansos/usage` | bansos JSON | usage totals (`?window=today\|7d\|30d\|60d\|all`, default `all`) |
+| `GET /bansos/events` | bansos JSON | request feed (`?limit=` max 500, `?window=`) |
 | `GET/POST /bansos/config` | bansos JSON | read or save `~/.bansos/config.json` (admin) |
 | `POST /bansos/restart` | bansos JSON | restart with the saved config (admin) |
 | `GET /bansos/logs` | bansos JSON | tail of the daemon log (admin) |
@@ -66,7 +66,9 @@ Rules:
   its vendor prefix also resolves (`laguna-xs-2.1:free` matches
   `poolside/laguna-xs-2.1:free`). There are no aliases. Unknown model -> `400`
   with `unknown model: <id>` (see §6). `max_tokens`/`max_tokens_to_sample`
-  absent -> per-model default from the catalog.
+  absent -> per-model default from the catalog; a value above the served
+  model's `maxTokens` is clamped to it, so a failover target with a smaller
+  ceiling does not answer `400`.
 - **Reasoning flags come from the catalog**, not the client. If a model has
   `reasoning: false`, thinking/reasoning-effort parameters are stripped
   silently (Kilo models notably reject reasoning-effort).

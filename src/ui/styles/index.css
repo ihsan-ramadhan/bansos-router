@@ -313,7 +313,7 @@ html.light [class*="divide-[#202026]"] {
   border-color: #e2e8f0 !important;
 }
 
-html.light .text-white:not([class*="bg-[#2563eb]"]):not([class*="bg-[#2b64e0]"]):not([class*="bg-blue"]):not([class*="bg-rose"]):not([class*="bg-emerald"]),
+html.light .text-white:not([class*="bg-[#2563eb]"]):not([class*="bg-[#2b64e0]"]):not([class*="bg-blue"]):not([class*="bg-rose"]):not([class*="bg-emerald"]):not([class*="bg-amber"]),
 html.light .text-\[\#f8fafc\],
 html.light .text-\[\#f4f4f6\],
 html.light .text-\[\#f1f5f9\] {

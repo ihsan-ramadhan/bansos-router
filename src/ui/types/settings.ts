@@ -13,6 +13,7 @@ export interface DaemonSettings {
   refreshIntervalMs: number;
   port: number;
   bind: string;
+  maxBodyBytes: number;
 }
 
 export interface ConfigState {

@@ -337,7 +337,7 @@ export function BackupCard({ onRestored }: BackupCardProps) {
         <div>
           <span className="block text-xs font-semibold text-rose-300">Wipe Activity Logs</span>
           <span className="block text-[11px] text-[#8c7479] mt-0.5">
-            Permanently deletes all usage stats and request records in ~/.bansos/activity.json. Configuration remains intact.
+            Permanently deletes all usage stats and request records in ~/.bansos/activity/. Configuration remains intact.
           </span>
         </div>
 

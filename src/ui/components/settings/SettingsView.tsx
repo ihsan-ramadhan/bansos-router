@@ -28,7 +28,10 @@ const FIELD_LABELS: Record<string, string> = {
   refreshIntervalMs: "catalog refresh",
   port: "port",
   bind: "bind address",
+  maxBodyBytes: "request body cap",
 };
+
+const MB = 1024 * 1024;
 
 const isLoopback = (bind: string) => bind === "localhost" || bind.startsWith("127.") || bind === "::1";
 
@@ -143,6 +146,8 @@ export function SettingsView({ active, onApplied }: SettingsViewProps) {
   const setSecurity = (patch: Partial<DaemonSettings["security"]>) =>
     setDraft({ ...draft, security: { ...security, ...patch } });
   const portValid = Number.isInteger(draft.port) && draft.port >= 1 && draft.port <= 65535;
+  const bodyCapMb = Math.round((draft.maxBodyBytes / MB) * 100) / 100;
+  const bodyCapValid = bodyCapMb >= 1 && bodyCapMb <= 256;
   const refreshChoices = REFRESH_CHOICES.some((c) => c.value === draft.refreshIntervalMs)
     ? REFRESH_CHOICES
     : [...REFRESH_CHOICES, { label: `Every ${Math.round(draft.refreshIntervalMs / 60_000)} minutes`, value: draft.refreshIntervalMs }];
@@ -155,6 +160,7 @@ export function SettingsView({ active, onApplied }: SettingsViewProps) {
       const patch: Partial<DaemonSettings> = { security: draft.security, refreshIntervalMs: draft.refreshIntervalMs };
       if (!config.flags.port) patch.port = draft.port;
       if (!config.flags.bind) patch.bind = draft.bind.trim();
+      patch.maxBodyBytes = Math.round(bodyCapMb * MB);
       const next = await saveConfig(patch);
       setConfig(next);
       setDraft(next.saved);
@@ -440,6 +446,23 @@ export function SettingsView({ active, onApplied }: SettingsViewProps) {
               spellcheck={false}
               onInput={(e) => setDraft({ ...draft, bind: (e.target as HTMLInputElement).value })}
               className="w-full min-h-10.5 bg-[#0c0e14] border border-[#1c1f2b] rounded-lg px-3 text-xs font-mono text-white disabled:opacity-50 focus:outline-none focus:border-[#2563eb]"
+            />
+          </Field>
+
+          <Field
+            label="Request body cap"
+            hint={!bodyCapValid
+              ? <span className="text-rose-300">Use 1 to 256 MB.</span>
+              : "Limit in MB; raise it for base64 screenshots and PDFs."}
+          >
+            <input
+              type="number"
+              min={1}
+              max={256}
+              step={1}
+              value={Number.isNaN(bodyCapMb) ? "" : bodyCapMb}
+              onInput={(e) => setDraft({ ...draft, maxBodyBytes: Math.round(Number((e.target as HTMLInputElement).value) * MB) })}
+              className="w-full min-h-10.5 bg-[#0c0e14] border border-[#1c1f2b] rounded-lg px-3 text-xs font-mono text-white focus:outline-none focus:border-[#2563eb]"
             />
           </Field>
         </div>

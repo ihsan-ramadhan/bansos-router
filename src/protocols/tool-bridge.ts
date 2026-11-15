@@ -10,35 +10,14 @@ export interface CallerTools {
   bridge?(name: string): Translator | null;
 }
 
-const BRIDGED_LIMIT = 2000;
-const bridgedCalls = new Map<string, TranslatedCall>();
-
-function remember(callId: string, original: TranslatedCall): void {
-  bridgedCalls.set(callId, original);
-  if (bridgedCalls.size > BRIDGED_LIMIT) bridgedCalls.delete(bridgedCalls.keys().next().value!);
-}
-
-// on the way back to the injecting upstream, a bridged call is shown to the model as the call it actually made
-export function restoreBridgedCalls(messages: unknown): unknown {
-  if (!Array.isArray(messages) || bridgedCalls.size === 0) return messages;
-  return messages.map((m: any) => {
-    if (m?.role !== "assistant" || !Array.isArray(m.tool_calls)) return m;
-    if (!m.tool_calls.some((tc: any) => bridgedCalls.has(tc?.id))) return m;
-    return {
-      ...m,
-      tool_calls: m.tool_calls.map((tc: any) => {
-        const original = bridgedCalls.get(tc?.id);
-        return original ? { ...tc, function: { ...tc.function, ...original } } : tc;
-      }),
-    };
-  });
-}
-
 type Schema = { properties?: Record<string, { type?: unknown }>; required?: unknown };
 type Spec = { name: string; parameters: Schema };
 
 const SHELL_NAMES = ["bash", "shell", "exec_command", "run_command", "execute_command", "run_shell_command", "run_terminal_cmd", "terminal", "exec", "sh"];
 const READ_NAMES = ["read", "read_file", "readfile", "view", "view_file", "open_file", "file_read", "read_text_file", "cat"];
+// the alias zen.ts advertises the caller's edit under
+const EDIT_ALIAS = "apply_edit";
+const EDIT_NAMES = ["edit"];
 
 const COMMAND_KEYS = ["command", "cmd", "script", "commandLine", "command_line"];
 const WORKDIR_KEYS = ["workdir", "cwd", "working_directory", "workingDirectory", "directory", "dir"];
@@ -134,27 +113,96 @@ function parseArgs(raw: string): Record<string, unknown> | null {
   }
 }
 
+function shellArgsFromCaller(target: Spec, args: Record<string, unknown>): Record<string, unknown> | null {
+  const cmdKey = pick(target.parameters, COMMAND_KEYS);
+  if (!cmdKey) return null;
+  const raw = args[cmdKey];
+  const command = Array.isArray(raw) ? raw[raw.length - 1] : raw;
+  if (typeof command !== "string" || !command) return null;
+  const out: Record<string, unknown> = { command };
+  const wd = pick(target.parameters, WORKDIR_KEYS);
+  if (wd && typeof args[wd] === "string") out.workdir = args[wd];
+  const tk = pick(target.parameters, TIMEOUT_KEYS);
+  if (tk && typeof args[tk] === "number") out.timeout = args[tk];
+  const bg = pick(target.parameters, BACKGROUND_KEYS);
+  if (bg && args[bg] === true) out.background = true;
+  return out;
+}
+
+function readArgsFromCaller(target: Spec, args: Record<string, unknown>): Record<string, unknown> | null {
+  const pathKey = pick(target.parameters, PATH_KEYS);
+  if (!pathKey || typeof args[pathKey] !== "string") return null;
+  const out: Record<string, unknown> = { path: args[pathKey] };
+  const ok = pick(target.parameters, OFFSET_KEYS);
+  if (ok && typeof args[ok] === "number") out.offset = args[ok];
+  const lk = pick(target.parameters, LIMIT_KEYS);
+  if (lk && typeof args[lk] === "number") out.limit = args[lk];
+  return out;
+}
+
+// derived from the tool list, not from memory: a restart cannot reshape the prefix and break the prompt cache
+export function restoreBridgedCalls(messages: unknown, body: unknown): unknown {
+  if (!Array.isArray(messages) || messages.length === 0) return messages;
+  const specs = toolSpecs(body);
+  if (specs.length === 0) return messages;
+  const declared = new Set(specs.map((s) => s.name.trim().toLowerCase()));
+  const shellTarget = declared.has("shell") ? undefined : findTool(specs, SHELL_NAMES, COMMAND_KEYS);
+  const readTarget = declared.has("read") ? undefined : findTool(specs, READ_NAMES, PATH_KEYS);
+  const editTarget = declared.has(EDIT_ALIAS)
+    ? undefined
+    : specs.find((s) => EDIT_NAMES.includes(s.name.trim().toLowerCase()) && !pick(s.parameters, ["filePath"]));
+  if (!shellTarget && !readTarget && !editTarget) return messages;
+
+  const rewrite = (tc: any): any => {
+    const name = typeof tc?.function?.name === "string" ? tc.function.name : "";
+    const raw = typeof tc?.function?.arguments === "string" ? tc.function.arguments : "";
+    if (!name) return tc;
+    const args = parseArgs(raw);
+    if (shellTarget && name === shellTarget.name && args) {
+      const translated = shellArgsFromCaller(shellTarget, args);
+      if (translated) return { ...tc, function: { ...tc.function, name: "shell", arguments: JSON.stringify(translated) } };
+    }
+    if (readTarget && name === readTarget.name && args) {
+      const translated = readArgsFromCaller(readTarget, args);
+      if (translated) return { ...tc, function: { ...tc.function, name: "read", arguments: JSON.stringify(translated) } };
+    }
+    if (editTarget && name === editTarget.name) {
+      return { ...tc, function: { ...tc.function, name: EDIT_ALIAS } };
+    }
+    return tc;
+  };
+
+  let changed = false;
+  const out = messages.map((m: any) => {
+    if (m?.role !== "assistant" || !Array.isArray(m.tool_calls)) return m;
+    const toolCalls = m.tool_calls.map(rewrite);
+    if (toolCalls.every((tc: any, i: number) => tc === m.tool_calls[i])) return m;
+    changed = true;
+    return { ...m, tool_calls: toolCalls };
+  });
+  return changed ? out : messages;
+}
+
 // the Zen gate injects read/shell; a call to one the caller never declared is mapped onto the caller's own tool
 export function callerToolsFromBody(body: unknown): CallerTools {
   const specs = toolSpecs(body);
   const names = new Set(specs.map((s) => s.name));
   const shellTarget = findTool(specs, SHELL_NAMES, COMMAND_KEYS);
   const readTarget = findTool(specs, READ_NAMES, PATH_KEYS);
-  const recording = (name: string, inner: (raw: string) => TranslatedCall | null): Translator => (raw, callId) => {
-    const call = inner(raw);
-    if (call && callId) remember(callId, { name, arguments: raw || "{}" });
-    return call;
-  };
+  const editTarget = specs.find((s) => EDIT_NAMES.includes(s.name.trim().toLowerCase()));
   return {
     has: (name) => names.has(name),
     bridge(name) {
-      const inner = innerBridge(name);
-      return inner ? recording(name, inner) : null;
+      return innerBridge(name);
     },
   };
 
   function innerBridge(name: string): ((raw: string) => TranslatedCall | null) | null {
     if (names.has(name)) return null;
+    if (name === EDIT_ALIAS && editTarget) {
+      // same arguments, only the advertised name changed
+      return (raw) => ({ name: editTarget.name, arguments: raw || "{}" });
+    }
     if (name === "shell" && shellTarget) {
       return (raw) => {
         const args = parseArgs(raw);

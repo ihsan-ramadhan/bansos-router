@@ -159,3 +159,48 @@ test("reasoningToContentTransform leaves non-reasoning frames byte-identical", a
   const out = await throughTransform(frames);
   assert.equal(out, frames.join(""), "frames pass through unchanged");
 });
+test("a null usage frame does not lock the scan; the real usage later in the stream still counts", async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const log = {
+    info: (_msg: string, fields?: Record<string, unknown>) => calls.push(fields ?? {}),
+    debug: () => {},
+    warn: () => {},
+    error: () => {},
+    child: () => log,
+  } as unknown as Logger;
+
+  const source = Readable.from([
+    Buffer.from('data: {"choices":[{"delta":{"content":"a"}}],"usage":null}\n\n'),
+    Buffer.from('data: {"choices":[{"delta":{"content":"b"}}],"usage":null}\n\n'),
+    Buffer.from('data: {"choices":[],"usage":{"prompt_tokens":42,"completion_tokens":7}}\n\n'),
+    Buffer.from("data: [DONE]\n\n"),
+  ]);
+  const sink = new Transform({ transform: (c, _e, cb) => cb(null, c) });
+  await new Promise<void>((resolve, reject) => {
+    source.pipe(logUsageTransform("m", "zen", log, Date.now())).pipe(sink);
+    sink.on("error", reject);
+    sink.on("finish", resolve);
+  });
+  assert.equal(calls.length, 1, "one usage record, from the real frame");
+  assert.equal(calls[0]!.inputTokens, 42);
+  assert.equal(calls[0]!.outputTokens, 7);
+});
+
+test("a stream that never reports usage leaves the booking open for the caller", async () => {
+  const log = {
+    info: () => {},
+    debug: () => {},
+    warn: () => {},
+    error: () => {},
+    child: () => log,
+  } as unknown as Logger;
+  const booked = { recorded: false };
+  const source = Readable.from([Buffer.from('data: {"choices":[{"delta":{"content":"hi"}}]}\n\n')]);
+  const sink = new Transform({ transform: (c, _e, cb) => cb(null, c) });
+  await new Promise<void>((resolve, reject) => {
+    source.pipe(logUsageTransform("m", "zen", log, Date.now(), undefined, undefined, "chat", undefined, booked)).pipe(sink);
+    sink.on("error", reject);
+    sink.on("finish", resolve);
+  });
+  assert.equal(booked.recorded, false, "the handler has to book the request itself");
+});

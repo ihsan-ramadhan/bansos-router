@@ -109,18 +109,56 @@ test("required intent-style fields (OMP's `i`) are filled, other unknown require
 test("history sent back to Zen shows the model the call it really made; other upstreams see the caller's", async () => {
   const { restoreBridgedCalls } = await import("../src/protocols/tool-bridge");
   const { zenUpstream, ZEN_MODELS } = await import("../src/upstreams/zen");
-  const bridged = callerToolsFromBody(codex).bridge!("read")!('{"path":"notes.txt"}', "call_hist_1");
-  assert.equal(bridged!.name, "exec_command");
   const history = [
     { role: "user", content: "go" },
-    { role: "assistant", content: "", tool_calls: [{ id: "call_hist_1", type: "function", function: bridged }] },
+    {
+      role: "assistant",
+      content: "",
+      tool_calls: [
+        { id: "call_hist_1", type: "function", function: { name: "exec_command", arguments: '{"cmd":"ls -la"}' } },
+      ],
+    },
     { role: "tool", tool_call_id: "call_hist_1", content: "build number: 1" },
   ];
-  const restored = restoreBridgedCalls(history) as any[];
-  assert.deepEqual(restored[1].tool_calls[0].function, { name: "read", arguments: '{"path":"notes.txt"}' });
+  const restored = restoreBridgedCalls(history, codex) as any[];
+  assert.deepEqual(restored[1].tool_calls[0].function, { name: "shell", arguments: '{"command":"ls -la"}' });
   assert.equal((history[1] as any).tool_calls[0].function.name, "exec_command", "the caller's copy is untouched");
+
+  // a caller that declares the injected names itself is never rewritten
+  const own = [{ index: 0, id: "c2", type: "function", function: { name: "shell", arguments: '{"command":"ls"}' } }];
+  const same = restoreBridgedCalls([{ role: "assistant", content: "", tool_calls: own }], legacyShell) as any[];
+  assert.equal(same[0].tool_calls[0].function.name, "shell");
 
   const model = ZEN_MODELS.find((m) => m.wireApi !== "responses")!;
   const out = zenUpstream.transformRequestBody!({ model: model.id, messages: history, tools: codex.tools }, model) as any;
-  assert.equal(out.messages[1].tool_calls[0].function.name, "read");
+  // no system message + assistant second: the <env> block is injected, so index shifts
+  assert.match(out.messages[0].content, /<\/env>/);
+  assert.equal(out.messages.at(-2).tool_calls[0].function.name, "shell");
+});
+
+test("apply_edit is mapped back onto the caller's own edit tool", async () => {
+  const { callerToolsFromBody } = await import("../src/protocols/tool-bridge");
+  const body = {
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: "edit",
+          parameters: {
+            type: "object",
+            properties: { file_path: { type: "string" }, old_string: { type: "string" }, new_string: { type: "string" } },
+            required: ["file_path", "old_string", "new_string"],
+          },
+        },
+      },
+    ],
+  };
+  const tools = callerToolsFromBody(body);
+  assert.equal(tools.has("edit"), true);
+  assert.equal(tools.has("apply_edit"), false);
+  const call = tools.bridge!("apply_edit")!('{"file_path":"a.ts","old_string":"x","new_string":"y"}', "call_edit_1");
+  assert.deepEqual(call, {
+    name: "edit",
+    arguments: '{"file_path":"a.ts","old_string":"x","new_string":"y"}',
+  });
 });

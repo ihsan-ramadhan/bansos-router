@@ -100,17 +100,23 @@ looks for the caller's equivalent and re-emits the call under that name:
   with the path single-quoted;
 - if a `required` field of the target cannot be filled, or the arguments are
   not JSON, the call stays hidden as before;
+- a caller's own `edit` without opencode's `filePath` argument is advertised
+  as `apply_edit`, because the gate answers `429` to a bare `edit`, and bridged
+  back to the caller's `edit` with identical arguments;
 - a caller's own `read`/`shell` is never bridged;
 - required description-style fields (`i` in OMP, `intent`, `description`,
   `reason`) are filled with a short "Run …"/"Read …" line; any other required
   field we cannot fill blocks the mapping.
 
-The bridge remembers each translated call id (in memory, last 2000). When the
-caller sends that turn back, the Zen transform restores the call to the
-injected name and arguments the model actually produced, because a model that
-sees `exec_command` where it remembers calling `read` concludes the read never
-happened and calls it again (seen with Codex + muse looping on the same file).
-Other upstreams receive the caller's own version.
+The bridge keeps no call-id memory. When the caller sends that turn back, the
+Zen transform restores the call to the injected name and arguments the model
+actually produced, because a model that sees `exec_command` where it remembers
+calling `read` concludes the read never happened and calls it again (seen with
+Codex + muse looping on the same file). `restoreBridgedCalls` derives the
+mapping from the caller's declared tools, so a restart or a growing history
+cannot reshape the early messages: the prefix stays byte-stable and the
+upstream prompt cache stays warm. Other upstreams receive the caller's own
+version.
 
 Arguments are buffered until complete and the call is emitted whole, right
 before the finish frame (chat) or at close (Anthropic block, Responses item),
@@ -127,11 +133,6 @@ in the first delta for its index, so the verdict is taken there and reused for
 the argument deltas that follow; an index whose name is never seen is let
 through, so a malformed stream loses nothing. Frames it does not change are
 forwarded byte-for-byte.
-
-> ⚠️ ToS note: OpenCode Zen's free tier is intended for OpenCode users. The
-> passthrough pattern (already used by pi-bansos, 9router, zen-proxy) is
-> tolerated today but can change. Health-check + relay keep the router
-> resilient if a model or the whole endpoint disappears.
 
 ### 2.2 KiloCode gateway
 
@@ -417,16 +418,3 @@ x-relay-path:   /api/gateway/chat/completions
 | Error under HTTP 200 (SSE) | first `data:` frame carries `error` (Zen `Streaming response failed: [503]`; Kilo/OpenRouter send it after `: KILO PROCESSING` keepalives and keep a `choices` array in the same frame) | `peekStreamError` buffers up to the first data frame, keepalives included, for at most 5 s so headers are never held back longer; an error there is treated as 502 and fails over; a later error frame becomes a 502 for non-stream callers, an Anthropic `error` event, or `response.failed` |
 | Model cannot take tools / images | 400/404 `does not support tools`, `No endpoints found that support tool use`, `does not support vision` | catalog flag `supportsTools` (Kilo `supported_parameters`, LLM7 `capabilities.tools`) and `input` skip such models up front; a matching error message fails over too. With failover off the upstream error is returned as-is: tools are never silently dropped |
 | Quota hint only in the body | 429 `Retry after 80618 seconds` with no `Retry-After` header (LLM7 daily quota) | `retryAfterFromMessage` feeds the cooldown (still capped at 15 min) |
-
-## 9. ToS & ethical guardrails (ship in README)
-
-- Free tiers are **best-effort**: promos expire, IDs change, limits move.
-- Don't hammer upstreams: the health check is the only automated traffic
-  beyond actual usage.
-- Relay usage must respect the upstream's ToS; the tool is for personal
-  development use.
-- **FreeBuff (M5) is opt-in with real ban risk**: requires a FreeBuff/Codebuff
-  account token; using it conflicts with FreeBuff ToS and upstream detection
-  can suspend accounts. Default off, residential IP only, modest usage, and
-  never routed through the relay.
-- bansos-router does not resell, pool, or proxy access for third parties.

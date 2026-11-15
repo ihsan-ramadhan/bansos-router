@@ -84,7 +84,7 @@ registers a `bansosr` provider and manages the daemon for you. The ids differ, s
 | `stop [--all]`, `restart` | control the daemon (`--all`: every daemon on the machine) |
 | `status [--json]`, `logs [--activity]` | inspect it; `--activity` prints the structured request feed |
 | `models [--json]`, `ping [model]` | catalog, and live latency of every model |
-| `refresh`, `usage [--json]` | re-run health checks; token totals per model/upstream (60 days) |
+| `refresh`, `usage [--json]` | re-run health checks; token totals per model/upstream (full history) |
 | `setup <harness...>` | write, update, dry-run or undo harness configs |
 | `relay <on\|off\|status\|url\|use\|list\|remove>` | manage relay egress |
 | `autostart <on\|off\|status> [--json]` | start the daemon at login (systemd, launchd, Startup folder) |
@@ -104,6 +104,8 @@ Set variables in the environment; the dashboard's Settings tab edits the rest.
 | `BANSOS_LOG=json` | JSON log lines instead of text |
 | `BANSOS_RATE_LIMIT` | requests per minute per client IP (default 300) |
 | `NO_UPDATE_NOTIFIER=1` | turn off the daily npm update check |
+
+One knob lives outside the environment: `maxBodyBytes` caps an inbound request body (default 10 MB, clamped to 1 MB–256 MB) and takes a restart. Set it under Settings → Daemon, or as `"maxBodyBytes"` in `~/.bansos/config.json`, when a harness sends base64 screenshots or PDFs and the daemon answers `413`.
 
 ## Security
 
@@ -143,6 +145,7 @@ Multi-stage build on `node:22-alpine` (~58 MB), state in the `bansos-data` volum
 | `403` from Zen | that model is parked for 30 minutes and the request fails over; send `x-bansos-no-failover: 1` to see the raw error |
 | one model keeps returning `429` | `bansos ping <model>`, pick another free model, or let failover do it |
 | harness sees no models | re-run `bansos setup <harness>` after `bansos refresh` |
+| `413 request body too large` | raise the request body cap under Settings → Daemon, or `maxBodyBytes` in `~/.bansos/config.json` (up to 256 MB), then `bansos restart` |
 
 ## Endpoints
 

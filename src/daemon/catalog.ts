@@ -140,7 +140,11 @@ export class RuntimeCatalog {
 
   private replaceBySource(source: UpstreamSource, models: ModelDef[]): void {
     for (const [id, m] of this.byId) {
-      if (m.source === source) this.byId.delete(id);
+      if (m.source === source) {
+        this.byId.delete(id);
+        // a model that is gone must not keep a cooldown for the day it comes back
+        this.coolUntil.delete(id);
+      }
     }
     for (const m of models) this.byId.set(m.id, m);
   }

@@ -413,18 +413,55 @@ function ensureOpencodeSystemPrompt(body: Record<string, unknown>): void {
   const sysIdx = messages.findIndex((m) => m && m.role === "system");
   if (sysIdx !== -1) {
     const sysMsg = messages[sysIdx]!;
+    // a system prompt is a string or a list of parts; both must survive untouched
+    if (Array.isArray(sysMsg.content)) {
+      const parts = sysMsg.content as Array<Record<string, unknown>>;
+      const hasEnv = parts.some(
+        (p) => p && typeof p === "object" && typeof p.text === "string" && p.text.includes("</env>"),
+      );
+      if (!hasEnv) parts.push({ type: "text", text: OPENCODE_ENV_BLOCK });
+      return;
+    }
     const content = typeof sysMsg.content === "string" ? sysMsg.content : "";
     if (!content.includes("</env>")) {
       sysMsg.content = `${content}\n\n${OPENCODE_ENV_BLOCK}`.trim();
     }
-  } else if (messages[1]?.role !== "assistant") {
+  } else {
     messages.unshift({ role: "system", content: OPENCODE_ENV_BLOCK });
+  }
+}
+
+// the gate 429s a bare `edit` tool (omp and claude code send snake_case), so advertise it as apply_edit
+const EDIT_ALIAS = "apply_edit";
+const EDIT_TOOL_RE = /^edit$/i;
+
+function toolFunction(tool: unknown): Record<string, unknown> | null {
+  if (!tool || typeof tool !== "object" || Array.isArray(tool)) return null;
+  const t = tool as Record<string, unknown>;
+  const fn = t.function && typeof t.function === "object" && !Array.isArray(t.function) ? t.function : t;
+  return fn as Record<string, unknown>;
+}
+
+function aliasCallerEditTool(body: Record<string, unknown>): void {
+  if (!Array.isArray(body.tools)) return;
+  const tools = body.tools as unknown[];
+  if (tools.some((tool) => (toolFunction(tool)?.name as string | undefined) === EDIT_ALIAS)) return;
+  for (let i = 0; i < tools.length; i++) {
+    const fn = toolFunction(tools[i]);
+    if (!fn || typeof fn.name !== "string" || !EDIT_TOOL_RE.test(fn.name.trim())) continue;
+    const params = (fn.parameters ?? fn.input_schema) as { properties?: Record<string, unknown> } | undefined;
+    if (params?.properties && "filePath" in params.properties) continue;
+    // clone, don't rename in place: the tool objects are shared with later failover attempts
+    const renamed = { ...fn, name: EDIT_ALIAS };
+    const holder = tools[i] as Record<string, unknown>;
+    tools[i] = holder.function ? { ...holder, function: renamed } : renamed;
   }
 }
 
 function transformOpencodeBodyChat(body: Record<string, unknown>): Record<string, unknown> {
   body.stream = true;
   ensureChatFingerprintTools(body);
+  aliasCallerEditTool(body);
   ensureOpencodeSystemPrompt(body);
   return body;
 }
@@ -441,6 +478,7 @@ function transformOpencodeBodyResponses(body: Record<string, unknown>): Record<s
   body.store = false;
   body.stream = true;
   ensureResponsesFingerprintTools(body);
+  aliasCallerEditTool(body);
   sanitizeResponsesItems(body);
   return body;
 }
@@ -693,7 +731,7 @@ export const zenUpstream: Upstream = {
     const own = {
       ...body,
       ...(Array.isArray(body.tools) ? { tools: [...body.tools] } : {}),
-      ...(Array.isArray(body.messages) ? { messages: restoreBridgedCalls(body.messages) } : {}),
+      ...(Array.isArray(body.messages) ? { messages: restoreBridgedCalls(body.messages, body) } : {}),
     };
     return model.wireApi === "responses" ? transformOpencodeBodyResponses(own) : transformOpencodeBodyChat(own);
   },

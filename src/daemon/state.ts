@@ -22,8 +22,20 @@ export interface BansosConfig {
   bind: string;
   refreshIntervalMs: number;
   security: SecurityConfig;
+  // request body ceiling in bytes: base64 screenshots and PDFs need more than 10 MB
+  maxBodyBytes?: number;
   // opt-in local gateways (freebuff-proxy, litellm, ...)
   localUpstreams: Array<{ name: string; baseUrl: string; apiKey?: string }>;
+}
+
+export const DEFAULT_BODY_BYTES = 10 * 1024 * 1024;
+export const MIN_BODY_BYTES = 1024 * 1024;
+export const MAX_BODY_BYTES = 256 * 1024 * 1024;
+
+export function normalizeBodyBytes(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_BODY_BYTES;
+  return Math.min(Math.max(Math.round(n), MIN_BODY_BYTES), MAX_BODY_BYTES);
 }
 
 export const DEFAULT_CONFIG: BansosConfig = {
@@ -31,6 +43,7 @@ export const DEFAULT_CONFIG: BansosConfig = {
   bind: "127.0.0.1",
   refreshIntervalMs: 30 * 60_000,
   security: { ...DEFAULT_SECURITY_CONFIG },
+  maxBodyBytes: DEFAULT_BODY_BYTES,
   localUpstreams: [],
 };
 
@@ -107,6 +120,7 @@ export function loadConfig(file = CONFIG_FILE): BansosConfig {
     ...DEFAULT_CONFIG,
     ...raw,
     security: normalizeSecurityConfig(raw.security),
+    maxBodyBytes: normalizeBodyBytes(raw.maxBodyBytes),
     localUpstreams: raw.localUpstreams ?? [],
   };
 }

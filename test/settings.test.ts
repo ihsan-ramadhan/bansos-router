@@ -138,6 +138,30 @@ test("saving settings validates every field and rejects bad values without touch
   }
 });
 
+test("the request body cap saves from the UI and admits it needs a restart", async () => {
+  const d = await startDaemon(BASE_CONFIG);
+  try {
+    const before = await (await fetch(`${d.baseUrl}/bansos/config`)).json();
+    assert.equal(before.saved.maxBodyBytes, 10 * 1024 * 1024);
+    assert.deepEqual(before.restartRequired, []);
+
+    const res = await postJson(`${d.baseUrl}/bansos/config`, { maxBodyBytes: 48 * 1024 * 1024 });
+    assert.equal(res.status, 200);
+    const view = await res.json();
+    assert.equal(view.saved.maxBodyBytes, 48 * 1024 * 1024);
+    assert.equal(view.running.maxBodyBytes, 10 * 1024 * 1024, "the cap in force only moves on restart");
+    assert.deepEqual(view.restartRequired, ["maxBodyBytes"]);
+    assert.equal(JSON.parse(fs.readFileSync(d.configFile, "utf8")).maxBodyBytes, 48 * 1024 * 1024);
+
+    for (const bad of [0, 512 * 1024, 300 * 1024 * 1024, 1_048_576.5, "48mb"]) {
+      const rejected = await postJson(`${d.baseUrl}/bansos/config`, { maxBodyBytes: bad });
+      assert.equal(rejected.status, 400, String(bad));
+    }
+  } finally {
+    await d.close();
+  }
+});
+
 test("saving security applies it live, keeps unknown keys, and flags port changes for restart", async () => {
   const d = await startDaemon(BASE_CONFIG);
   try {

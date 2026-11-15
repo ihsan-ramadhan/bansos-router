@@ -15,7 +15,7 @@ import { checkUpdate, VERSION } from "../update";
 import type { RuntimeCatalog } from "./catalog";
 import type { ActivityStore, ActivityEvent } from "./activity";
 import { loadRelayState, saveRelayState, type RelayState } from "../relay/egress";
-import { CONFIG_FILE, LOG_FILE, loadConfig, loadConfigWarnings, readRawConfig, writeJsonAtomic } from "./state";
+import { CONFIG_FILE, DEFAULT_BODY_BYTES, LOG_FILE, MAX_BODY_BYTES, MIN_BODY_BYTES, loadConfig, loadConfigWarnings, readRawConfig, writeJsonAtomic } from "./state";
 
 export interface AdminOptions {
   security: SecurityConfig;
@@ -25,6 +25,7 @@ export interface AdminOptions {
   requestedPort?: number;
   bind: string;
   refreshIntervalMs: number;
+  bodyCapBytes?: number;
   flags?: { port?: boolean; bind?: boolean; unsafeAllowNonLoopback?: boolean };
   restart?: () => void;
   configFile?: string;
@@ -62,6 +63,7 @@ interface SettingsView {
   refreshIntervalMs: number;
   port: number;
   bind: string;
+  maxBodyBytes: number;
 }
 
 function securityView(s: SecurityConfig, rawFailover?: unknown): SecurityView {
@@ -83,18 +85,21 @@ function configView(opts: AdminOptions) {
     refreshIntervalMs: saved.refreshIntervalMs,
     port: saved.port,
     bind: saved.bind,
+    maxBodyBytes: saved.maxBodyBytes ?? DEFAULT_BODY_BYTES,
   };
   const running: SettingsView = {
     security: securityView(opts.security),
     refreshIntervalMs: opts.refreshIntervalMs,
     port: opts.port,
     bind: opts.bind,
+    maxBodyBytes: opts.bodyCapBytes && opts.bodyCapBytes > 0 ? opts.bodyCapBytes : DEFAULT_BODY_BYTES,
   };
   const restartRequired: string[] = [];
   if (JSON.stringify(securityView(saved.security)) !== JSON.stringify(running.security)) restartRequired.push("security");
   if (savedView.refreshIntervalMs !== running.refreshIntervalMs) restartRequired.push("refreshIntervalMs");
   if (!opts.flags?.port && savedView.port !== (opts.requestedPort ?? opts.port)) restartRequired.push("port");
   if (!opts.flags?.bind && savedView.bind !== running.bind) restartRequired.push("bind");
+  if (savedView.maxBodyBytes !== running.maxBodyBytes) restartRequired.push("maxBodyBytes");
   return {
     path: file,
     exists: fs.existsSync(file),
@@ -166,6 +171,14 @@ function validatePatch(body: unknown, upstreamIds: string[]): { error: string } 
     const v = typeof body.bind === "string" ? body.bind.trim() : "";
     if (v !== "localhost" && isIP(v) === 0) return { error: "bind must be an IP address such as 127.0.0.1, or localhost" };
     patch.bind = v;
+  }
+
+  if (body.maxBodyBytes !== undefined) {
+    const v = body.maxBodyBytes;
+    if (typeof v !== "number" || !Number.isInteger(v) || v < MIN_BODY_BYTES || v > MAX_BODY_BYTES) {
+      return { error: `maxBodyBytes must be a whole number from ${MIN_BODY_BYTES} to ${MAX_BODY_BYTES}` };
+    }
+    patch.maxBodyBytes = v;
   }
 
   return { patch };

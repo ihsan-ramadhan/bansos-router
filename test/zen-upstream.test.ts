@@ -120,3 +120,56 @@ test("fingerprint injection never leaks into the caller's own body", () => {
     assert.ok((out.tools as unknown[]).length > 1);
   }
 });
+
+test("a caller edit tool without opencode's filePath is advertised as apply_edit (gate 429s it otherwise)", () => {
+  const model = ZEN_MODELS.find((m) => m.wireApi !== "responses")!;
+  const snake = {
+    type: "function",
+    function: {
+      name: "edit",
+      description: "edit a file",
+      parameters: {
+        type: "object",
+        properties: { file_path: { type: "string" }, old_string: { type: "string" }, new_string: { type: "string" } },
+        required: ["file_path", "old_string", "new_string"],
+      },
+    },
+  };
+  const body = { model: model.id, messages: [{ role: "user", content: "hi" }], tools: [snake] };
+  const out = zenUpstream.transformRequestBody!(body, model);
+  const names = (out.tools as Array<{ function: { name: string } }>).map((t) => t.function.name);
+  assert.ok(names.includes("apply_edit"), "the caller's edit is advertised under the alias");
+  assert.ok(!names.includes("edit"), "no bare edit tool reaches the gate");
+  assert.equal(snake.function.name, "edit", "the caller's tool object is not mutated");
+
+  const opencodeLike = {
+    type: "function",
+    function: {
+      name: "edit",
+      description: "edit a file",
+      parameters: { type: "object", properties: { filePath: { type: "string" }, oldString: { type: "string" } } },
+    },
+  };
+  const kept = zenUpstream.transformRequestBody!(
+    { model: model.id, messages: [{ role: "user", content: "hi" }], tools: [opencodeLike] },
+    model,
+  );
+  const keptNames = (kept.tools as Array<{ function: { name: string } }>).map((t) => t.function.name);
+  assert.ok(keptNames.includes("edit"), "a filePath-shaped edit is left alone");
+});
+
+test("a system prompt sent as content parts keeps every part and gains the env block", () => {
+  const model = ZEN_MODELS.find((m) => m.wireApi !== "responses")!;
+  const body = {
+    model: model.id,
+    messages: [
+      { role: "system", content: [{ type: "text", text: "You are a pirate." }] },
+      { role: "user", content: "hi" },
+    ],
+  };
+  const out = zenUpstream.transformRequestBody!(body, model);
+  const system = (out.messages as any[])[0];
+  assert.ok(Array.isArray(system.content), "content stays an array");
+  assert.equal(system.content[0].text, "You are a pirate.", "the caller's prompt is not replaced");
+  assert.ok(system.content.some((p: any) => p.text.includes("</env>")), "the env block is appended");
+});
