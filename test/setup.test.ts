@@ -181,32 +181,60 @@ test("9router merge and undo preserve other providers in db.json", () => {
   assert.equal(parsedMerged.providerConnections[0].id, "kiro-1");
 });
 
-test("continue adapter populates models array and supports merge", () => {
+test("continue writes the config.yaml v1 reads, nested under models", () => {
   const adapter = findAdapter("continue")!;
-  assert.ok(adapter);
   assert.equal(adapter.id, "continue");
+  assert.deepEqual(adapter.configPaths, ["~/.continue/config.yaml", ".continue/config.yaml"]);
 
-  const existingConfig = JSON.stringify({
-    models: [
-      { title: "Existing Ollama", provider: "ollama", model: "llama3" },
-    ],
-  });
-
-  const writes = adapter.render({
+  const write = adapter.render({
     baseUrl: "http://127.0.0.1:17070/v1",
     defaultModel: "mimo-v2.6-flash-free",
     models: SEEDED_MODELS,
     specificModel: false,
-  });
+  })[0]!;
 
-  assert.equal(writes.length, 1);
-  assert.equal(writes[0]!.mode, "merge");
+  assert.equal(write.path, "~/.continue/config.yaml");
+  assert.equal(write.mode, "yaml-block");
+  assert.equal(write.yamlParent, "models");
 
-  const merged = applyMergeWrite(existingConfig, writes[0]!.content);
-  const parsed = JSON.parse(merged);
-  assert.ok(parsed.models.length > 1);
-  assert.equal(parsed.models[0].title, "Existing Ollama");
-  assert.ok(parsed.models.some((m: any) => m.provider === "openai" && m.apiBase === "http://127.0.0.1:17070/v1"));
+  const existing = ["name: Mine", "version: 0.0.1", "schema: v1", "", "models:", "  - name: Mine", "    provider: ollama", "    model: llama3", ""].join("\n");
+  const merged = applyYamlBlockWrite(existing, write.content, write.markers!, write.yamlParent!);
+
+  assert.match(merged, /^  - name: Bansos - /m);
+  assert.equal(merged.match(/^models:/gm)?.length, 1);
+  assert.match(merged, /^  - name: Mine$/m);
+  assert.match(merged, /apiBase: http:\/\/127\.0\.0\.1:17070\/v1/);
+  assert.match(merged, /roles: \[chat, edit, apply\]/);
+
+  // a file without models: gets the key, and a rerun replaces instead of piling up
+  const created = applyYamlBlockWrite("name: Mine\nversion: 0.0.1\nschema: v1\n", write.content, write.markers!, write.yamlParent!);
+  assert.match(created, /^models:$/m);
+  const twice = applyYamlBlockWrite(created, write.content, write.markers!, write.yamlParent!);
+  assert.equal(twice, created);
+  assert.equal(twice.match(/Bansos - /g)?.length, SEEDED_MODELS.length);
+});
+
+test("continue undo drops our models whether or not continue kept the comments", () => {
+  const adapter = findAdapter("continue")!;
+  const write = adapter.render({
+    baseUrl: "http://127.0.0.1:17070/v1",
+    defaultModel: "a",
+    models: SEEDED_MODELS.slice(0, 2),
+    specificModel: false,
+  })[0]!;
+
+  const merged = applyYamlBlockWrite("models:\n  - name: Mine\n    provider: ollama\n", write.content, write.markers!, write.yamlParent!);
+  const withComments = removeBlock(merged, write.markers!);
+  assert.doesNotMatch(withComments, /Bansos - /);
+  assert.match(withComments, /- name: Mine/);
+
+  const rewritten = merged.replace(/^\s*# bansos-router.*\n/gm, "");
+  assert.equal(adapter.detect!(merged), true);
+  assert.equal(adapter.detect!(rewritten), true, "detection survives continue stripping our comments");
+  assert.equal(adapter.detect!("models:\n  - name: Mine\n"), false);
+  const stripped = adapter.undoContent!(rewritten);
+  assert.doesNotMatch(stripped, /Bansos - /);
+  assert.match(stripped, /- name: Mine/);
 });
 
 test("cline writes the providers file its extension, CLI and SDK all read", () => {
@@ -504,28 +532,22 @@ function renderAll(id: string, models: Array<{ id: string; name?: string; contex
 test("rerunning setup drops models that left the catalog instead of piling them up", () => {
   const before = [{ id: "old-a", name: "old-a" }, { id: "keep", name: "keep" }];
   const after = [{ id: "keep", name: "keep" }, { id: "new-b", name: "new-b" }];
-  for (const id of ["opencode", "goose", "openclaw", "continue"]) {
+  for (const id of ["opencode", "goose", "openclaw"]) {
     const w1 = renderAll(id, before);
-    const user = id === "continue" ? '{"models":[{"title":"Mine","model":"x"}]}' : id === "opencode" ? '{"theme":"dark"}' : null;
+    const user = id === "opencode" ? '{"theme":"dark"}' : null;
     const once = applyMergeWrite(user, w1.content, w1.replace);
     const w2 = renderAll(id, after);
     const twice = applyMergeWrite(once, w2.content, w2.replace);
     assert.doesNotMatch(twice, /old-a/, id);
     assert.match(twice, /new-b/, id);
     assert.equal(twice.match(/"keep"/g)?.length, 1, `${id} keeps one copy`);
-    if (user) assert.match(twice, id === "continue" ? /"Mine"/ : /"dark"/, `${id} keeps the user's own entries`);
+    if (user) assert.match(twice, /"dark"/, `${id} keeps the user's own entries`);
   }
 });
 
-test("continue undo removes every bansos entry and keeps the user's", () => {
-  const w = renderAll("continue", [{ id: "a", name: "A" }, { id: "b", name: "B" }]);
-  const merged = JSON.parse(applyMergeWrite('{"models":[{"title":"Mine","model":"x"}]}', w.content, w.replace));
-  removeKeys(merged, findAdapter("continue")!.undoKeys!);
-  assert.deepEqual(merged.models.map((m: any) => m.title), ["Mine"]);
-});
 
-test("deepseek harness writes one llm-pi-ai entry with the bansos provider", () => {
-  const adapter = findAdapter("deepseek");
+test("dsh harness writes one llm-pi-ai entry with the bansos provider", () => {
+  const adapter = findAdapter("dsh");
   assert.ok(adapter);
   const write = adapter.render({
     baseUrl: "http://127.0.0.1:17070/v1",
@@ -538,7 +560,7 @@ test("deepseek harness writes one llm-pi-ai entry with the bansos provider", () 
   assert.match(write.content, /^ {8}baseURL: http:\/\/127\.0\.0\.1:17070\/v1$/m);
   assert.match(write.content, /^ {10}- id: kilo-auto\/free$/m);
   assert.match(write.content, /apiKeyEnv: BANSOS_API_KEY/);
-  assert.match(write.content, /^ {10}x-bansos-client: deepseek$/m);
+  assert.match(write.content, /^ {10}x-bansos-client: dsh$/m);
 
   // terminal runs read the headless profile, so both get the same provider
   assert.deepEqual(
@@ -548,7 +570,7 @@ test("deepseek harness writes one llm-pi-ai entry with the bansos provider", () 
   assert.equal(adapter.undo({} as any).length, 3);
 });
 
-test("deepseek setup splices the provider into an existing llm-pi-ai entry", () => {
+test("dsh setup splices the provider into an existing llm-pi-ai entry", () => {
   const ctx = {
     baseUrl: "http://127.0.0.1:17070/v1",
     defaultModel: "glm-4.6",
@@ -590,7 +612,7 @@ test("deepseek setup splices the provider into an existing llm-pi-ai entry", () 
   assert.equal(dshMergeProviders(merged.content, ctx).status, "present");
 });
 
-test("deepseek setup refuses to edit a file it cannot splice safely", () => {
+test("dsh setup refuses to edit a file it cannot splice safely", () => {
   const ctx = { baseUrl: "http://127.0.0.1:17070/v1", defaultModel: "m", models: [{ id: "m" }] as any, specificModel: false };
   assert.equal(dshMergeProviders("- id: llm-pi-ai\n  config:\n    providers: { acme: {} }\n", ctx).status, "manual");
   assert.equal(dshMergeProviders("- id: llm-pi-ai\n  config:\n    other: 1\n", ctx).status, "manual");
@@ -603,8 +625,8 @@ test("removing a nested block keeps the indentation of what follows it", () => {
   assert.match(out, /^ {2}acme:$/m);
 });
 
-test("deepseek setup writes the key dsh insists on into $DSH_HOME/.env", () => {
-  const adapter = findAdapter("deepseek")!;
+test("dsh setup writes the key dsh insists on into $DSH_HOME/.env", () => {
+  const adapter = findAdapter("dsh")!;
   const writes = adapter.render({
     baseUrl: "http://127.0.0.1:17070/v1",
     defaultModel: "big-pickle",
@@ -619,7 +641,7 @@ test("deepseek setup writes the key dsh insists on into $DSH_HOME/.env", () => {
   assert.equal(adapter.undo({} as any).length, 3);
 });
 
-test("deepseek setup points dsh's default model at the router", () => {
+test("dsh setup points its default model at the router", () => {
   const ctx = { baseUrl: "http://127.0.0.1:17070/v1", defaultModel: "glm-4.6", models: [], specificModel: false };
   const patched = dshEnsureDefaultModel("a: 1\n# bansos-router:end\n", ctx);
   assert.match(patched, /^- id: agent-default-model\n {2}config:\n {4}provider: bansos\n {4}model: glm-4\.6\n# bansos-router:end$/m);

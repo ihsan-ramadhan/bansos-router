@@ -34,14 +34,66 @@ Legend: 🟢 config-only · 🟡 config + small adapter · 🔵 works manually, 
 | **Antigravity CLI** | n/a | `~/.gemini/antigravity-cli/settings.json` | 🔴 | No endpoint override: OAuth-only, and no settings key or env var changes the inference URL (google-antigravity/antigravity-cli#514) |
 | **JCode** | OpenAI Chat | `~/.jcode/config.toml` | 🟢 | `[provider] default_provider = "bansos"` plus a `[providers.bansos]` profile, keyless and catalog-backed |
 | **9Router** | OpenAI Chat | `~/.9router/db.json` | 🟢 | Custom compatible `providerNodes` + `providerConnections` |
-| **DeepSeek Harness (dsh)** | OpenAI Chat | `~/.dsh/profiles/{web,headless}/cordis.patch.yml` | 🟢 | Adds a `bansos` route inside each profile's existing `llm-pi-ai` entry: `api: openai-completions`, `baseURL`, `apiKeyEnv`, `headers` |
-| **Continue** | OpenAI Chat | `~/.continue/config.json` | 🟢 | Appends/merges OpenAI provider entries in `models` array |
+| **dsh** (DeepSeek Harness) | OpenAI Chat | `~/.dsh/profiles/{web,headless}/cordis.patch.yml` | 🟢 | Adds a `bansos` route inside each profile's existing `llm-pi-ai` entry: `api: openai-completions`, `baseURL`, `apiKeyEnv`, `headers` |
+| **Continue** | OpenAI Chat | `~/.continue/config.yaml` | 🟢 | Adds `models:` entries (`config.json` is ignored by Continue v1) |
 | **Cline** | OpenAI Chat | `~/.cline/data/settings/providers.json` | 🟢 | `providers.openai-compatible` with `baseUrl`, `apiKey`, `model`: the extension, CLI and SDK all read this file |
 | **Roo Code** | OpenAI Chat | VS Code global state (`state.vscdb`) | 🔵 | No config file on disk: set OpenAI Compatible by hand in the panel (Base URL, key `bansos`, model id) |
 | **OMP (Oh My Pi)** | OpenAI Chat | `~/.omp/agent/models.yml` | 🟢 | Appends `bansos` provider with `openai-models-list` discovery |
 | **Claude Desktop** | Anthropic Messages | n/a | 🔴 | No supported custom base URL; out of scope (hacky MITM only) |
 | **Copilot CLI** | n/a | n/a | 🔴 | OAuth-only, no custom endpoint |
 | **Gemini CLI** | n/a | n/a | 🔴 | Retired (June 2026) -> Antigravity CLI |
+
+## 2.1 Your harness is not in this list
+
+`bansos setup` is a convenience, not a requirement. Every row above is a config
+file pointing at the daemon; if your client is missing (an editor plugin, a
+shell one-liner, your own agent), wire it yourself. Three values cover all of
+them:
+
+| Setting | Value |
+|---|---|
+| Base URL | `http://127.0.0.1:17070/v1` for OpenAI Chat / Responses, `http://127.0.0.1:17070` for Anthropic Messages |
+| API key | anything non-empty, e.g. `bansos`: the router checks no key |
+| Model | any id from `bansos models`, or `curl -s 127.0.0.1:17070/v1/models` |
+
+Steps:
+
+1. In the client, choose "OpenAI compatible" / "custom provider" and paste the
+   base URL. Anthropic-wire clients take the bare host; the daemon adds
+   `/v1/messages` itself.
+2. Model field: one id from the catalog. A single hard-coded name is fine, the
+   router fails over to another free model on `429`/`5xx` by itself. If the
+   client insists on fetching a model list, `/v1/models` serves one.
+3. Environment-only clients: export whatever variable it reads (names differ per
+   tool: `OPENAI_BASE_URL`, `OPENAI_API_BASE`, `ANTHROPIC_BASE_URL`, …):
+
+   ```sh
+   export OPENAI_BASE_URL=http://127.0.0.1:17070/v1
+   export OPENAI_API_KEY=bansos
+   ```
+
+4. Test the endpoint before blaming the client:
+
+   ```sh
+   curl -s http://127.0.0.1:17070/v1/chat/completions \
+     -H 'content-type: application/json' \
+     -d '{"model":"deepseek-v4.1-flash-free","messages":[{"role":"user","content":"hi"}]}'
+   ```
+
+   If that answers, the daemon is fine and the client config is not.
+5. Optional: send `x-bansos-client: <your-tool>` on every request so the
+   Activity tab shows your client's name instead of guessing from the user
+   agent. It is lowercased and must start with a letter or digit and use only
+   `a-z 0-9 . _ / -`, max 32 chars; anything else falls back to the user agent.
+
+Some clients cannot be wired at all, and no adapter will appear for them: they
+sign in with OAuth and expose no endpoint override (Antigravity CLI, Copilot
+CLI), or have no base-URL setting whatsoever (Claude Desktop). Those are the 🔴
+rows.
+
+If your client does have a base-URL field but still needs more (a non-standard
+wire, a model-count limit, headers it refuses to send), open an issue with the
+config file it writes: an adapter is one entry in `src/adapters/index.ts`.
 
 ## 3. Adapter contract (implementation spec)
 
@@ -116,7 +168,7 @@ with them. Each adapter declares a `modelMode` (`list`, `tiered`, `single`,
 `discovery`) that `/bansos/adapters` reports, so the dashboard shows a checklist,
 a single picker, or nothing. With no model flag, adapters apply these defaults:
 - **Claude Code**: Maps tiers automatically (`haiku` -> the largest non-reasoning model, `sonnet` -> the smart default when it reasons, otherwise the second-largest reasoning model, `opus` -> the largest reasoning model) and sets `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`.
-- **OpenCode, Goose, OpenClaw, Continue, DeepSeek Harness**: Register all catalog models so every model is selectable in the harness.
+- **OpenCode, Goose, OpenClaw, Continue, dsh**: Register all catalog models so every model is selectable in the harness.
 - **Hermes**: The smart model becomes the live `model:`, every other model a `model_aliases` entry reachable with `/model <id>`.
 - **9Router, OMP, JCode**: Register a provider that discovers models from `/v1/models` on its own; jcode's defaults live in its `[provider]` table, not in root keys.
 - **Aider, Codex, Cline**: Default to the smart model (the preferred model in `src/upstreams/types.ts` when it is alive, otherwise the reasoning model with the largest context window) and switch freely via `/v1/models`.
@@ -285,11 +337,11 @@ list of its own.
 }
 ```
 
-### DeepSeek Harness (dsh): `$DSH_HOME/profiles/{web,headless}/cordis.patch.yml`
+### dsh (DeepSeek Harness): `$DSH_HOME/profiles/{web,headless}/cordis.patch.yml`
 
 `dsh` keeps config per profile (default home `~/.dsh`): `web` for the UI,
 `headless` for terminal runs. Each profile mounts one `llm-pi-ai` entry, so
-`bansos setup deepseek` splices a `bansos` route under that entry's existing
+`bansos setup dsh` splices a `bansos` route under that entry's existing
 `providers:` in both files instead of adding a second entry. The same block
 points `agent-default-model` at `bansos`, so dsh stops answering from
 `deepseek-official` (an entry you set yourself is left alone). A rerun replaces
@@ -307,7 +359,7 @@ only the marked block; `--undo` removes it from both.
         apiKeyEnv: BANSOS_API_KEY
         # dsh reads the key from the env or .credentials.yaml; the router checks none
         headers:
-          x-bansos-client: deepseek
+          x-bansos-client: dsh
         models:
           - id: deepseek-v4.1-flash-free
             contextWindow: 262144
@@ -327,14 +379,14 @@ BANSOS_API_KEY=bansos
 # bansos-router:end
 ```
 
-in `~/.dsh/.env` — no `export` needed, and the value is irrelevant to
+in `~/.dsh/.env`: no `export` needed, and the value is irrelevant to
 bansos-router. Providers written on one line (`providers: {...}`) are left
 alone: setup refuses and prints the block to paste by hand.
 
 dsh rewrites `cordis.patch.yml` from its own settings model on restart and can
 drop custom routes it does not recognize
 ([deepseek-ai/deepseek-harness#11074](https://github.com/deepseek-ai/deepseek-harness/discussions/11074)),
-so rerun `bansos setup deepseek` if the provider disappears after a restart.
+so rerun `bansos setup dsh` if the provider disappears after a restart.
 
 ### pi: extension (the only code adapter)
 

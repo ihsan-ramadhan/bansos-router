@@ -45,8 +45,6 @@ harness.**
                 │   keyless free upstreams        │
                 │   OpenCode Zen · KiloCode GW ·  │
                 │   LLM7 (anonymous) · OVHcloud   │
-                │   (future: OpenRouter :free,    │
-                │    Routeway, ...)               │
                 └────────────────────────────────┘
 ```
 
@@ -66,10 +64,6 @@ harness.**
    Cloudflare / Deno relays, toggled live.
 6. **Portable daemon**: works standalone (no harness required to run the
    server) so every harness can share it.
-7. **Optional local gateway chaining (roadmap M5)**: token-based local
-   gateways (freebuff-proxy, LiteLLM, 9router, ollama) can be chained as
-   **opt-in** local upstreams without polluting the keyless default set.
-   v1 scope is **keyless upstreams only**.
 
 ### Non-goals (v1)
 
@@ -77,8 +71,12 @@ harness.**
 - **Not a model host**: we route to upstreams; we never run inference.
 - **No BYOK management**: storing/rotating third-party API keys is out of
   scope initially (this is the deliberate difference from LiteLLM/Free-Way).
-- **No token-based local gateways in v1**: chaining freebuff-proxy-style
-  local gateways is roadmap M5; v1 ships keyless remote upstreams only.
+- **No account-based upstreams, ever**: a source that wants a signup, an OAuth
+  login or a stored token (OpenRouter `:free`, FreeBuff through its token
+  proxy, anything keyed) stays out permanently, not deferred to a later
+  milestone. Local gateways a user already runs may be chained through
+  `localUpstreams`, but they carry their own token and never join the default
+  keyless set.
 - **No multi-user / multi-tenant**: single-user local tool.
 - **No external telemetry**: privacy first; strictly local logs and diagnostics.
 - **No protocol we don't need**: Gemini's `generateContent` is out of scope
@@ -97,7 +95,7 @@ The core server, run via `bansos start` (foreground or `--bg`) or the
 | HTTP server | Node `http`, bound to `127.0.0.1`, port `17070`, auto-bump to next free port up to `17090` (proven pattern from pi-bansos); port/bind configurable via `~/.bansos/config.json` |
 | Inbound routes | Inference: `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1/responses`, `GET /v1/models`. Control (Web UI + CLI): `GET /healthz`, `GET /bansos/status`, `POST /bansos/refresh`, `GET /bansos/adapters[/render]`, `GET/POST /bansos/relay`, `POST /bansos/relay/probe`, `GET /bansos/usage`, `GET /bansos/events` |
 | Admin routes | `GET/POST /bansos/config`, `POST /bansos/restart`, `GET /bansos/logs`, `GET /bansos/doctor`, `POST /bansos/adapters/apply`, `GET/POST /bansos/autostart`, `GET /bansos/backup`, `POST /bansos/restore`, `POST /bansos/activity/clear` (`src/daemon/admin.ts`): answered only for loopback peers, and POSTs need a loopback Origin or none |
-| Catalog | Runtime catalog = static registry ∪ dynamic snapshots (Kilo, LLM7, OVH, and Zen via models.dev; local gateways join in M5), filtered by liveness; served by `/v1/models` (strict mode leaves out upstreams outside the allowlist); **never forwarded upstream** (prevents paid-model leakage, see §6) |
+| Catalog | Runtime catalog = static registry ∪ dynamic snapshots (Kilo, LLM7, OVH, and Zen via models.dev; user-chained local gateways list what they serve), filtered by liveness; served by `/v1/models` (strict mode leaves out upstreams outside the allowlist); **never forwarded upstream** (prevents paid-model leakage, see §6) |
 | Health checker | At startup: fetch each upstream catalog, mark models alive/dead. Periodic refresh (configurable, e.g. every 30 min) + manual refresh via CLI |
 | Protocol translation | Inbound wire -> internal normalized turn -> upstream Chat Completions. See `docs/protocols.md` |
 | Rate limiter | Local per-IP limit (protects against accidental LAN exposure; upstreams have their own limits) |
@@ -202,9 +200,9 @@ Each event carries a `client` label taken from the `User-Agent`
 (`detectHarness` in `server.ts`), so the dashboard can show which harness sent a
 request. A client may name itself with `x-bansos-client` instead, which the
 dashboard's own model ping uses (`dashboard`). Anything that announces neither a
-known harness nor a gateway — a browser, `undici`, a proxying gateway's stripped
-UA — is labelled `gateway` rather than guessed as a harness, and renders with
-the bansos-router logo.
+known harness nor a gateway is labelled `gateway` rather than guessed as a
+harness (a browser, `undici`, a proxying gateway's stripped UA), and renders
+with the bansos-router logo.
 
 ## 6. Security model
 
@@ -296,7 +294,7 @@ Responses/Messages translation ever outgrows what is reasonable to maintain.
 | Repo | Language | What bansos-router reuses / learns |
 |---|---|---|
 | [`mannnrachman/pi-bansos`](https://github.com/mannnrachman/pi-bansos) | TypeScript (pi extension) | Keyless upstream patterns (Zen spoofed headers, Kilo keyless), startup health-check, relay egress (`x-relay-target`/`x-relay-path`), auto port bump, pi `registerProvider` + `/bansos` command |
-| [`trefeon/freebuff-proxy`](https://github.com/trefeon/freebuff-proxy) | Go | Reference only (future M5 scope): production 3-wire translation in practice (chat / responses / messages), token pooling + bridge/hybrid modes, safe-mode stealth, registry refresh + per-token quota lock, admin dashboard, Go release tooling (goreleaser, service install): its ban-risk hygiene rules inform our ToS guardrails |
+| [`trefeon/freebuff-proxy`](https://github.com/trefeon/freebuff-proxy) | Go | Reference only, never adopted: it needs an account token (see non-goals). Production 3-wire translation in practice (chat / responses / messages), token pooling + bridge/hybrid modes, safe-mode stealth, registry refresh + per-token quota lock, admin dashboard, Go release tooling (goreleaser, service install): its ban-risk hygiene rules inform our ToS guardrails |
 
 ## 8. Repository layout
 
@@ -343,7 +341,7 @@ bansos-router/
 │   │   ├── kilo.ts         # KiloCode gateway (keyless)
 │   │   ├── llm7.ts         # LLM7 (keyless, dynamic catalog)
 │   │   ├── ovh.ts          # OVHcloud AI Endpoints (anonymous, seeds ∩ live)
-│   │   └── local.ts        # local OpenAI-compatible gateways (M5, no catalog yet)
+│   │   └── local.ts        # local OpenAI-compatible gateways (catalog not implemented)
 │   ├── relay/              # relay egress + deploy
 │   │   ├── egress.ts       # x-relay-target forwarding
 │   │   └── vercel.ts       # one-shot deploy (stub, M4)
@@ -370,4 +368,4 @@ bansos-router/
 | **M2: Setup CLI** | `bansos setup` adapters, `bansos start/stop`, `bansos status/models/doctor`, single `bansos` binary (+ `bansosd` alias) | Shipped (13 harnesses) |
 | **M3: Responses wire** | `/v1/responses` translation for Codex CLI | Shipped |
 | **M4: Relay UX** | `relay on/off/url/use/list/remove/deploy` + rotation | Shipped except `deploy` and rotation |
-| **M5: More upstreams** | OpenRouter `:free`, Routeway, OVHcloud anonymous tier, FreeBuff via `freebuff-proxy` (token-based local gateway, relay off), periodic health refresh | OVH, LLM7 and periodic refresh shipped; the rest open |
+| **M5: More keyless upstreams** | further zero-credential sources and provider-specific probes. Account-based sources (OpenRouter `:free`, FreeBuff) are out of scope by design | OVH, LLM7 and periodic refresh shipped; the rest open |

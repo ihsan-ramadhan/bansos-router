@@ -1,7 +1,7 @@
 import type { HarnessAdapter, SetupContext, ConfigWrite } from "./types";
 import { START_MARKER, END_MARKER } from "./types";
 import { compareModelsByCapacity, pickSmartDefaultModel, type ModelDef } from "../upstreams/types";
-import { stripJcodeDefaults } from "../cli/write";
+import { CONTINUE_ITEM_RE, removeContinueModels, stripJcodeDefaults } from "../cli/write";
 
 const tomlBlock = (): Pick<ConfigWrite, "mode" | "markers"> => ({
   mode: "overwrite-block",
@@ -433,35 +433,41 @@ function continueAdapter(): HarnessAdapter {
     name: "Continue (VS Code / JetBrains)",
     wire: "chat",
     modelMode: "list",
-    configPaths: ["~/.continue/config.json", ".continue/config.json"],
+    // continue v1 reads config.yaml only; config.json is deprecated and ignored
+    configPaths: ["~/.continue/config.yaml", ".continue/config.yaml"],
     render(ctx: SetupContext): ConfigWrite[] {
       const list = ctx.specificModel
         ? [{ id: ctx.defaultModel, name: ctx.defaultModel }]
         : ctx.models.length > 0
           ? ctx.models
           : [{ id: ctx.defaultModel, name: ctx.defaultModel }];
-      const models = list.map((m) => ({
-        title: `Bansos - ${m.name ?? m.id}`,
-        provider: "openai",
-        model: m.id,
-        apiBase: ctx.baseUrl,
-        apiKey: "bansos",
-      }));
+      const content = list
+        .map((m) =>
+          [
+            `- name: Bansos - ${m.name ?? m.id}`,
+            "  provider: openai",
+            `  model: ${m.id}`,
+            `  apiBase: ${ctx.baseUrl}`,
+            "  apiKey: bansos",
+            "  roles: [chat, edit, apply]",
+          ].join("\n"),
+        )
+        .join("\n");
       return [
         {
-          path: "~/.continue/config.json",
-          content: `${JSON.stringify({ models }, null, 2)}\n`,
-          mode: "merge",
-          replace: ["models.Bansos - *"],
+          path: "~/.continue/config.yaml",
+          content,
+          mode: "yaml-block",
+          markers: [`# ${START_MARKER}`, `# ${END_MARKER}`],
+          yamlParent: "models",
         },
       ];
     },
     undo(ctx?: SetupContext): string[] {
-      return ["~/.continue/config.json", ".continue/config.json"];
+      return ["~/.continue/config.yaml", ".continue/config.yaml"];
     },
-    undoKeys: [
-      "models.Bansos - *",
-    ],
+    detect: (content) => CONTINUE_ITEM_RE.test(content),
+    undoContent: removeContinueModels,
   };
 }
 
@@ -556,7 +562,7 @@ function dshProviderBlock(ctx: SetupContext, indent: number): string[] {
     `${pad(2)}apiKeyEnv: BANSOS_API_KEY`,
     `${pad(2)}# dsh reads the key from the env or .credentials.yaml; the router checks none`,
     `${pad(2)}headers:`,
-    `${pad(4)}x-bansos-client: deepseek`,
+    `${pad(4)}x-bansos-client: dsh`,
     `${pad(2)}models:`,
     ...models.flatMap((m) => {
       const out = [`${pad(4)}- id: ${m.id}`];
@@ -630,7 +636,7 @@ const DSH_KEY_ENV_FILE = "~/.dsh/.env";
 
 function deepseekAdapter(): HarnessAdapter {
   return {
-    id: "deepseek",
+    id: "dsh",
     name: "DeepSeek Harness (dsh)",
     wire: "chat",
     modelMode: "list",
@@ -684,7 +690,9 @@ export const ADAPTERS: HarnessAdapter[] = [
 ];
 
 export function findAdapter(id: string): HarnessAdapter | undefined {
-  return ADAPTERS.find((a) => a.id === id);
+  // the adapter shipped as "deepseek"; keep the old word working for scripts and muscle memory
+  const wanted = id === "deepseek" ? "dsh" : id;
+  return ADAPTERS.find((a) => a.id === wanted);
 }
 
 export interface ModelPick {

@@ -28,7 +28,7 @@ Free tiers rate-limit and rotate. A model that answers `401`/`403`/`429`/`5xx` i
 ## Quick start
 
 ```sh
-npm i -g bansos-router   # install
+npm i -g bansos-router   # install (Node >= 22.5)
 bansos start --bg        # daemon on 127.0.0.1:17070
 bansos setup opencode    # configure a harness, any id from below
 ```
@@ -50,11 +50,13 @@ curl http://127.0.0.1:17070/v1/chat/completions \
 | How it wires up | Harnesses | What `bansos setup` writes |
 | --- | --- | --- |
 | Tiered | `claude-code` | Haiku, Sonnet and Opus mapped to the best matching free models |
-| List | `opencode`, `goose`, `openclaw`, `continue`, `hermes`, `deepseek` (DeepSeek Harness) | every model registered, pick one in the app |
+| List | `opencode`, `goose`, `openclaw`, `continue`, `hermes`, `dsh` | every model registered, pick one in the app |
 | Discovery | `9router`, `omp`, `jcode` | a provider that lists `/v1/models` itself |
 | Single | `aider`, `codex`, `cline` | one smart default |
 
 Pin the models you want with `--model <id>`, or narrow a set with `--models <id,...> --upstream <id,...>`; `--dry-run` prints the config and `--undo` reverts it. Per-harness details live in [docs/harnesses.md](docs/harnesses.md).
+
+Not in the table? Any client that accepts a custom OpenAI-compatible base URL works by hand: base `http://127.0.0.1:17070/v1`, key `bansos` (ignored), model id from `bansos models`. See [wiring a harness by hand](docs/harnesses.md#21-your-harness-is-not-in-this-list).
 
 For [pi](https://github.com/earendil-works/pi), install the companion extension ([`extensions/pi`](extensions/pi/README.md)):
 

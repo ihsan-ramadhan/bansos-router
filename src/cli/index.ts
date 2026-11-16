@@ -83,7 +83,7 @@ Exit codes: 0 success, 1 error (daemon unreachable, unknown command/flag/model).
 "start" without --bg runs foreground and blocks (Ctrl+C stops it).
 
 Harnesses: claude-code, aider, opencode, codex, hermes, goose, openclaw,
-           jcode, 9router, continue, cline, omp, deepseek
+           jcode, 9router, continue, cline, omp, dsh
            (pi via the separate extension)
 
 Examples:

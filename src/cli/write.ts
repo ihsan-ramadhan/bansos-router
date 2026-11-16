@@ -270,6 +270,23 @@ export function applyYamlBlockWrite(
 }
 
 // remove the marked block (markers inclusive)
+// continue rewrites config.yaml through its own UI and drops our comments, so undo matches the entries
+export const CONTINUE_ITEM_RE = /^\s*-\s*name:\s*['"]?Bansos - /m;
+
+export function removeContinueModels(content: string): string {
+  const out: string[] = [];
+  let inItem = false;
+  for (const line of content.split("\n")) {
+    if (CONTINUE_ITEM_RE.test(line)) {
+      inItem = true;
+      continue;
+    }
+    if (inItem && (/^\s*-\s/.test(line) || /^\S/.test(line))) inItem = false;
+    if (!inItem) out.push(line);
+  }
+  return `${out.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\s+$/, "")}\n`;
+}
+
 export function removeBlock(
   existing: string,
   markers: [string, string],

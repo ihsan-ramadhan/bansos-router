@@ -21,7 +21,7 @@ test("harness user agents keep their own label", () => {
   assert.equal(detectHarness(req({ "user-agent": "claude-cli/2.0.1" })), "claude-code");
   assert.equal(detectHarness(req({ "user-agent": "opencode/1.2.3" })), "opencode");
   assert.equal(detectHarness(req({ "user-agent": "codex-cli/0.9" })), "codex");
-  assert.equal(detectHarness(req({ "user-agent": "deepseek-harness/0.1.0" })), "deepseek");
+  assert.equal(detectHarness(req({ "user-agent": "deepseek-harness/0.1.0" })), "dsh");
 });
 
 test("a gateway or bare runtime is never called pi", () => {

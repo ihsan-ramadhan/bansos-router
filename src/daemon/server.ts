@@ -271,7 +271,7 @@ export function detectHarness(req: http.IncomingMessage): string {
   if (ua.includes("hermes")) return "hermes";
   if (ua.includes("jcode")) return "jcode";
   if (ua.includes("openclaw")) return "openclaw";
-  if (ua.includes("deepseek") || ua.includes("dsh/")) return "deepseek";
+  if (ua.includes("deepseek") || ua.includes("dsh/")) return "dsh";
   if (ua.includes("9router")) return "9router";
   if (ua.includes("litellm")) return "litellm";
   if (ua.includes("curl")) return "curl";

@@ -5,7 +5,7 @@
   "license": "GPL-3.0-only",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.5"
   },
   "bin": {
     "bansos": "dist/cli/index.js",
