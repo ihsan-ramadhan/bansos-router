@@ -458,11 +458,47 @@ function aliasCallerEditTool(body: Record<string, unknown>): void {
   }
 }
 
+// the gate answers 429 when the caller declares a tool outside OpenCode's own vocabulary, so those turns
+// advertise the fingerprint pair only and the tool bridge maps the calls onto the caller's real tools
+const OPENCODE_TOOL_NAMES = new Set([
+  "read", "write", "edit", "bash", "shell", "glob", "grep", "list", "ls", "find", "view", "fetch",
+  "webfetch", "web_fetch", "todo", "todowrite", "todoread", "task", "subagent", "skill", "batch",
+  "patch", "apply_patch", "multiedit", "str_replace", "question", "plan", "scroll", "snap", "apply_edit",
+]);
+
+// the pair every gated turn advertises: opencode's own read + shell
+function fingerprintTools(shape: "chat" | "responses"): unknown[] {
+  return OPENCODE_EXACT_TOOLS.map((t) =>
+    shape === "responses"
+      ? {
+          type: "function",
+          name: t.function.name,
+          description: t.function.description,
+          parameters: t.function.parameters,
+        }
+      : structuredClone(t),
+  );
+}
+
+function restrictGatedTools(
+  body: Record<string, unknown>,
+  shape: "chat" | "responses" = "chat",
+): void {
+  if (!Array.isArray(body.tools) || body.tools.length === 0) return;
+  const foreign = (body.tools as unknown[]).some((tool) => {
+    const name = toolNameOf(tool).toLowerCase();
+    return name !== "" && !OPENCODE_TOOL_NAMES.has(name);
+  });
+  if (!foreign) return;
+  body.tools = fingerprintTools(shape);
+}
+
 function transformOpencodeBodyChat(body: Record<string, unknown>): Record<string, unknown> {
   body.stream = true;
   ensureChatFingerprintTools(body);
   aliasCallerEditTool(body);
   ensureOpencodeSystemPrompt(body);
+  restrictGatedTools(body);
   return body;
 }
 
@@ -480,6 +516,7 @@ function transformOpencodeBodyResponses(body: Record<string, unknown>): Record<s
   ensureResponsesFingerprintTools(body);
   aliasCallerEditTool(body);
   sanitizeResponsesItems(body);
+  restrictGatedTools(body, "responses");
   return body;
 }
 
@@ -725,6 +762,15 @@ export const zenUpstream: Upstream = {
     callerHeaders?: Record<string, string | string[] | undefined>,
   ): Record<string, string> {
     return opencodeHeaders(callerHeaders);
+  },
+
+  // the gate answers 429 on a tool set it does not know, so the same turn goes out once more with the pair
+  retryShape(body: Record<string, unknown>, model: ModelDef): Record<string, unknown> | null {
+    if (!Array.isArray(body.tools) || body.tools.length === 0) return null;
+    const shape = model.wireApi === "responses" ? "responses" : "chat";
+    const tools = fingerprintTools(shape);
+    if (JSON.stringify(body.tools) === JSON.stringify(tools)) return null;
+    return { ...body, tools };
   },
 
   transformRequestBody(body: Record<string, unknown>, model: ModelDef): Record<string, unknown> {

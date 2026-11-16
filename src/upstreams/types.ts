@@ -83,4 +83,6 @@ export interface Upstream {
   requestHeaders(model?: ModelDef, callerHeaders?: Record<string, string | string[] | undefined>): Record<string, string>;
   // optionally adapt body for upstream quirks (e.g. gateway spoofing)
   transformRequestBody?(body: Record<string, unknown>, model: ModelDef): Record<string, unknown>;
+  // a rejected tool set can be re-sent once in the upstream's own vocabulary; null when nothing would change
+  retryShape?(body: Record<string, unknown>, model: ModelDef): Record<string, unknown> | null;
 }

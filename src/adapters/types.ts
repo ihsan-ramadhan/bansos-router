@@ -33,6 +33,10 @@ export interface HarnessAdapter {
   // pure render; file writing happens in the cli (milestone M2)
   render(ctx: SetupContext): ConfigWrite[];
   undo(ctx: SetupContext): string[]; // paths that would be touched
+  // harnesses that rewrite their config and drop comments need their own "is it set up" test
+  detect?(content: string): boolean;
+  // same reason: cleanup that does not depend on the markers being still there
+  undoContent?(content: string): string;
   // for merge-mode writes: dotted keys that --undo removes
   undoKeys?: string[];
 }

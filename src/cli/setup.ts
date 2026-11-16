@@ -1,8 +1,9 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { ADAPTERS, buildSetupContext, findAdapter } from "../adapters";
-import type { HarnessAdapter, SetupContext } from "../adapters/types";
+import { ADAPTERS, buildSetupContext, findAdapter, dshMergeProviders } from "../adapters";
+import type { HarnessAdapter, SetupContext, ConfigWrite } from "../adapters/types";
+import { END_MARKER } from "../adapters/types";
 import { effectiveBind, effectivePort } from "../daemon/state";
 import { SEEDED_MODELS } from "../upstreams";
 import { modelDef, type ModelDef } from "../upstreams/types";
@@ -179,7 +180,63 @@ function printSetupLine(line: SetupLine): void {
   else console.log(out);
 }
 
+// dsh keeps one llm-pi-ai entry per profile, so the provider is spliced into it instead of appended
+function applyDeepseek(adapter: HarnessAdapter, ctx: SetupContext, report: SetupReport): number {
+  let failures = 0;
+  for (const write of adapter.render(ctx)) {
+    failures += applyDeepseekProfile(write, ctx, report);
+  }
+  return failures;
+}
+
+function applyDeepseekProfile(write: ConfigWrite, ctx: SetupContext, report: SetupReport): number {
+  // dsh has one real path per profile: never redirect a profile write elsewhere
+  const targetPath = write.path;
+  const fullPath = expandHome(targetPath);
+  const existing = fs.existsSync(fullPath) ? fs.readFileSync(fullPath, "utf8") : null;
+  const stripped = existing ? removeBlock(existing, write.markers!) : "";
+
+  if (targetPath.endsWith(".env")) {
+    writeConfig(targetPath, applyBlockWrite(stripped, write.content, write.markers!));
+    report({ kind: "ok", text: `wrote ${targetPath} (BANSOS_API_KEY, any value: the router checks none)` });
+    return 0;
+  }
+
+  const merge = dshMergeProviders(stripped, ctx);
+
+  if (merge.status === "merged") {
+    writeConfig(targetPath, dshEnsureDefaultModel(merge.content, ctx));
+    report({ kind: "ok", text: `wrote ${targetPath} (bansos provider inside the existing llm-pi-ai entry)` });
+    return 0;
+  }
+  if (merge.status === "present") {
+    report({ kind: "skip", text: `${targetPath}: llm-pi-ai already serves a bansos provider` });
+    return 0;
+  }
+  if (merge.status === "manual") {
+    report({ kind: "error", text: `${targetPath}: llm-pi-ai providers are not a block mapping, add the bansos provider by hand` });
+    report({ kind: "error", text: `bansos setup deepseek --dry-run prints the block to paste` });
+    return 1;
+  }
+
+  writeConfig(targetPath, dshEnsureDefaultModel(applyBlockWrite(stripped, write.content, write.markers!), ctx));
+  report({ kind: "ok", text: `wrote ${targetPath}` });
+  return 0;
+}
+
+// without this entry dsh keeps answering from deepseek-official, which needs a key the user may not have
+export function dshEnsureDefaultModel(content: string, ctx: SetupContext): string {
+  if (/^\s*-\s*id:\s*['"]?agent-default-model['"]?\s*$/m.test(content)) return content;
+  const entry = ["- id: agent-default-model", "  config:", "    provider: bansos", `    model: ${ctx.defaultModel}`];
+  const lines = content.split("\n");
+  const end = lines.findIndex((l) => l.trim() === `# ${END_MARKER}`);
+  if (end === -1) return `${content.replace(/\n*$/, "\n")}${entry.join("\n")}\n`;
+  lines.splice(end, 0, ...entry);
+  return lines.join("\n");
+}
+
 export function applyAdapter(adapter: HarnessAdapter, ctx: SetupContext, report: SetupReport = printSetupLine): number {
+  if (adapter.id === "deepseek") return applyDeepseek(adapter, ctx, report);
   let failed = 0;
   for (const write of adapter.render(ctx)) {
     const targetPath = resolveTargetFile(adapter, write.path);
@@ -257,9 +314,11 @@ export function undoAdapter(adapter: HarnessAdapter, ctx: SetupContext, report: 
       const first = adapter.render(ctx)[0];
       const markers = first?.markers;
       if (markers) {
-        const out = first.mode === "toml-block" && writePath.endsWith(".toml")
+        const marked = first.mode === "toml-block" && writePath.endsWith(".toml")
           ? removeTomlBlock(existing, markers)
           : removeBlock(existing, markers);
+        // the harness may have rewritten the file without our comments
+        const out = marked === existing && adapter.undoContent ? adapter.undoContent(existing) : marked;
         if (out === existing) {
           report({ kind: "skip", text: `${writePath}: no bansos block found` });
         } else {

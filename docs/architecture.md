@@ -198,6 +198,14 @@ start and renamed `activity.json.migrated`. `maxBodyBytes` (default 10 MB,
 clamped to 1 MB–256 MB) caps an inbound request body, so base64 screenshots and
 PDFs fit once raised.
 
+Each event carries a `client` label taken from the `User-Agent`
+(`detectHarness` in `server.ts`), so the dashboard can show which harness sent a
+request. A client may name itself with `x-bansos-client` instead, which the
+dashboard's own model ping uses (`dashboard`). Anything that announces neither a
+known harness nor a gateway — a browser, `undici`, a proxying gateway's stripped
+UA — is labelled `gateway` rather than guessed as a harness, and renders with
+the bansos-router logo.
+
 ## 6. Security model
 
 | Threat | Mitigation |
@@ -359,7 +367,7 @@ bansos-router/
 |---|---|---|
 | **M0: Core daemon** | Server, path guards, rate limit, catalog, OpenCode Zen upstream, health check, `/v1/chat/completions` + `/v1/models` | Shipped |
 | **M1: Anthropic wire** | `/v1/messages` translation (system, tools, thinking, SSE) | Shipped |
-| **M2: Setup CLI** | `bansos setup` adapters, `bansos start/stop`, `bansos status/models/doctor`, single `bansos` binary (+ `bansosd` alias) | Shipped (14 harnesses) |
+| **M2: Setup CLI** | `bansos setup` adapters, `bansos start/stop`, `bansos status/models/doctor`, single `bansos` binary (+ `bansosd` alias) | Shipped (13 harnesses) |
 | **M3: Responses wire** | `/v1/responses` translation for Codex CLI | Shipped |
 | **M4: Relay UX** | `relay on/off/url/use/list/remove/deploy` + rotation | Shipped except `deploy` and rotation |
 | **M5: More upstreams** | OpenRouter `:free`, Routeway, OVHcloud anonymous tier, FreeBuff via `freebuff-proxy` (token-based local gateway, relay off), periodic health refresh | OVH, LLM7 and periodic refresh shipped; the rest open |

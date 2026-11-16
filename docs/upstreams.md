@@ -53,7 +53,7 @@ The catalog is **live-first with a pinned fallback**:
 | Spoofed headers | `User-Agent: opencode/latest/2.1.3/cli`, `authorization: Bearer public`, `x-opencode-client: cli`, `x-opencode-project: <hex40>`, `x-opencode-session: <session_id>`, `x-session-affinity: <session_id>`, `b3`, `traceparent` |
 | Model source | models.dev free models (`cost.input === 0`, not deprecated) intersected with live `GET /v1/models`, plus the pinned seed (`src/upstreams/zen.ts`); seeded ids missing from the live list, or marked paid or deprecated by models.dev, are probed keyless and dropped if the probe fails. A non-seeded id models.dev marks paid never enters, and a seeded one stays only while it still answers without a key, so the catalog cannot leak paid models |
 | Rate limit | Unpublished; treated as best-effort |
-| Gateway quirk | The free-tier gate requires `stream: true`, the presence of core tools (`read` + `shell`), an `<env>` block in the system prompt, and Cloudflare JA4 TLS fingerprint matching BoringSSL. The daemon auto-spawns the local OpenCode background service (`opencode serve --service`) if installed to reuse live session affinity. When neither OpenCode nor Bun is available, requests auto-failover to Kilo/LLM7/OVH. |
+| Gateway quirk | The free-tier gate requires `stream: true`, the presence of core tools (`read` + `shell`), a tool vocabulary it recognises (see §2.1.1: any foreign tool name *or* description answers `429`), an `<env>` block in the system prompt, and Cloudflare JA4 TLS fingerprint matching BoringSSL. The daemon auto-spawns the local OpenCode background service (`opencode serve --service`) if installed to reuse live session affinity. When neither OpenCode nor Bun is available, requests auto-failover to Kilo/LLM7/OVH. |
 
 #### 2.1.1 Consequences of the injected tools
 
@@ -103,6 +103,17 @@ looks for the caller's equivalent and re-emits the call under that name:
 - a caller's own `edit` without opencode's `filePath` argument is advertised
   as `apply_edit`, because the gate answers `429` to a bare `edit`, and bridged
   back to the caller's `edit` with identical arguments;
+- a caller that declares any tool outside opencode's vocabulary (`read`, `write`,
+  `edit`, `bash`, `shell`, `glob`, `grep`, `list`, `webfetch`, `todowrite`,
+  `task`, `batch`, `patch`, `skill`, …) gets the fingerprint pair only: the gate
+  answers `429` to every foreign tool name and description, so dsh's 23 tools
+  (`create_goal`, `job_kill`, `workflow`, …) never reach it and the bridge maps
+  its `shell` call back onto the caller's `bash`;
+- the vocabulary list is a guess about what the gate tolerates, so a `429`
+  whose body reads `free usage limit` re-sends that single turn once with the
+  fingerprint pair (`Upstream.retryShape`) when the tools were not narrowed
+  already — the upstream, not the list, decides; an exhausted daily quota still
+  fails after that one retry;
 - a caller's own `read`/`shell` is never bridged;
 - required description-style fields (`i` in OMP, `intent`, `description`,
   `reason`) are filled with a short "Run …"/"Read …" line; any other required

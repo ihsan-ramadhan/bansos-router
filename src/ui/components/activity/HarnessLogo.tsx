@@ -48,6 +48,8 @@ export function HarnessLogo({ name = "", className = "h-8 w-8 shrink-0 object-co
   } else if (n.includes("jcode")) {
     src = "/harnesses/jcode.svg";
     adaptClass = "harness-icon-black-adapt";
+  } else if (n.includes("deepseek") || n.includes("dsh")) {
+    src = "/harnesses/deepseek.svg";
   } else if (n.includes("openclaw")) {
     src = "/harnesses/openclaw.svg";
   }

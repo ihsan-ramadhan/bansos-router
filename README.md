@@ -50,9 +50,9 @@ curl http://127.0.0.1:17070/v1/chat/completions \
 | How it wires up | Harnesses | What `bansos setup` writes |
 | --- | --- | --- |
 | Tiered | `claude-code` | Haiku, Sonnet and Opus mapped to the best matching free models |
-| List | `opencode`, `goose`, `openclaw`, `continue` | every model registered, pick one in the app |
-| Discovery | `9router`, `omp` | a provider that lists `/v1/models` itself |
-| Single | `aider`, `codex`, `hermes`, `antigravity`, `jcode`, `cline`, `roo` | one smart default |
+| List | `opencode`, `goose`, `openclaw`, `continue`, `hermes`, `deepseek` (DeepSeek Harness) | every model registered, pick one in the app |
+| Discovery | `9router`, `omp`, `jcode` | a provider that lists `/v1/models` itself |
+| Single | `aider`, `codex`, `cline` | one smart default |
 
 Pin the models you want with `--model <id>`, or narrow a set with `--models <id,...> --upstream <id,...>`; `--dry-run` prints the config and `--undo` reverts it. Per-harness details live in [docs/harnesses.md](docs/harnesses.md).
 

@@ -1,6 +1,7 @@
 import type { HarnessAdapter, SetupContext, ConfigWrite } from "./types";
 import { START_MARKER, END_MARKER } from "./types";
 import { compareModelsByCapacity, pickSmartDefaultModel, type ModelDef } from "../upstreams/types";
+import { stripJcodeDefaults } from "../cli/write";
 
 const tomlBlock = (): Pick<ConfigWrite, "mode" | "markers"> => ({
   mode: "overwrite-block",
@@ -135,7 +136,7 @@ function opencodeAdapter(): HarnessAdapter {
       const provider = {
         bansos: {
           npm: "@ai-sdk/openai-compatible",
-          options: { baseURL: ctx.baseUrl },
+          options: { baseURL: ctx.baseUrl, apiKey: "bansos", headers: { "x-bansos-client": "opencode" } },
           models: modelEntries,
         },
       };
@@ -177,6 +178,7 @@ function codexAdapter(): HarnessAdapter {
         `base_url = "${ctx.baseUrl}"`,
         `experimental_bearer_token = "bansos"`,
         `wire_api = "responses"`,
+        `http_headers = { "x-bansos-client" = "codex" }`,
       ];
       return [
         {
@@ -199,15 +201,30 @@ function hermesAdapter(): HarnessAdapter {
     id: "hermes",
     name: "Hermes (Nous)",
     wire: "chat",
-    modelMode: "single",
+    // one live model as the default, every picked model as a /model alias
+    modelMode: "list",
     configPaths: ["~/.hermes/config.yaml"],
     render(ctx: SetupContext): ConfigWrite[] {
+      const aliases = (ctx.specificModel ? [] : ctx.models).filter((m) => m.id !== ctx.defaultModel);
       const yaml = [
         `# ${START_MARKER}`,
         `model:`,
         `  provider: custom`,
         `  default: "${ctx.defaultModel}"`,
         `  base_url: "${ctx.baseUrl}"`,
+        `  api_key: bansos`,
+        ...(aliases.length > 0
+          ? [
+              `model_aliases:`,
+              ...aliases.flatMap((m) => [
+                `  ${m.id}:`,
+                `    model: ${m.id}`,
+                `    provider: custom`,
+                `    base_url: "${ctx.baseUrl}"`,
+                `    api_key: bansos`,
+              ]),
+            ]
+          : []),
         `# ${END_MARKER}`,
       ];
       return [
@@ -243,7 +260,10 @@ function gooseAdapter(): HarnessAdapter {
         name: "bansos",
         engine: "openai",
         display_name: "Bansos Router",
+        description: "Free keyless models via bansos-router",
+        api_key_env: "BANSOS_API_KEY",
         base_url: ctx.baseUrl,
+        headers: { "x-bansos-client": "goose" },
         models,
       };
       return [
@@ -259,7 +279,7 @@ function gooseAdapter(): HarnessAdapter {
       return ["~/.config/goose/custom_providers/bansos.json"];
     },
     // file is dedicated to bansos; undo removes it entirely
-    undoKeys: ["name", "engine", "display_name", "base_url", "models"],
+    undoKeys: ["name", "engine", "display_name", "description", "api_key_env", "base_url", "headers", "models"],
   };
 }
 
@@ -286,6 +306,8 @@ function openclawAdapter(): HarnessAdapter {
           providers: {
             bansos: {
               baseUrl: ctx.baseUrl,
+              apiKey: "bansos",
+              api: "openai-completions",
               models,
             },
           },
@@ -311,62 +333,28 @@ function openclawAdapter(): HarnessAdapter {
   };
 }
 
-function antigravityAdapter(): HarnessAdapter {
-  return {
-    id: "antigravity",
-    name: "Antigravity CLI",
-    wire: "chat",
-    modelMode: "single",
-    configPaths: ["~/.config/antigravity/config.toml"],
-    render(ctx: SetupContext): ConfigWrite[] {
-      const toml = [
-        `# ${START_MARKER}`,
-        `base_url = "${ctx.baseUrl}"`,
-        `model = "${ctx.defaultModel}"`,
-        `api_key = "bansos"`,
-        `# ${END_MARKER}`,
-      ];
-      return [
-        {
-          path: "~/.config/antigravity/config.toml",
-          content: `${toml.join("\n")}\n`,
-          ...tomlBlock(),
-        },
-      ];
-    },
-    undo(): string[] {
-      return ["~/.config/antigravity/config.toml"];
-    },
-  };
-}
-
 function jcodeAdapter(): HarnessAdapter {
   return {
     id: "jcode",
     name: "JCode",
     wire: "chat",
-    modelMode: "single",
-    configPaths: ["~/.jcode/config.toml", "~/.config/jcode/openai-compatible.env"],
+    // jcode lists models from the provider's own /models endpoint
+    modelMode: "discovery",
+    configPaths: ["~/.jcode/config.toml"],
     render(ctx: SetupContext): ConfigWrite[] {
-      const targetModel = ctx.models.find((m) => m.id === ctx.defaultModel);
-      const contextWindow = targetModel?.contextWindow || 256000;
       const toml = [
-        `default_provider = "openai-compatible"`,
+        // jcode only reads its startup selection from this table, not from root keys
+        `[provider]`,
+        `default_provider = "bansos"`,
         `default_model = "${ctx.defaultModel}"`,
         "",
-        `[providers.openai-compatible]`,
-        `type = "open-ai-compatible"`,
+        `[providers.bansos]`,
+        `type = "openai-compatible"`,
         `base_url = "${ctx.baseUrl}"`,
-        `auth = "bearer"`,
+        // the router accepts any key; naming one only sends jcode looking for a file
+        `auth = "none"`,
+        `requires_api_key = false`,
         `model_catalog = true`,
-        `context_window = ${contextWindow}`,
-      ];
-      const envLines = [
-        `# ${START_MARKER}`,
-        `JCODE_OPENAI_COMPAT_API_BASE=${ctx.baseUrl.replace(/\/v1$/, "")}`,
-        `OPENAI_COMPAT_API_KEY=bansos`,
-        `JCODE_OPENAI_COMPAT_LOCAL_ENABLED=1`,
-        `# ${END_MARKER}`,
       ];
       return [
         {
@@ -374,19 +362,17 @@ function jcodeAdapter(): HarnessAdapter {
           content: `${toml.join("\n")}\n`,
           mode: "toml-block",
           markers: [`# ${START_MARKER}`, `# ${END_MARKER}`],
-          tomlTable: "providers.openai-compatible",
-        },
-        {
-          path: "~/.config/jcode/openai-compatible.env",
-          content: `${envLines.join("\n")}\n`,
-          mode: "overwrite-block",
-          markers: [`# ${START_MARKER}`, `# ${END_MARKER}`],
+          // the writer merges into the table it is given: [provider] is the one a jcode user already has
+          tomlTable: "provider",
         },
       ];
     },
     undo(): string[] {
-      return ["~/.jcode/config.toml", "~/.config/jcode/openai-compatible.env"];
+      return ["~/.jcode/config.toml"];
     },
+    // jcode rewrites config.toml from its own model and drops comments, so the markers do not survive
+    detect: (content) => /^\[providers\.bansos\]\s*$/m.test(content),
+    undoContent: stripJcodeDefaults,
   };
 }
 
@@ -479,68 +465,47 @@ function continueAdapter(): HarnessAdapter {
   };
 }
 
-const OPENAI_COMPAT_UNDO_KEYS = [
-  "apiProvider",
-  "openAiBaseUrl",
-  "openAiApiKey",
-  "openAiModelId",
-  "openAiCustomModelInfo",
-];
-
-function renderOpenAiCompatConfig(ctx: SetupContext, configPath: string): ConfigWrite[] {
-  const targetModel = ctx.models.find((m) => m.id === ctx.defaultModel);
-  const cfg = {
-    apiProvider: "openai-compatible",
-    openAiBaseUrl: ctx.baseUrl,
-    openAiApiKey: "bansos",
-    openAiModelId: ctx.defaultModel,
-    openAiCustomModelInfo: {
-      contextWindow: targetModel?.contextWindow || 262144,
-      maxTokens: targetModel?.maxTokens || 65536,
-    },
-  };
-  return [
-    {
-      path: configPath,
-      content: `${JSON.stringify(cfg, null, 2)}\n`,
-      mode: "merge",
-    },
-  ];
-}
-
+// cline keeps provider settings in one file the extension, CLI and SDK all read
 function clineAdapter(): HarnessAdapter {
   return {
     id: "cline",
-    name: "Cline (VS Code)",
+    name: "Cline (VS Code / CLI)",
     wire: "chat",
     modelMode: "single",
-    configPaths: ["~/.config/cline/config.json", "~/.cline/config.json"],
+    configPaths: ["~/.cline/data/settings/providers.json"],
     render(ctx: SetupContext): ConfigWrite[] {
-      return renderOpenAiCompatConfig(ctx, "~/.config/cline/config.json");
+      const targetModel = ctx.models.find((m) => m.id === ctx.defaultModel);
+      const cfg = {
+        version: 1,
+        lastUsedProvider: "openai-compatible",
+        providers: {
+          "openai-compatible": {
+            provider: "openai-compatible",
+            apiKey: "bansos",
+            model: ctx.defaultModel,
+            baseUrl: ctx.baseUrl,
+            contextWindow: targetModel?.contextWindow || 262144,
+            maxTokens: targetModel?.maxTokens || 65536,
+            headers: { "x-bansos-client": "cline" },
+          },
+        },
+      };
+      return [
+        {
+          path: "~/.cline/data/settings/providers.json",
+          content: `${JSON.stringify(cfg, null, 2)}\n`,
+          mode: "merge",
+          replace: ["providers.openai-compatible"],
+        },
+      ];
     },
     undo(): string[] {
-      return ["~/.config/cline/config.json", "~/.cline/config.json"];
+      return ["~/.cline/data/settings/providers.json"];
     },
-    undoKeys: OPENAI_COMPAT_UNDO_KEYS,
+    undoKeys: ["providers.openai-compatible", "lastUsedProvider"],
   };
 }
 
-function rooAdapter(): HarnessAdapter {
-  return {
-    id: "roo",
-    name: "Roo Code (VS Code)",
-    wire: "chat",
-    modelMode: "single",
-    configPaths: ["~/.config/roo-cline/config.json", "~/.roo-cline/config.json"],
-    render(ctx: SetupContext): ConfigWrite[] {
-      return renderOpenAiCompatConfig(ctx, "~/.config/roo-cline/config.json");
-    },
-    undo(): string[] {
-      return ["~/.config/roo-cline/config.json", "~/.roo-cline/config.json"];
-    },
-    undoKeys: OPENAI_COMPAT_UNDO_KEYS,
-  };
-}
 function ompAdapter(): HarnessAdapter {
   return {
     id: "omp",
@@ -552,6 +517,7 @@ function ompAdapter(): HarnessAdapter {
       // column 0; applyYamlBlockWrite nests it under providers: at the right indent
       const child = [
         `bansos:`,
+        `  name: bansos-router`,
         `  baseUrl: "${ctx.baseUrl}"`,
         `  apiKey: bansos`,
         `  api: openai-completions`,
@@ -575,6 +541,132 @@ function ompAdapter(): HarnessAdapter {
   };
 }
 
+// dsh ships one profile directory per entry point: web UI and terminal runs
+const DSH_PROFILES = ["web", "headless"];
+const DSH_ENTRY_RE = /^\s*-\s*(?:id|name):\s*['"]?(?:llm-pi-ai|@deepseek-ai\/dsh-llm-pi-ai)['"]?\s*$/;
+
+function dshProviderBlock(ctx: SetupContext, indent: number): string[] {
+  const pad = (n: number) => " ".repeat(indent + n);
+  const models = ctx.models.length > 0 ? ctx.models : [{ id: ctx.defaultModel } as ModelDef];
+  return [
+    `${pad(0)}bansos:`,
+    `${pad(2)}displayName: Bansos Router`,
+    `${pad(2)}api: openai-completions`,
+    `${pad(2)}baseURL: ${ctx.baseUrl}`,
+    `${pad(2)}apiKeyEnv: BANSOS_API_KEY`,
+    `${pad(2)}# dsh reads the key from the env or .credentials.yaml; the router checks none`,
+    `${pad(2)}headers:`,
+    `${pad(4)}x-bansos-client: deepseek`,
+    `${pad(2)}models:`,
+    ...models.flatMap((m) => {
+      const out = [`${pad(4)}- id: ${m.id}`];
+      if (m.contextWindow) out.push(`${pad(6)}contextWindow: ${m.contextWindow}`);
+      if (m.maxTokens) out.push(`${pad(6)}maxTokens: ${m.maxTokens}`);
+      if (m.input?.length) out.push(`${pad(6)}input: [${m.input.join(", ")}]`);
+      return out;
+    }),
+  ];
+}
+
+export type DshMerge =
+  | { status: "merged"; content: string }
+  | { status: "present" }
+  | { status: "manual" }
+  | { status: "no-entry" };
+
+// dsh mounts a single llm-pi-ai entry: a second one would replace the providers it already holds
+export function dshMergeProviders(content: string, ctx: SetupContext): DshMerge {
+  const lines = content.split("\n");
+  const entryIdx = lines.findIndex((l) => DSH_ENTRY_RE.test(l));
+  if (entryIdx === -1) return { status: "no-entry" };
+  const entryIndent = lines[entryIdx]!.length - lines[entryIdx]!.trimStart().length;
+
+  let entryEnd = lines.length;
+  for (let i = entryIdx + 1; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (!line.trim()) continue;
+    const indent = line.length - line.trimStart().length;
+    if (indent <= entryIndent && /^\s*-/.test(line)) {
+      entryEnd = i;
+      break;
+    }
+  }
+
+  let providersIdx = -1;
+  for (let i = entryIdx + 1; i < entryEnd; i++) {
+    if (/^\s*providers:\s*(#.*)?$/.test(lines[i]!)) {
+      providersIdx = i;
+      break;
+    }
+    if (/^\s*providers:\s*\S/.test(lines[i]!)) return { status: "manual" };
+  }
+  if (providersIdx === -1) return { status: "manual" };
+
+  const providersIndent = lines[providersIdx]!.length - lines[providersIdx]!.trimStart().length;
+  let insertAt = providersIdx + 1;
+  for (let i = providersIdx + 1; i < entryEnd; i++) {
+    const line = lines[i]!;
+    if (!line.trim()) continue;
+    const indent = line.length - line.trimStart().length;
+    if (indent <= providersIndent) break;
+    if (/^\s*bansos:/.test(line)) return { status: "present" };
+    insertAt = i + 1;
+  }
+
+  const indent = providersIndent + 2;
+  const marker = " ".repeat(indent);
+  lines.splice(
+    insertAt,
+    0,
+    `${marker}# ${START_MARKER}`,
+    ...dshProviderBlock(ctx, indent),
+    `${marker}# ${END_MARKER}`,
+  );
+  return { status: "merged", content: lines.join("\n") };
+}
+
+// dsh resolves apiKeyEnv through its own store, the launch environment, then $DSH_HOME/.env
+const DSH_KEY_ENV_FILE = "~/.dsh/.env";
+
+function deepseekAdapter(): HarnessAdapter {
+  return {
+    id: "deepseek",
+    name: "DeepSeek Harness (dsh)",
+    wire: "chat",
+    modelMode: "list",
+    configPaths: [
+      ...DSH_PROFILES.map((p) => `~/.dsh/profiles/${p}/cordis.patch.yml`),
+      DSH_KEY_ENV_FILE,
+    ],
+    render(ctx: SetupContext): ConfigWrite[] {
+      const lines = [
+        `# ${START_MARKER}`,
+        `- id: llm-pi-ai`,
+        `  config:`,
+        `    providers:`,
+        ...dshProviderBlock(ctx, 6),
+        `# ${END_MARKER}`,
+      ];
+      return [
+        ...DSH_PROFILES.map((p) => ({
+          path: `~/.dsh/profiles/${p}/cordis.patch.yml`,
+          content: `${lines.join("\n")}\n`,
+          ...yamlBlock(),
+        })),
+        {
+          path: DSH_KEY_ENV_FILE,
+          // dsh fails a route whose key var is unset even though the router checks no key
+          content: "BANSOS_API_KEY=bansos\n",
+          ...yamlBlock(),
+        },
+      ];
+    },
+    undo(): string[] {
+      return [...DSH_PROFILES.map((p) => `~/.dsh/profiles/${p}/cordis.patch.yml`), DSH_KEY_ENV_FILE];
+    },
+  };
+}
+
 export const ADAPTERS: HarnessAdapter[] = [
   claudeCodeAdapter(),
   aiderAdapter(),
@@ -583,13 +675,12 @@ export const ADAPTERS: HarnessAdapter[] = [
   hermesAdapter(),
   gooseAdapter(),
   openclawAdapter(),
-  antigravityAdapter(),
   jcodeAdapter(),
   nineRouterAdapter(),
   continueAdapter(),
   clineAdapter(),
-  rooAdapter(),
   ompAdapter(),
+  deepseekAdapter(),
 ];
 
 export function findAdapter(id: string): HarnessAdapter | undefined {

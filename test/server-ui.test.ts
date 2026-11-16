@@ -283,7 +283,7 @@ test("render writes only the picked models and upstreams, and refuses bad picks"
     const mode = (id: string) => adapters.find((a) => a.id === id)?.modelMode;
     assert.deepEqual(
       ["opencode", "claude-code", "aider", "jcode", "omp", "9router"].map(mode),
-      ["list", "tiered", "single", "single", "discovery", "discovery"],
+      ["list", "tiered", "single", "discovery", "discovery", "discovery"],
     );
   } finally {
     await close();

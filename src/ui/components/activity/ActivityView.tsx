@@ -3,6 +3,7 @@ import { RefreshCw } from "lucide-preact";
 import type { ActivityEvent, UsageStats, InFlightRequest } from "../../types";
 import { fetchEvents, fetchUsage } from "../../services/api";
 import { LiveRouting } from "./LiveRouting";
+import { HarnessLogo } from "./HarnessLogo";
 import { exactTitle, formatCount, formatExact } from "../../utils/format";
 
 function formatDuration(ms: number): string {
@@ -354,13 +355,14 @@ export function ActivityView() {
             <table className="w-full text-left border-collapse table-fixed">
               <thead className="bg-[#0c0e14] text-[11px] sm:text-xs font-medium text-[#a1a1aa]">
                 <tr>
-                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] whitespace-nowrap w-17 sm:w-[13%]">When</th>
-                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] text-center w-13 sm:w-[11%]">Status</th>
-                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] text-center w-14 sm:w-[11%]">Type</th>
-                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] whitespace-nowrap w-30 sm:w-[23%]">Model</th>
-                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] whitespace-nowrap w-16 sm:w-[11%]">Upstream</th>
-                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] text-right whitespace-nowrap w-25 sm:w-[16%]">In/Out</th>
-                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] text-right whitespace-nowrap w-17 sm:w-[15%]">Latency</th>
+                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] whitespace-nowrap w-17 sm:w-[12%]">When</th>
+                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] text-center w-13 sm:w-[10%]">Status</th>
+                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] w-24 sm:w-[15%]">Client</th>
+                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] text-center w-14 sm:w-[9%]">Type</th>
+                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] whitespace-nowrap w-30 sm:w-[20%]">Model</th>
+                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] whitespace-nowrap w-16 sm:w-[10%]">Upstream</th>
+                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] text-right whitespace-nowrap w-25 sm:w-[13%]">In/Out</th>
+                  <th className="py-2 px-1.5 sm:px-2 text-[11px] font-medium text-[#a1a1aa] text-right whitespace-nowrap w-17 sm:w-[11%]">Latency</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#202026] text-xs">
@@ -390,6 +392,14 @@ export function ActivityView() {
                           {e.statusCode ?? "ERR"}
                         </span>
                       )}
+                    </td>
+                    <td className="py-2 px-1.5 sm:px-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <HarnessLogo name={e.client ?? ""} className="h-3.5 w-3.5 shrink-0 object-contain rounded-sm" />
+                        <span className="font-mono text-[11px] text-[#d4d4d8] truncate" title={e.client ?? "unknown client"}>
+                          {e.client ?? "unknown"}
+                        </span>
+                      </div>
                     </td>
                     <td className="py-2 px-1.5 sm:px-2 text-center">
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#202028] text-[#a1a1aa] border border-[#2c2c36] font-medium">

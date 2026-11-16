@@ -119,7 +119,9 @@ export function harnessStatuses(): HarnessStatus[] {
     if (content.includes("\u0000")) {
       return { id: adapter.id, status: "unconfigured", path: found };
     }
-    const configured = adapter.undoKeys ? hasKeys(content, adapter.undoKeys) : content.includes(START_MARKER);
+    const configured = adapter.undoKeys
+      ? hasKeys(content, adapter.undoKeys)
+      : (adapter.detect?.(content) ?? content.includes(START_MARKER));
     return { id: adapter.id, status: configured ? "configured" : "unconfigured", path: found };
   });
 }

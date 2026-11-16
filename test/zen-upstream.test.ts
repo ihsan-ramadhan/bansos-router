@@ -40,18 +40,19 @@ test("zenUpstream transformRequestBody enforces streaming and injects required t
   assert.ok(names1.includes("shell"));
 
   // client already has custom tools -> keep them and ensure read + shell are present
+  const paidModel = { ...model, id: "big-pickle" };
   const body2 = zenUpstream.transformRequestBody!({
-    model: model.id,
+    model: paidModel.id,
     messages: [{ role: "user", content: "hi" }],
-    tools: [{ type: "function", function: { name: "custom_tool" } }],
+    tools: [{ type: "function", function: { name: "grep" } }],
     tool_choice: "auto",
-  }, model);
+  }, paidModel);
 
   // caller's tool_choice is preserved
   assert.equal(body2.tool_choice, "auto");
   const tools2 = body2.tools as Array<{ type: string; function: { name: string } }>;
   const names2 = tools2.map((t) => t.function.name);
-  assert.ok(names2.includes("custom_tool"));
+  assert.ok(names2.includes("grep"));
   assert.ok(names2.includes("read"));
   assert.ok(names2.includes("shell"));
 });
@@ -86,7 +87,7 @@ test("spoof tools are injected on both chat and responses wire", () => {
 });
 
 test("a caller's own tool_choice survives tool injection", () => {
-  const responses = ZEN_MODELS.find((m) => m.wireApi === "responses")!;
+  const responses = { ...ZEN_MODELS.find((m) => m.wireApi === "responses")!, id: "big-pickle" };
   const out = zenUpstream.transformRequestBody!(
     { model: "x", messages: [], tool_choice: "auto", tools: [{ type: "function", name: "grep" }] },
     responses,
@@ -94,6 +95,56 @@ test("a caller's own tool_choice survives tool injection", () => {
   assert.equal(out.tool_choice, "auto");
   assert.ok((out.tools as unknown[]).some((t: any) => t?.name === "grep"), "caller tool kept");
 });
+test("a tool outside opencode's vocabulary collapses the set to the fingerprint pair", () => {
+  const model = ZEN_MODELS.find((m) => m.id.endsWith("-free") && m.wireApi !== "responses")!;
+  const body = {
+    model: model.id,
+    messages: [{ role: "user", content: "hi" }],
+    tools: [
+      { type: "function", function: { name: "bash", description: "run", parameters: { type: "object" } } },
+      { type: "function", function: { name: "create_goal", description: "goal", parameters: { type: "object" } } },
+    ],
+  };
+  const out = zenUpstream.transformRequestBody!(body, model);
+  const names = (out.tools as Array<{ function: { name: string } }>).map((t) => t.function.name);
+  // anything outside opencode's own set is a 429, so the gate only ever sees the fingerprint pair
+  assert.deepEqual(names, ["read", "shell"]);
+  assert.equal((body.tools as unknown[]).length, 2, "the caller's tools array is untouched");
+
+  // a caller that stays inside the vocabulary keeps every tool it declared
+  const familiar = {
+    ...body,
+    tools: [
+      { type: "function", function: { name: "bash", description: "run", parameters: { type: "object" } } },
+      { type: "function", function: { name: "grep", description: "search", parameters: { type: "object" } } },
+    ],
+  };
+  const kept = zenUpstream.transformRequestBody!(familiar, model);
+  const keptNames = (kept.tools as Array<{ function: { name: string } }>).map((t) => t.function.name);
+  assert.ok(keptNames.includes("bash"));
+  assert.ok(keptNames.includes("grep"));
+});
+
+test("retryShape narrows any tool set to the pair, and reports null when it already is", () => {
+  const model = ZEN_MODELS[0]!;
+  const body = {
+    model: model.id,
+    messages: [{ role: "user", content: "hi" }],
+    tools: [
+      { type: "function", function: { name: "edit", description: "Edit an existing UTF-8 text file", parameters: { type: "object" } } },
+    ],
+  };
+  const shaped = zenUpstream.retryShape!(body, model)!;
+  const names = (shaped.tools as Array<{ function: { name: string } }>).map((t) => t.function.name);
+  assert.deepEqual(names, ["read", "shell"]);
+  assert.equal((body.tools as unknown[]).length, 1, "the original body is untouched");
+
+  // already the pair -> nothing left to change
+  assert.equal(zenUpstream.retryShape!(shaped, model), null);
+  // no tools at all -> nothing to reshape
+  assert.equal(zenUpstream.retryShape!({ model: model.id, messages: [] }, model), null);
+});
+
 test("a caller's read/shell satisfy the gate and are never renamed or leaked", () => {
   const model = ZEN_MODELS.find((m) => m.wireApi !== "responses")!;
   const out = zenUpstream.transformRequestBody!(
@@ -122,7 +173,7 @@ test("fingerprint injection never leaks into the caller's own body", () => {
 });
 
 test("a caller edit tool without opencode's filePath is advertised as apply_edit (gate 429s it otherwise)", () => {
-  const model = ZEN_MODELS.find((m) => m.wireApi !== "responses")!;
+  const model = { ...ZEN_MODELS.find((m) => m.wireApi !== "responses")!, id: "big-pickle" };
   const snake = {
     type: "function",
     function: {

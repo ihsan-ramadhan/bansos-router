@@ -8,7 +8,7 @@
 
 | Endpoint | Protocol | Used by (examples) |
 |---|---|---|
-| `POST /v1/chat/completions` | OpenAI Chat Completions | pi, Aider, OpenCode, Hermes, Goose, OpenClaw, Antigravity, JCode, Cline, Continue |
+| `POST /v1/chat/completions` | OpenAI Chat Completions | pi, Aider, OpenCode, Hermes, Goose, OpenClaw, JCode, Cline, Continue, 9Router, OMP, DeepSeek Harness |
 | `POST /v1/messages` | Anthropic Messages | Claude Code, OpenClaw (anthropic mode) |
 | `POST /v1/responses` | OpenAI Responses | Codex CLI (≥0.122, `wire_api = "responses"`) |
 | `GET /v1/models` | OpenAI (list) | model pickers; returns **only alive curated models** (strict mode: only allowlisted upstreams; `?all=1` adds the blocked ones for the dashboard) |

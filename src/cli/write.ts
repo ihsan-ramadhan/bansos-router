@@ -181,6 +181,32 @@ export function applyTomlBlockWrite(
   return `${lines.join("\n").replace(/\s+$/, "")}\n`;
 }
 
+// drop a whole [table] section, including any [[table.*]] sub-tables that follow it
+export function removeTomlSection(content: string, table: string): string {
+  const esc = table.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const headerRe = new RegExp(`^\\[\\[?${esc}(\\.[^\\]]+)?\\]\\]?\\s*$`);
+  const out: string[] = [];
+  let skipping = false;
+  for (const line of content.split("\n")) {
+    if (/^\s*\[/.test(line)) skipping = headerRe.test(line.trim());
+    if (!skipping) out.push(line);
+  }
+  return `${out.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\s+$/, "")}\n`;
+}
+
+// jcode rewrites config.toml without comments, so undo cannot find the marked block afterwards
+export function stripJcodeDefaults(content: string): string {
+  const out: string[] = [];
+  let inProvider = false;
+  for (const line of removeTomlSection(content, "providers.bansos").split("\n")) {
+    const header = /^\s*\[([^\]]+)\]\s*$/.exec(line);
+    if (header) inProvider = header[1] === "provider";
+    if (inProvider && /^\s*default_(provider|model)\s*=/.test(line)) continue;
+    out.push(line);
+  }
+  return `${out.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\s+$/, "")}\n`;
+}
+
 export function removeTomlBlock(existing: string, markers: [string, string]): string {
   const lines = removeBlock(existing, markers).split("\n");
   const out: string[] = [];
@@ -253,7 +279,8 @@ export function removeBlock(
   if (!span) return existing;
   const [si, ei] = span;
   const head = lines.slice(0, si).join("\n").replace(/\s+$/, "");
-  const tail = lines.slice(ei + 1).join("\n").replace(/^\s+/, "");
+  // a block inside a mapping leaves the rest of that mapping behind, so keep the tail's indent
+  const tail = lines.slice(ei + 1).join("\n").replace(/^[ \t]*\n/, "");
   return `${[head, tail].filter((s) => s !== "").join("\n\n")}\n`;
 }
 

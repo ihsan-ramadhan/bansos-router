@@ -385,13 +385,7 @@ export function LiveRouting({ events, inFlight, usage, loading, error }: LiveRou
   }
 
   const activeEvent = trip || lastEventRef.current;
-  const activeHarness = activeEvent?.client
-    ? activeEvent.client.toLowerCase()
-    : activeEvent?.kind === "anthropic"
-      ? "claude-code"
-      : activeEvent?.kind === "responses"
-        ? "codex"
-        : "pi";
+  const activeHarness = activeEvent?.client ? activeEvent.client.toLowerCase() : "gateway";
   const harnessDisplayName = activeHarness;
   const requestedModelLabel = activeEvent?.requestedModel || activeEvent?.model || "ready";
 

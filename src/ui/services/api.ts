@@ -95,6 +95,7 @@ export async function pingModel(
       headers: {
         "Content-Type": "application/json",
         "x-bansos-no-failover": "1",
+        "x-bansos-client": "dashboard",
       },
       body: JSON.stringify({
         model: modelId,
