@@ -32,7 +32,7 @@ Legend: 🟢 config-only · 🟡 config + small adapter · 🔵 works manually, 
 | **OpenClaw** | OpenAI Chat or Anthropic | `~/.openclaw/config.json` / agent `models.json` | 🟢 | `models.providers.<id>.baseUrl`; can pick either wire |
 | **Goose** | OpenAI Chat | `~/.config/goose/custom_providers/*.json` | 🟢 | `engine: "openai"`, `base_url`, model list |
 | **Antigravity CLI** | n/a | `~/.gemini/antigravity-cli/settings.json` | 🔴 | No endpoint override: OAuth-only, and no settings key or env var changes the inference URL (google-antigravity/antigravity-cli#514) |
-| **JCode** | OpenAI Chat | `~/.jcode/config.toml` | 🟢 | `[provider] default_provider = "bansos"` plus a `[providers.bansos]` profile, keyless and catalog-backed |
+| **JCode** | OpenAI Chat | `~/.jcode/config.toml` (`$JCODE_HOME`) | 🟢 | `[providers.bansos]` profile with a static model list plus a keyless catalog refresh; `[provider]` defaults are only filled when the user has not chosen a provider |
 | **9Router** | OpenAI Chat | `~/.9router/db.json` | 🟢 | Custom compatible `providerNodes` + `providerConnections` |
 | **dsh** (DeepSeek Harness) | OpenAI Chat | `~/.dsh/profiles/{web,headless}/cordis.patch.yml` | 🟢 | Adds a `bansos` route inside each profile's existing `llm-pi-ai` entry: `api: openai-completions`, `baseURL`, `apiKeyEnv`, `headers` |
 | **Continue** | OpenAI Chat | `~/.continue/config.yaml` | 🟢 | Adds `models:` entries (`config.json` is ignored by Continue v1) |
@@ -141,7 +141,9 @@ type ConfigWrite = {
   DeepSeek Harness): a marked block (`# bansos-router:start` / `# ...:end`) is
   replaced or appended; `--undo` deletes between the markers. `toml-block`
   (Codex, JCode) keeps the block inside its own table, and `yaml-block` (OMP)
-  nests it under a top-level key such as `providers`. DeepSeek Harness and
+  nested it under a top-level key such as `providers`. JCode needs two blocks
+  (one per table, `[provider]` and `[providers.bansos]`), because the writer
+  patches a single table per write. DeepSeek Harness and
   Hermes are the two cases where the block cannot simply be appended: dsh
   splices the provider into its single `llm-pi-ai` entry, and Hermes appends a
   second top-level `model_aliases:` key.
@@ -170,7 +172,7 @@ a single picker, or nothing. With no model flag, adapters apply these defaults:
 - **Claude Code**: Maps tiers automatically (`haiku` -> the largest non-reasoning model, `sonnet` -> the smart default when it reasons, otherwise the second-largest reasoning model, `opus` -> the largest reasoning model) and sets `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`.
 - **OpenCode, Goose, OpenClaw, Continue, dsh**: Register all catalog models so every model is selectable in the harness.
 - **Hermes**: The smart model becomes the live `model:`, every other model a `model_aliases` entry reachable with `/model <id>`.
-- **9Router, OMP, JCode**: Register a provider that discovers models from `/v1/models` on its own; jcode's defaults live in its `[provider]` table, not in root keys.
+- **9Router, OMP, JCode**: Register a provider that discovers models from `/v1/models` on its own. JCode also gets the model list written out (`models = [{ id = ... }]`), because it only builds picker routes for a non-active profile from that static list; `model_catalog = true` keeps the live refresh once the profile is active. JCode's defaults live in its `[provider]` table, not in root keys, and setup fills them only when they are absent.
 - **Aider, Codex, Cline**: Default to the smart model (the preferred model in `src/upstreams/types.ts` when it is alive, otherwise the reasoning model with the largest context window) and switch freely via `/v1/models`.
 
 In strict mode only models from `allowedUpstreams` are registered or picked as
@@ -299,15 +301,28 @@ base_url = "http://127.0.0.1:17070/v1"
 auth = "none"
 requires_api_key = false
 model_catalog = true
+default_model = "<id>"
+models = [{ id = "<id>" }, { id = "<id>" }]
 ```
 
 `default_provider` only counts inside `[provider]`; written at the root of the
-file jcode ignores it and falls back to auto-detection. No key goes on disk:
-jcode looks up `OPENAI_COMPAT_API_KEY` in its own env file the moment a key is
-named, so `auth = "none"` with `requires_api_key = false` is the pair that
-keeps a keyless router keyless. `model_catalog = true` makes the picker read
-this router's `/v1/models`, which is why `bansos setup jcode` writes no model
-list of its own.
+file jcode ignores it and falls back to auto-detection. Setup fills those two
+keys only when they are missing, so an existing `default_provider` (another
+router, a subscription) keeps running and the run says so on stdout; pick
+bansos with `/model` when you want it.
+
+No key goes on disk: jcode looks up `OPENAI_COMPAT_API_KEY` in its own env file
+the moment a key is named, so `auth = "none"` with `requires_api_key = false`
+is the pair that keeps a keyless router keyless.
+
+`model_catalog = true` lets the picker refresh from this router's `/v1/models`,
+but jcode builds picker routes for a profile that is not the active provider
+only from that profile's own `models` list — which is why setup writes the
+catalog out as well. Those entries must be objects (`{ id = "..." }`); a bare
+`models = ["my-model"]` array makes jcode reject the whole config with
+`invalid type: string, expected struct NamedProviderModelConfig`.
+
+`$JCODE_HOME` is honoured when it is set, otherwise `~/.jcode` is used.
 
 ### 9Router: `~/.9router/db.json`
 

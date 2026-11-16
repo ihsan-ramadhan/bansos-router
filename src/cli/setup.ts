@@ -45,6 +45,23 @@ function parseArgs(argv: string[]): SetupArgs {
   return args;
 }
 
+// first default_provider inside [provider]; jcode ignores it at root scope
+function readProviderDefault(file: string): string | undefined {
+  if (!fs.existsSync(file)) return undefined;
+  let inProvider = false;
+  for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+    const header = /^\s*\[([^\]]+)\]\s*$/.exec(line);
+    if (header) {
+      inProvider = header[1] === "provider";
+      continue;
+    }
+    if (!inProvider) continue;
+    const match = /^\s*default_provider\s*=\s*"([^"]*)"/.exec(line);
+    if (match) return match[1];
+  }
+  return undefined;
+}
+
 function resolveTargetFile(adapter: HarnessAdapter, defaultPath: string): string {
   const fullDefault = expandHome(defaultPath);
   if (fs.existsSync(fullDefault)) return defaultPath;
@@ -215,6 +232,9 @@ const CONTINUE_HEADER = "name: bansos-router\nversion: 0.0.1\nschema: v1\n";
 export function applyAdapter(adapter: HarnessAdapter, ctx: SetupContext, report: SetupReport = printSetupLine): number {
   if (adapter.id === "dsh") return applyDeepseek(adapter, ctx, report);
   if (adapter.id === "continue") return applyContinue(adapter, ctx, report);
+  // setup never overwrites a provider the user already selected, so say what stayed
+  const keptDefault =
+    adapter.id === "jcode" ? readProviderDefault(expandHome(adapter.configPaths[0]!)) : undefined;
   let failed = 0;
   for (const write of adapter.render(ctx)) {
     const targetPath = resolveTargetFile(adapter, write.path);
@@ -232,7 +252,7 @@ export function applyAdapter(adapter: HarnessAdapter, ctx: SetupContext, report:
         continue;
       }
     } else if (write.mode === "toml-block") {
-      content = applyTomlBlockWrite(existing ?? "", write.content, write.markers!, write.tomlTable!);
+      content = applyTomlBlockWrite(existing ?? "", write.content, write.markers!, write.tomlTable!, write.fillOnly ?? false);
     } else if (write.mode === "yaml-block") {
       try {
         content = applyYamlBlockWrite(existing ?? "", write.content, write.markers!, write.yamlParent!);
@@ -246,6 +266,13 @@ export function applyAdapter(adapter: HarnessAdapter, ctx: SetupContext, report:
     }
     writeConfig(targetPath, content);
     report({ kind: "ok", text: `wrote ${targetPath}` });
+  }
+
+  if (keptDefault && keptDefault !== "bansos") {
+    report({
+      kind: "skip",
+      text: `${adapter.configPaths[0]}: kept default_provider = "${keptDefault}"; pick bansos with /model`,
+    });
   }
 
   if (adapter.id === "9router") {

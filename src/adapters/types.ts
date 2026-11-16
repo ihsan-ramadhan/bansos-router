@@ -16,6 +16,8 @@ export interface ConfigWrite {
   markers?: [string, string];
   // for toml-block: the table name the block defines (e.g. "providers.bansos")
   tomlTable?: string;
+  // for toml-block: keep values the user already set instead of replacing them
+  fillOnly?: boolean;
   // for yaml-block: the top-level key the block nests under (e.g. "providers")
   yamlParent?: string;
   // for merge: dotted paths replaced wholesale so a rerun drops models that left the catalog

@@ -333,21 +333,35 @@ function openclawAdapter(): HarnessAdapter {
   };
 }
 
+// jcode honours JCODE_HOME and falls back to ~/.jcode
+function jcodeConfigPath(): string {
+  return `${process.env.JCODE_HOME?.trim().replace(/\/+$/, "") || "~/.jcode"}/config.toml`;
+}
+
 function jcodeAdapter(): HarnessAdapter {
   return {
     id: "jcode",
     name: "JCode",
     wire: "chat",
-    // jcode lists models from the provider's own /models endpoint
     modelMode: "discovery",
-    configPaths: ["~/.jcode/config.toml"],
+    configPaths: [jcodeConfigPath()],
     render(ctx: SetupContext): ConfigWrite[] {
-      const toml = [
-        // jcode only reads its startup selection from this table, not from root keys
-        `[provider]`,
-        `default_provider = "bansos"`,
-        `default_model = "${ctx.defaultModel}"`,
-        "",
+      const path = jcodeConfigPath();
+      // each table needs its own marker pair: the writer strips the whole block
+      // between markers first, so shared markers would delete the other table
+      const markers: [string, string] = [`# ${START_MARKER}`, `# ${END_MARKER}`];
+      const defaultMarkers: [string, string] = [
+        "# bansos-router:provider-start",
+        "# bansos-router:provider-end",
+      ];
+      // jcode only reads its startup selection from [provider], and only builds picker
+      // routes for a non-active profile from this static list
+      const models = ctx.specificModel
+        ? [{ id: ctx.defaultModel }]
+        : ctx.models.length > 0
+          ? ctx.models.map((m) => ({ id: m.id }))
+          : [{ id: ctx.defaultModel }];
+      const profile = [
         `[providers.bansos]`,
         `type = "openai-compatible"`,
         `base_url = "${ctx.baseUrl}"`,
@@ -355,20 +369,30 @@ function jcodeAdapter(): HarnessAdapter {
         `auth = "none"`,
         `requires_api_key = false`,
         `model_catalog = true`,
-      ];
+        `default_model = "${ctx.defaultModel}"`,
+        `models = [${models.map((m) => `{ id = "${m.id}" }`).join(", ")}]`,
+      ].join("\n");
+
       return [
         {
-          path: "~/.jcode/config.toml",
-          content: `${toml.join("\n")}\n`,
+          path,
+          content: [`[provider]`, `default_provider = "bansos"`, `default_model = "${ctx.defaultModel}"`].join("\n"),
           mode: "toml-block",
-          markers: [`# ${START_MARKER}`, `# ${END_MARKER}`],
-          // the writer merges into the table it is given: [provider] is the one a jcode user already has
+          markers: defaultMarkers,
           tomlTable: "provider",
+          fillOnly: true,
+        },
+        {
+          path,
+          content: profile,
+          mode: "toml-block",
+          markers,
+          tomlTable: "providers.bansos",
         },
       ];
     },
     undo(): string[] {
-      return ["~/.jcode/config.toml"];
+      return [jcodeConfigPath()];
     },
     // jcode rewrites config.toml from its own model and drops comments, so the markers do not survive
     detect: (content) => /^\[providers\.bansos\]\s*$/m.test(content),

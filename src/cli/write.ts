@@ -134,6 +134,7 @@ export function applyTomlBlockWrite(
   content: string,
   markers: [string, string],
   tableName: string,
+  fillOnly = false,
 ): string {
   const stripped = removeBlock(existing, markers).replace(/\s+$/, "");
   const lines = stripped === "" ? [] : stripped.split("\n");
@@ -168,7 +169,8 @@ export function applyTomlBlockWrite(
     let replaced = false;
     for (let i = headerIdx + 1; i < sectionEnd; i++) {
       if (keyRe.test(lines[i]!)) {
-        lines[i] = line;
+        // fillOnly keeps a value the user already chose (e.g. their default provider)
+        if (!fillOnly) lines[i] = line;
         replaced = true;
         break;
       }

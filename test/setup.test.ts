@@ -265,14 +265,22 @@ test("antigravity and roo have no adapter: neither CLI can take a custom endpoin
 });
 test("jcode writes the profile plus the [provider] default jcode actually reads", () => {
   const adapter = findAdapter("jcode")!;
-  const write = adapter.render({
+  const writes = adapter.render({
     baseUrl: "http://127.0.0.1:17070/v1",
     defaultModel: "big-pickle",
     models: SEEDED_MODELS,
     specificModel: false,
-  })[0]!;
+  });
 
-  const out = applyTomlBlockWrite("", write.content, write.markers!, write.tomlTable!);
+  // one write per table: the merge writer can only patch a single table per block
+  assert.equal(writes.length, 2);
+  assert.equal(writes[0]!.tomlTable, "provider");
+  assert.equal(writes[1]!.tomlTable, "providers.bansos");
+
+  let out = "";
+  for (const write of writes) {
+    out = applyTomlBlockWrite(out, write.content, write.markers!, write.tomlTable!, write.fillOnly ?? false);
+  }
 
   // root-level default_provider is ignored by jcode, so it has to sit in [provider]
   assert.equal(out.split("\n").filter((l) => l.trim() === "[provider]").length, 1);
@@ -287,8 +295,34 @@ test("jcode writes the profile plus the [provider] default jcode actually reads"
   assert.match(out, /auth = "none"/);
   assert.match(out, /requires_api_key = false/);
   assert.match(out, /model_catalog = true/);
-  assert.equal(write.mode, "toml-block");
+  // jcode only builds picker routes for a non-active profile from models/default_model
+  assert.match(out, /default_model = "big-pickle"/);
+  assert.match(out, /models = \[\{ id = "[^"]+" \}/);
+  assert.equal(writes[0]!.fillOnly, true);
   assert.equal(adapter.undo({ baseUrl: "", defaultModel: "", models: [] }).length, 1);
+});
+
+test("jcode setup stays valid when it runs twice", () => {
+  const adapter = findAdapter("jcode")!;
+  const ctx = {
+    baseUrl: "http://127.0.0.1:17070/v1",
+    defaultModel: "big-pickle",
+    models: SEEDED_MODELS,
+    specificModel: false,
+  };
+
+  let out = "";
+  for (let run = 0; run < 3; run++) {
+    for (const write of adapter.render(ctx)) {
+      out = applyTomlBlockWrite(out, write.content, write.markers!, write.tomlTable!, write.fillOnly ?? false);
+    }
+  }
+
+  // a second [providers.bansos] table makes the whole config unparseable for jcode
+  assert.equal(out.split("\n").filter((l) => l.trim() === "[providers.bansos]").length, 1);
+  assert.equal(out.split("\n").filter((l) => l.trim() === "[provider]").length, 1);
+  assert.equal(out.split("\n").filter((l) => l.startsWith("models = ")).length, 1);
+  assert.equal(out.split("\n").filter((l) => l.startsWith("default_provider = ")).length, 1);
 });
 
 test("jcode is still detected and undoable after jcode rewrites the file without our comments", () => {
@@ -319,7 +353,7 @@ test("jcode is still detected and undoable after jcode rewrites the file without
   assert.match(undone, /scroll_up = "ctrl\+shift\+k"/);
 });
 
-test("jcode patches an existing [provider] table instead of adding a second one", () => {
+test("jcode keeps a provider the user already picked and still writes the profile", () => {
   const existing = [
     "[keybindings]",
     'scroll_up = "ctrl+shift+k"',
@@ -333,23 +367,22 @@ test("jcode patches an existing [provider] table instead of adding a second one"
   ].join("\n");
 
   const adapter = findAdapter("jcode")!;
-  const write = adapter.render({
+  let out = existing;
+  for (const write of adapter.render({
     baseUrl: "http://127.0.0.1:17070/v1",
     defaultModel: "big-pickle",
     models: SEEDED_MODELS,
     specificModel: false,
-  })[0]!;
+  })) {
+    out = applyTomlBlockWrite(out, write.content, write.markers!, write.tomlTable!, write.fillOnly ?? false);
+  }
 
-  const out = applyTomlBlockWrite(existing, write.content, write.markers!, write.tomlTable!);
-
-  assert.equal(out.split("\n").filter((l) => l.trim() === "[provider]").length, 1);
-  assert.match(out, /default_provider = "bansos"/);
-  assert.doesNotMatch(out, /default_provider = "claude"/);
-  assert.match(out, /default_model = "big-pickle"/);
-  // neighbours survive, and the provider profile lands after the patched defaults
+  // setup registers the router, it does not decide which provider the user starts on
+  assert.match(out, /default_provider = "claude"/);
+  assert.doesNotMatch(out, /default_provider = "bansos"/);
+  assert.equal(out.split("\n").filter((l) => l.trim() === "[providers.bansos]").length, 1);
   assert.match(out, /\[keybindings\]/);
   assert.match(out, /\[agents\]/);
-  assert.ok(out.indexOf('default_provider = "bansos"') < out.indexOf("[providers.bansos]"));
 });
 
 test("claude-code adapter maps smart tiers in auto mode and pinned model in specific mode", () => {
