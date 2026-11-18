@@ -92,22 +92,11 @@ export function MobileBottomNav({ activeTab, onSelectTab }: MobileBottomNavProps
       return scrollEl?.scrollTop ?? 0;
     };
 
-    const getMaxScroll = (): number => {
-      if (typeof window === "undefined") return 0;
-      const docMax = Math.max(
-        0,
-        (document.documentElement.scrollHeight || document.body.scrollHeight || 0) - window.innerHeight,
-      );
-      if (docMax > 0) return docMax;
-      const scrollEl = document.getElementById("main-content-scroll");
-      return scrollEl ? Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight) : 0;
-    };
-
     lastScrollY.current = getScrollY();
 
     let ticking = false;
 
-    const onScrollChange = (currentY: number, maxScroll: number) => {
+    const onScrollChange = (currentY: number) => {
       if (sheetOpen) {
         setVisible(true);
         return;
@@ -115,13 +104,6 @@ export function MobileBottomNav({ activeTab, onSelectTab }: MobileBottomNavProps
 
       // Always visible near top of content
       if (currentY <= 30) {
-        setVisible(true);
-        lastScrollY.current = currentY;
-        return;
-      }
-
-      // Stay visible when reaching or near bottom boundary
-      if (maxScroll > 0 && maxScroll - currentY <= 30) {
         setVisible(true);
         lastScrollY.current = currentY;
         return;
@@ -146,9 +128,7 @@ export function MobileBottomNav({ activeTab, onSelectTab }: MobileBottomNavProps
       ticking = true;
 
       window.requestAnimationFrame(() => {
-        const currentY = getScrollY();
-        const maxScroll = getMaxScroll();
-        onScrollChange(currentY, maxScroll);
+        onScrollChange(getScrollY());
         ticking = false;
       });
     };

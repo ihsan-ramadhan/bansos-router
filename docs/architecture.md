@@ -227,8 +227,8 @@ with the bansos-router logo.
 ### 7.1 Hard constraints
 
 1. **Node only for the core**: the pi extension talks to the daemon over HTTP
-   and imports none of `src/`, so the core targets Node ≥20 alone (CI runs
-   20, 22 and 24).
+   and imports none of `src/`, so the core targets Node ≥22.5 alone (CI runs
+   22 and 24; `node:sqlite` and other builtins need 22.5+).
 2. **npm distribution**: `npm i -g bansos-router`, two bins.
 3. **Minimal dependencies**: a proxy must be auditable; keep the tree tiny.
 

@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/logo-rounded.png" alt="bansos-router logo" width="140" />
+<img src="https://raw.githubusercontent.com/ihsan-ramadhan/bansos-router/main/assets/logo-rounded.png" alt="bansos-router logo" width="140" />
 
 # bansos-router
 
@@ -17,7 +17,7 @@ No accounts, no API keys.
 
 <div align="center">
 
-<img src="assets/dashboard.png" alt="bansos-router dashboard: free model catalog with live latency, health filters and per-model capabilities" width="900" />
+<img src="https://raw.githubusercontent.com/ihsan-ramadhan/bansos-router/main/assets/dashboard.png" alt="bansos-router dashboard: free model catalog with live latency, health filters and per-model capabilities" width="900" />
 
 </div>
 

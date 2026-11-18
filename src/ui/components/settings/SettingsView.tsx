@@ -468,7 +468,13 @@ export function SettingsView({ active, onApplied }: SettingsViewProps) {
         </div>
       </div>
 
-      <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-end gap-2">
+      <AutostartCard active={active} />
+
+      <BackupCard onRestored={() => void load()} />
+
+      <HealthCard active={active} />
+
+      <div className="sticky bottom-[5.5rem] md:bottom-0 z-10 mt-[5.5rem] md:mt-0 flex flex-col-reverse sm:flex-row sm:items-center justify-end gap-2 rounded-xl border border-[#1c1f2b] bg-[#10121a] p-3 shadow-lg">
         {dirty && <span className="text-[11px] text-[#9393a0] sm:mr-auto">You have unsaved changes.</span>}
         <button
           type="button"
@@ -488,12 +494,6 @@ export function SettingsView({ active, onApplied }: SettingsViewProps) {
           <span>{saving ? "Saving..." : "Save changes"}</span>
         </button>
       </div>
-
-      <AutostartCard active={active} />
-
-      <BackupCard onRestored={() => void load()} />
-
-      <HealthCard active={active} />
     </div>
   );
 }
