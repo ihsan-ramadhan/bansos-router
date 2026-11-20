@@ -88,6 +88,7 @@ test/             node:test suites
 - Prefer stdlib over new packages. A regex JSONC stripper or a tiny semver compare is fine inline instead of a dependency.
 - Cross platform paths must use `os.homedir()` (never `process.env.HOME`, which is undefined on Windows). Use `expandHome()` from `src/cli/write.ts`.
 - Tests use the built in `node:test` runner. Add a focused test for any new adapter, upstream, or protocol behavior.
+- By submitting a pull request you agree your contribution is licensed under GPL-3.0-only, the project's license.
 
 ## Adding a harness adapter
 

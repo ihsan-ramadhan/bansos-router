@@ -175,4 +175,6 @@ npm test
 
 ## License
 
-GPL-3.0-only. See [LICENSE](LICENSE).
+Copyright (C) 2026 Muhammad Ihsan Ramadhan.
+
+GPL-3.0-only. See [LICENSE](LICENSE). Bundled dashboard dependencies (preact, lucide-preact) keep their own permissive licenses; see [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES).

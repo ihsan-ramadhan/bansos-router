@@ -23,7 +23,8 @@
     "dist",
     "docs",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "THIRD-PARTY-NOTICES"
   ],
   "scripts": {
     "build": "npm run build:ui && esbuild src/cli/index.ts --bundle --platform=node --format=esm --outfile=dist/cli/index.js",
