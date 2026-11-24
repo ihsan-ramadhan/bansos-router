@@ -7,6 +7,9 @@ on:
 
 permissions:
   contents: read
+  # the deploy job lists this run's artifacts before deploying; naming any permission here
+  # sets every unlisted one to none, so actions: read has to be asked for explicitly
+  actions: read
   pages: write
   id-token: write
 
@@ -16,11 +19,8 @@ concurrency:
 
 jobs:
   publish:
-    name: Check the catalog and publish
+    name: Check the catalog and build the page
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -45,6 +45,36 @@ jobs:
         uses: actions/upload-pages-artifact@v5
         with:
           path: site
+
+  # deploy-pages finds the artifact by listing the run's artifacts, and a listing taken a
+  # fraction of a second after the upload can miss one that is already final (deploy-pages#451).
+  # a separate job moves the lookup past the upload, and waiting on the listing itself is a
+  # real check: a blind sleep only widens the window without knowing when it closed.
+  deploy:
+    name: Publish to Pages
+    needs: publish
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Wait until the uploaded artifact is listed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          for attempt in $(seq 1 30); do
+            count=$(gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts" \
+              --jq '[.artifacts[] | select(.name == "github-pages" and .expired == false)] | length')
+            if [ "$count" -ge 1 ]; then
+              echo "github-pages artifact is listed (attempt $attempt)"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "the github-pages artifact never appeared in this run" >&2
+          exit 1
 
       - name: Deploy
         id: deploy
