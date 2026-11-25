@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { RefreshCw } from "lucide-preact";
 import type { ActivityEvent, UsageStats, InFlightRequest } from "../../types";
 import { fetchEvents, fetchUsage } from "../../services/api";
 import { LiveRouting } from "./LiveRouting";
 import { HarnessLogo } from "./HarnessLogo";
+import { CatalogPagination } from "../models/CatalogPagination";
 import { exactTitle, formatCount, formatExact } from "../../utils/format";
 
 function formatDuration(ms: number): string {
@@ -105,13 +106,18 @@ export function ActivityView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const pageRef = useRef(1);
+  pageRef.current = page;
 
   async function load(showSpinner = false) {
     try {
       if (showSpinner) setRefreshing(true);
       const [u, evData] = await Promise.all([fetchUsage(window), fetchEvents(100, window)]);
       setUsage(u);
-      setEvents(evData.events);
+      if (pageRef.current === 1) setEvents(evData.events);
       setInFlight(evData.inFlight);
       setError(null);
     } catch (err) {
@@ -127,6 +133,18 @@ export function ActivityView() {
     const timer = setInterval(() => void load(), 1000);
     return () => clearInterval(timer);
   }, [window]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [window]);
+
+  const totalPages = Math.max(1, Math.ceil(events.length / pageSize));
+  const activePage = Math.min(page, totalPages);
+
+  const pagedEvents = useMemo(() => {
+    const start = (activePage - 1) * pageSize;
+    return events.slice(start, start + pageSize);
+  }, [events, activePage, pageSize]);
 
   const topModels = useMemo(() => {
     if (!usage) return [];
@@ -181,7 +199,13 @@ export function ActivityView() {
 
           <button
             type="button"
-            onClick={() => void load(true)}
+            onClick={() => {
+              // a manual reload is a request for the newest rows, so it returns to the top instead of
+              // staying paused on a page the poll is deliberately not updating
+              setPage(1);
+              pageRef.current = 1;
+              void load(true);
+            }}
             disabled={refreshing}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#131620] border border-[#1c1f2b] text-[11px] text-[#d4d4d8] hover:text-white hover:border-[#2b334a] transition cursor-pointer disabled:opacity-50 shrink-0"
           >
@@ -338,7 +362,9 @@ export function ActivityView() {
             Recent Requests
           </span>
           {!loading && events.length > 0 && (
-            <span className="text-[10px] text-[#a1a1aa] font-mono">last {events.length}</span>
+            <span className="text-[10px] text-[#a1a1aa] font-mono">
+              {activePage > 1 ? `paused · ${events.length} loaded` : `last ${events.length}`}
+            </span>
           )}
         </div>
         {loading ? (
@@ -366,7 +392,7 @@ export function ActivityView() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#202026] text-xs">
-                {events.map((e) => (
+                {pagedEvents.map((e) => (
                   <tr key={e.id} className="border-b border-[#202026] last:border-0 hover:bg-[#131620]/60 transition-colors">
                     <td className="py-2 px-1.5 sm:px-2 text-[#a1a1aa] text-[11px] whitespace-nowrap">{timeAgo(e.timestamp)}</td>
                     <td className="py-2 px-1.5 sm:px-2 text-center">
@@ -430,6 +456,21 @@ export function ActivityView() {
               </tbody>
             </table>
           </div>
+        )}
+        {!loading && events.length > 0 && (
+          <CatalogPagination
+            totalItems={events.length}
+            filteredCount={events.length}
+            activePage={activePage}
+            pageSize={pageSize}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPage(1);
+            }}
+            noun="requests"
+          />
         )}
       </div>
     </div>

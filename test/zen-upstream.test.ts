@@ -143,7 +143,9 @@ test("a caller read keeps its own schema once the foreign tool is gone", () => {
     ],
   };
   const out = zenUpstream.transformRequestBody!(body, model);
-  const tools = out.tools as Array<{ function: { name: string; parameters: { properties: Record<string, unknown> } } }>;
+  const tools = out.tools as Array<{
+    function: { name: string; description?: string; parameters: { properties: Record<string, unknown> } };
+  }>;
   assert.ok(!tools.some((t) => t.function.name === "mcp"), "the foreign tool is dropped");
   // the caller's description survives, so the tool is theirs and not the fingerprint pair
   const read = tools.find((t) => t.function.name === "read")!;

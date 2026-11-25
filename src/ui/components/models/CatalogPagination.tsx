@@ -15,6 +15,7 @@ interface CatalogPaginationProps {
   totalPages: number;
   onPageChange: (page: number) => void;
   onPageSizeChange: (size: number) => void;
+  noun?: string;
 }
 
 export function CatalogPagination({
@@ -25,6 +26,7 @@ export function CatalogPagination({
   totalPages,
   onPageChange,
   onPageSizeChange,
+  noun = "models",
 }: CatalogPaginationProps) {
   const [pageSizeDropdownOpen, setPageSizeDropdownOpen] = useState(false);
 
@@ -38,7 +40,7 @@ export function CatalogPagination({
             {" - "}
             {Math.min(activePage * pageSize, filteredCount)}
           </span>{" "}
-          of <span className="text-white font-medium">{filteredCount}</span> models
+          of <span className="text-white font-medium">{filteredCount}</span> {noun}
           {filteredCount !== totalItems && (
             <span className="text-[#52525c] ml-1.5">
               (filtered from {totalItems})
