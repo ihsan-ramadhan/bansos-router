@@ -16,6 +16,8 @@ export interface RefreshReport {
   alive: number;
   dead: number;
   degraded: string[];
+  // upstreams that returned no live catalog, so the caller can retry sooner than the interval
+  unreachable: string[];
 }
 
 export class RuntimeCatalog {
@@ -103,7 +105,7 @@ export class RuntimeCatalog {
   }
 
   private async runRefresh(): Promise<RefreshReport> {
-    const report: RefreshReport = { checked: 0, alive: 0, dead: 0, degraded: [] };
+    const report: RefreshReport = { checked: 0, alive: 0, dead: 0, degraded: [], unreachable: [] };
 
     const allowed = this.upstreams.filter((upstream) => {
       if (isUpstreamAllowed(this.security, upstream.id)) return true;
@@ -124,6 +126,7 @@ export class RuntimeCatalog {
     for (const { upstream, live } of fetched) {
       if (live === null) {
         report.degraded.push(upstream.id);
+        report.unreachable.push(upstream.id);
         this.log.warn(`upstream ${upstream.id}: no live catalog - keeping last-known models`);
         continue;
       }

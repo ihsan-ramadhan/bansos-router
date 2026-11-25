@@ -33,6 +33,10 @@ export const MAX_PORT = 17090;
 const MAX_LOG_BYTES = 5 * 1024 * 1024;
 const MAX_LOG_BACKUPS = 2;
 
+// at boot the network is often not up yet, and the interval is 30 minutes by default
+const BOOT_RETRY_BASE_MS = 10_000;
+const BOOT_RETRY_MAX_MS = 5 * 60_000;
+
 function rotateLogFile(): void {
   try {
     for (let i = MAX_LOG_BACKUPS - 1; i >= 1; i--) {
@@ -175,6 +179,29 @@ function startServer(
   });
 }
 
+// keeps retrying while any upstream is still unreachable, backing off to maxMs
+export async function retryBootRefresh(
+  catalog: Pick<RuntimeCatalog, "refresh">,
+  options: { baseMs?: number; maxMs?: number; sleep?: (ms: number) => Promise<void> } = {},
+): Promise<void> {
+  const baseMs = options.baseMs ?? BOOT_RETRY_BASE_MS;
+  const maxMs = options.maxMs ?? BOOT_RETRY_MAX_MS;
+  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  let delay = Math.min(baseMs, maxMs);
+  for (;;) {
+    await sleep(delay);
+    let report;
+    try {
+      report = await catalog.refresh();
+    } catch {
+      // the regular interval keeps running, so a failed retry is not fatal
+      return;
+    }
+    if (report.unreachable.length === 0) return;
+    delay = Math.min(delay * 2, maxMs);
+  }
+}
+
 async function main(argv: string[]): Promise<void> {
   const args = parseArgs(argv[0] === "daemon" ? argv.slice(1) : argv);
 
@@ -292,12 +319,15 @@ async function main(argv: string[]): Promise<void> {
     }
 
     // not awaited: a restart counts as done once the server listens, so the next one is not dropped
-    void running.catalog.refresh().then(() => {
+    void running.catalog.refresh().then((report) => {
       if (process.env.BANSOS_LOG !== "json") {
         out.write(
           `  └── Models   : ${running.catalog.servableModels.length} alive (${[...new Set(running.catalog.servableModels.map((m) => m.source))].join(", ")})\n\n`
         );
       }
+      // a boot before the network is up leaves the seeded catalog in place; without this the
+      // first live catalog would wait for the refresh interval
+      if (report.unreachable.length > 0) void retryBootRefresh(running.catalog);
     }, (err) => log.warn(`catalog refresh failed: ${String((err as Error)?.message ?? err)}`));
   };
 

@@ -121,3 +121,30 @@ test("a refused model is parked far longer than a rate-limited one", () => {
   assert.equal(cat.isCoolingDown("refused", t0 + 29 * 60_000), true);
   assert.equal(cat.isCoolingDown("refused", t0 + 31 * 60_000), false, "but never permanent");
 });
+
+test("refresh reports which upstreams were unreachable, so boot can retry", async () => {
+  let attempts = 0;
+  const flaky: Upstream = {
+    id: "zen",
+    kind: "remote-keyless",
+    relayAllowed: false,
+    chatUrl: "https://example.invalid/chat/completions",
+    async fetchCatalog() {
+      attempts++;
+      // the network is not up yet on the first pass, as after a reboot
+      return attempts === 1 ? null : [model("zen/m1")];
+    },
+    requestHeaders: () => ({}),
+  };
+  const catalog = new RuntimeCatalog([flaky], createLogger({ level: "error" }));
+  catalog.seed([model("zen/seeded")]);
+
+  const first = await catalog.refresh();
+  assert.deepEqual(first.unreachable, ["zen"], "a null catalog is reported, not just logged");
+  assert.equal(first.degraded.length, 1);
+  assert.ok(catalog.resolve("zen/seeded"), "the seeded model stays while the upstream is down");
+
+  const second = await catalog.refresh();
+  assert.deepEqual(second.unreachable, [], "a reachable pass clears the retry signal");
+  assert.ok(catalog.resolve("zen/m1"));
+});

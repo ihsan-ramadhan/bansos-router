@@ -46,10 +46,12 @@ jobs:
         with:
           path: site
 
-  # deploy-pages finds the artifact by listing the run's artifacts, and a listing taken a
-  # fraction of a second after the upload can miss one that is already final (deploy-pages#451).
-  # a separate job moves the lookup past the upload, and waiting on the listing itself is a
-  # real check: a blind sleep only widens the window without knowing when it closed.
+  # deploy-pages locates the artifact by listing the run's artifacts and sometimes sees an
+  # empty list moments after a successful upload (deploy-pages#451). no upload-to-listing gap
+  # separated the passing runs from the failing ones here, so the wait below, not the job
+  # boundary, is what makes the result independent of that timing. the split keeps deploy
+  # re-runnable on its own: re-running failed jobs reruns only this job, so publish does not
+  # upload a second github-pages artifact into the same run.
   deploy:
     name: Publish to Pages
     needs: publish
@@ -64,17 +66,26 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           REPO: ${{ github.repository }}
         run: |
+          listed=0
+          unreadable=0
           for attempt in $(seq 1 30); do
+            # a failed call must retry, not end the job: without the fallback the
+            # step's -e would treat a momentary API error as a permanent one
             count=$(gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts" \
-              --jq '[.artifacts[] | select(.name == "github-pages" and .expired == false)] | length')
-            if [ "$count" -ge 1 ]; then
+              --jq '[.artifacts[] | select(.name == "github-pages" and .expired == false)] | length' || echo "")
+            if [ -z "$count" ]; then
+              unreadable=$((unreadable + 1))
+            elif [ "$count" -ge 1 ]; then
               echo "github-pages artifact is listed (attempt $attempt)"
-              exit 0
+              listed=1
+              break
             fi
             sleep 5
           done
-          echo "the github-pages artifact never appeared in this run" >&2
-          exit 1
+          if [ "$listed" -ne 1 ]; then
+            echo "the github-pages artifact was not listed in 30 attempts, $unreadable of which could not read the artifact list" >&2
+            exit 1
+          fi
 
       - name: Deploy
         id: deploy
