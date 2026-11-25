@@ -783,8 +783,15 @@ export function filterInjectedToolCallsTransform(callerTools: CallerTools): Tran
         const name = tc?.function?.name;
         if (typeof name === "string" && !verdict.has(tc.index)) {
           const own = callerTools.has(name);
-          verdict.set(tc.index, own);
-          const translate = own ? null : callerTools.bridge?.(name);
+          // a declared read whose path field zen advertises as filePath is buffered so the rename can
+          // run on the complete arguments; every other declared tool streams straight through
+          const rename = own && callerTools.renameOwnArgs?.(name) === true;
+          verdict.set(tc.index, own && !rename);
+          const translate = rename
+            ? (args: string) => callerTools.ownArgs?.(name, args) ?? null
+            : own
+              ? null
+              : callerTools.bridge?.(name);
           if (translate) bridged.set(tc.index, { id: tc.id, args: "", translate });
         }
         const b = bridged.get(tc.index);
@@ -1186,9 +1193,11 @@ export async function streamToChatResponse(
     .flatMap(([, c]) => {
       if (c.name === undefined) return [];
       const id = c.id ?? `call_${Math.random().toString(36).slice(2, 12)}`;
-      const fn = !callerTools || callerTools.has(c.name)
+      const fn = !callerTools
         ? { name: c.name, arguments: c.args || "{}" }
-        : callerTools.bridge?.(c.name)?.(c.args, id);
+        : callerTools.has(c.name)
+          ? (callerTools.ownArgs?.(c.name, c.args || "{}") ?? { name: c.name, arguments: c.args || "{}" })
+          : callerTools.bridge?.(c.name)?.(c.args, id);
       if (!fn) return [];
       return [{ id, type: "function" as const, function: fn }];
     });

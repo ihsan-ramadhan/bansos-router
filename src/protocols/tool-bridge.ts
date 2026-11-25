@@ -8,6 +8,10 @@ export type Translator = (args: string, callId?: string) => TranslatedCall | nul
 export interface CallerTools {
   has(name: string): boolean;
   bridge?(name: string): Translator | null;
+  // a declared tool whose arguments need renaming back to the caller's own field names
+  ownArgs?(name: string, argumentsJson: string): TranslatedCall | null;
+  // true when that declared tool needs the rename, so a streaming caller buffers it instead of forwarding
+  renameOwnArgs?(name: string): boolean;
 }
 
 type Schema = { properties?: Record<string, { type?: unknown }>; required?: unknown };
@@ -184,6 +188,19 @@ export function restoreBridgedCalls(messages: unknown, body: unknown): unknown {
 }
 
 // the Zen gate injects read/shell; a call to one the caller never declared is mapped onto the caller's own tool
+// zen.ts advertises a caller's read path field as filePath because the gate 429s file_path, so a call
+// to the caller's own read arrives under that name and has to be renamed back before it is forwarded
+function alignOwnReadArgs(target: Spec, args: Record<string, unknown>): Record<string, unknown> | null {
+  const pathKey = pick(target.parameters, PATH_KEYS);
+  if (!pathKey || pathKey === "filePath" || pathKey === "path") return null;
+  const value = args.filePath ?? args.path;
+  if (typeof value !== "string") return null;
+  const out: Record<string, unknown> = { ...args, [pathKey]: value };
+  delete out.filePath;
+  delete out.path;
+  return out;
+}
+
 export function callerToolsFromBody(body: unknown): CallerTools {
   const specs = toolSpecs(body);
   const names = new Set(specs.map((s) => s.name));
@@ -194,6 +211,21 @@ export function callerToolsFromBody(body: unknown): CallerTools {
     has: (name) => names.has(name),
     bridge(name) {
       return innerBridge(name);
+    },
+    ownArgs(name, argumentsJson) {
+      const target = specs.find((s) => s.name === name);
+      if (!target) return null;
+      const args = parseArgs(argumentsJson);
+      if (!args) return null;
+      if (!READ_NAMES.includes(name.trim().toLowerCase())) return null;
+      const aligned = alignOwnReadArgs(target, args);
+      return aligned ? { name: target.name, arguments: JSON.stringify(aligned) } : null;
+    },
+    renameOwnArgs(name) {
+      const target = specs.find((s) => s.name === name);
+      if (!target || !READ_NAMES.includes(name.trim().toLowerCase())) return false;
+      const pathKey = pick(target.parameters, PATH_KEYS);
+      return Boolean(pathKey) && pathKey !== "filePath" && pathKey !== "path";
     },
   };
 

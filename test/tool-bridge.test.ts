@@ -162,3 +162,40 @@ test("apply_edit is mapped back onto the caller's own edit tool", async () => {
     arguments: '{"file_path":"a.ts","old_string":"x","new_string":"y"}',
   });
 });
+
+test("a caller read with file_path gets its own field back after zen advertises filePath", () => {
+  const body = {
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: "read",
+          parameters: { type: "object", properties: { file_path: { type: "string" } }, required: ["file_path"] },
+        },
+      },
+    ],
+  };
+  const tools = callerToolsFromBody(body);
+  assert.equal(tools.renameOwnArgs?.("read"), true, "streaming has to buffer this one");
+  const out = tools.ownArgs?.("read", JSON.stringify({ filePath: "/etc/hostname" }));
+  assert.deepEqual(out, { name: "read", arguments: JSON.stringify({ file_path: "/etc/hostname" }) });
+});
+
+test("a caller read already using path or filePath is forwarded untouched", () => {
+  for (const key of ["path", "filePath"]) {
+    const body = {
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "read",
+            parameters: { type: "object", properties: { [key]: { type: "string" } }, required: [key] },
+          },
+        },
+      ],
+    };
+    const tools = callerToolsFromBody(body);
+    assert.equal(tools.renameOwnArgs?.("read"), false, `${key} needs no rename`);
+    assert.equal(tools.ownArgs?.("read", JSON.stringify({ [key]: "/tmp/x" })), null);
+  }
+});

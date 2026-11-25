@@ -458,8 +458,9 @@ function aliasCallerEditTool(body: Record<string, unknown>): void {
   }
 }
 
-// the gate answers 429 when the caller declares a tool outside OpenCode's own vocabulary, so those turns
-// advertise the fingerprint pair only and the tool bridge maps the calls onto the caller's real tools
+// the gate answers 429 when the caller declares a tool outside OpenCode's own vocabulary. dropping
+// just those keeps the caller's own schemas for the tools the gate already accepts, which is what
+// the model has to emit: replacing the whole set made it answer in opencode's parameter names.
 const OPENCODE_TOOL_NAMES = new Set([
   "read", "write", "edit", "bash", "shell", "glob", "grep", "list", "ls", "find", "view", "fetch",
   "webfetch", "web_fetch", "todo", "todowrite", "todoread", "task", "subagent", "skill", "batch",
@@ -485,18 +486,54 @@ function restrictGatedTools(
   shape: "chat" | "responses" = "chat",
 ): void {
   if (!Array.isArray(body.tools) || body.tools.length === 0) return;
-  const foreign = (body.tools as unknown[]).some((tool) => {
+  const known = (body.tools as unknown[]).filter((tool) => {
     const name = toolNameOf(tool).toLowerCase();
-    return name !== "" && !OPENCODE_TOOL_NAMES.has(name);
+    return name === "" || OPENCODE_TOOL_NAMES.has(name);
   });
-  if (!foreign) return;
-  body.tools = fingerprintTools(shape);
+  if (known.length === (body.tools as unknown[]).length) return;
+  // a caller that declared only foreign tools would otherwise go out with no tools at all, so that
+  // one case keeps the fingerprint pair and relies on the bridge to map the calls back
+  body.tools = known.length > 0 ? known : fingerprintTools(shape);
+}
+
+// the gate accepts `path` and `filePath` on read but 429s `file_path`, so a snake_case caller key is
+// advertised under filePath; the bridge maps the call back onto the caller's own field name
+const READ_PATH_KEY = "filePath";
+const READ_TOOL_RE = /^read$/i;
+const GATE_READ_KEYS = new Set(["path", "filePath"]);
+
+function normalizeCallerReadKey(body: Record<string, unknown>): void {
+  if (!Array.isArray(body.tools)) return;
+  const tools = body.tools as unknown[];
+  for (let i = 0; i < tools.length; i++) {
+    const fn = toolFunction(tools[i]);
+    if (!fn || typeof fn.name !== "string" || !READ_TOOL_RE.test(fn.name.trim())) continue;
+    const params = (fn.parameters ?? fn.input_schema) as
+      | { properties?: Record<string, unknown>; required?: unknown }
+      | undefined;
+    const props = params?.properties;
+    if (!props) continue;
+    // a key the gate already accepts is left alone; only a rejected one is renamed
+    if (Object.keys(props).some((k) => GATE_READ_KEYS.has(k))) continue;
+    const key = Object.keys(props).find((k) => /^(file_?path|file|filename|target_file|absolute_path)$/i.test(k));
+    if (!key) continue;
+    const { [key]: moved, ...rest } = props;
+    const renamed = { ...fn, parameters: { ...params, properties: { ...rest, [READ_PATH_KEY]: moved } } };
+    if (Array.isArray(params!.required)) {
+      (renamed.parameters as { required?: unknown }).required = (params!.required as unknown[]).map((r) =>
+        r === key ? READ_PATH_KEY : r,
+      );
+    }
+    const holder = tools[i] as Record<string, unknown>;
+    tools[i] = holder.function ? { ...holder, function: renamed } : renamed;
+  }
 }
 
 function transformOpencodeBodyChat(body: Record<string, unknown>): Record<string, unknown> {
   body.stream = true;
   ensureChatFingerprintTools(body);
   aliasCallerEditTool(body);
+  normalizeCallerReadKey(body);
   ensureOpencodeSystemPrompt(body);
   restrictGatedTools(body);
   return body;
@@ -515,6 +552,7 @@ function transformOpencodeBodyResponses(body: Record<string, unknown>): Record<s
   body.stream = true;
   ensureResponsesFingerprintTools(body);
   aliasCallerEditTool(body);
+  normalizeCallerReadKey(body);
   sanitizeResponsesItems(body);
   restrictGatedTools(body, "responses");
   return body;

@@ -95,7 +95,7 @@ test("a caller's own tool_choice survives tool injection", () => {
   assert.equal(out.tool_choice, "auto");
   assert.ok((out.tools as unknown[]).some((t: any) => t?.name === "grep"), "caller tool kept");
 });
-test("a tool outside opencode's vocabulary collapses the set to the fingerprint pair", () => {
+test("a tool outside opencode's vocabulary is dropped, not the whole set", () => {
   const model = ZEN_MODELS.find((m) => m.id.endsWith("-free") && m.wireApi !== "responses")!;
   const body = {
     model: model.id,
@@ -107,8 +107,8 @@ test("a tool outside opencode's vocabulary collapses the set to the fingerprint 
   };
   const out = zenUpstream.transformRequestBody!(body, model);
   const names = (out.tools as Array<{ function: { name: string } }>).map((t) => t.function.name);
-  // anything outside opencode's own set is a 429, so the gate only ever sees the fingerprint pair
-  assert.deepEqual(names, ["read", "shell"]);
+  // only the tool the gate would 429 on leaves; the caller's own tools keep their schemas
+  assert.deepEqual(names, ["bash", "read", "shell"]);
   assert.equal((body.tools as unknown[]).length, 2, "the caller's tools array is untouched");
 
   // a caller that stays inside the vocabulary keeps every tool it declared
@@ -123,6 +123,48 @@ test("a tool outside opencode's vocabulary collapses the set to the fingerprint 
   const keptNames = (kept.tools as Array<{ function: { name: string } }>).map((t) => t.function.name);
   assert.ok(keptNames.includes("bash"));
   assert.ok(keptNames.includes("grep"));
+});
+
+test("a caller read keeps its own schema once the foreign tool is gone", () => {
+  const model = ZEN_MODELS.find((m) => m.id.endsWith("-free") && m.wireApi !== "responses")!;
+  const body = {
+    model: model.id,
+    messages: [{ role: "user", content: "hi" }],
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: "read",
+          description: "read a file",
+          parameters: { type: "object", properties: { file_path: { type: "string" } }, required: ["file_path"] },
+        },
+      },
+      { type: "function", function: { name: "mcp", description: "mcp", parameters: { type: "object" } } },
+    ],
+  };
+  const out = zenUpstream.transformRequestBody!(body, model);
+  const tools = out.tools as Array<{ function: { name: string; parameters: { properties: Record<string, unknown> } } }>;
+  assert.ok(!tools.some((t) => t.function.name === "mcp"), "the foreign tool is dropped");
+  // the caller's description survives, so the tool is theirs and not the fingerprint pair
+  const read = tools.find((t) => t.function.name === "read")!;
+  assert.equal(read.function.description, "read a file");
+  // file_path is renamed because the gate 429s it; filePath is what the model is shown
+  assert.deepEqual(Object.keys(read.function.parameters.properties), ["filePath"]);
+});
+
+test("a caller that declares only foreign tools still gets the fingerprint pair", () => {
+  const model = ZEN_MODELS.find((m) => m.id.endsWith("-free") && m.wireApi !== "responses")!;
+  const body = {
+    model: model.id,
+    messages: [{ role: "user", content: "hi" }],
+    tools: [
+      { type: "function", function: { name: "mcp", description: "mcp", parameters: { type: "object" } } },
+      { type: "function", function: { name: "agentgrep", description: "grep", parameters: { type: "object" } } },
+    ],
+  };
+  const out = zenUpstream.transformRequestBody!(body, model);
+  const names = (out.tools as Array<{ function: { name: string } }>).map((t) => t.function.name);
+  assert.deepEqual(names, ["read", "shell"], "no tools at all would be worse than the fingerprint pair");
 });
 
 test("retryShape narrows any tool set to the pair, and reports null when it already is", () => {
@@ -223,4 +265,54 @@ test("a system prompt sent as content parts keeps every part and gains the env b
   assert.ok(Array.isArray(system.content), "content stays an array");
   assert.equal(system.content[0].text, "You are a pirate.", "the caller's prompt is not replaced");
   assert.ok(system.content.some((p: any) => p.text.includes("</env>")), "the env block is appended");
+});
+
+test("a caller read with file_path is advertised as filePath, which the gate accepts", () => {
+  const model = ZEN_MODELS.find((m) => m.id.endsWith("-free") && m.wireApi !== "responses")!;
+  const body = {
+    model: model.id,
+    messages: [{ role: "user", content: "hi" }],
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: "read",
+          description: "read",
+          parameters: { type: "object", properties: { file_path: { type: "string" } }, required: ["file_path"] },
+        },
+      },
+      { type: "function", function: { name: "mcp", description: "mcp", parameters: { type: "object" } } },
+    ],
+  };
+  const out = zenUpstream.transformRequestBody!(body, model);
+  const tools = out.tools as Array<{ function: { name: string; parameters: { properties: Record<string, unknown>; required?: string[] } } }>;
+  const read = tools.find((t) => t.function.name === "read")!;
+  assert.deepEqual(Object.keys(read.function.parameters.properties), ["filePath"]);
+  assert.deepEqual(read.function.parameters.required, ["filePath"]);
+  assert.equal((body.tools as Array<{ function: { parameters: { properties: Record<string, unknown> } } }>)[0]!.function.parameters.properties.file_path !== undefined, true, "caller body untouched");
+});
+
+test("a caller read already using path or filePath is left alone", () => {
+  const model = ZEN_MODELS.find((m) => m.id.endsWith("-free") && m.wireApi !== "responses")!;
+  for (const key of ["path", "filePath"]) {
+    const body = {
+      model: model.id,
+      messages: [{ role: "user", content: "hi" }],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "read",
+            description: "read",
+            parameters: { type: "object", properties: { [key]: { type: "string" } }, required: [key] },
+          },
+        },
+      ],
+    };
+    const out = zenUpstream.transformRequestBody!(body, model);
+    const read = (out.tools as Array<{ function: { name: string; parameters: { properties: Record<string, unknown> } } }>).find(
+      (t) => t.function.name === "read",
+    )!;
+    assert.deepEqual(Object.keys(read.function.parameters.properties), [key], `${key} must not be renamed`);
+  }
 });
