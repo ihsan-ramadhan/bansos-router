@@ -30,3 +30,14 @@ test("RateLimiter limit=0 disables enforcement", () => {
   assert.equal(rl.check("any", 1_000), true);
   assert.equal(rl.check("any", 1_001), true);
 });
+
+test("RateLimiter retryAfterMs reports when the window frees up", () => {
+  const rl = new RateLimiter({ limit: 2, windowMs: 1_000 });
+  const now = 10_000;
+  assert.equal(rl.retryAfterMs("ip", now), 0);
+  rl.check("ip", now);
+  assert.equal(rl.retryAfterMs("ip", now), 0);
+  rl.check("ip", now + 100);
+  assert.equal(rl.retryAfterMs("ip", now + 100), 900);
+  assert.equal(rl.retryAfterMs("ip", now + 1_000), 0);
+});

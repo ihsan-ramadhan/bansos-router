@@ -1,11 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { RefreshCw } from "lucide-preact";
 import type { ActivityEvent, UsageStats, InFlightRequest } from "../../types";
-import { fetchEvents, fetchUsage } from "../../services/api";
+import { HttpError, fetchEvents, fetchUsage } from "../../services/api";
 import { LiveRouting } from "./LiveRouting";
 import { HarnessLogo } from "./HarnessLogo";
 import { CatalogPagination } from "../models/CatalogPagination";
 import { exactTitle, formatCount, formatExact } from "../../utils/format";
+
+// dashboard polling and agent traffic share the daemon's rate limit, so poll gently
+const POLL_MS = 4000;
+const MAX_BACKOFF_MS = 60_000;
 
 function formatDuration(ms: number): string {
   if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
@@ -112,7 +116,12 @@ export function ActivityView() {
   const pageRef = useRef(1);
   pageRef.current = page;
 
-  async function load(showSpinner = false) {
+  const busyRef = useRef(false);
+  const delayRef = useRef(POLL_MS);
+
+  const load = useCallback(async (showSpinner = false) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
     try {
       if (showSpinner) setRefreshing(true);
       const [u, evData] = await Promise.all([fetchUsage(window), fetchEvents(100, window)]);
@@ -120,19 +129,41 @@ export function ActivityView() {
       if (pageRef.current === 1) setEvents(evData.events);
       setInFlight(evData.inFlight);
       setError(null);
+      delayRef.current = POLL_MS;
     } catch (err) {
+      // a 429 means this tab is the noisy one: keep the last snapshot and back off
+      const hinted = err instanceof HttpError ? err.retryAfterMs : 0;
+      delayRef.current = Math.min(Math.max(hinted || delayRef.current * 2, POLL_MS), MAX_BACKOFF_MS);
       setError(err instanceof Error ? err.message : "Failed to load activity");
     } finally {
+      busyRef.current = false;
       setLoading(false);
       setRefreshing(false);
     }
-  }
+  }, [window]);
 
   useEffect(() => {
-    void load();
-    const timer = setInterval(() => void load(), 1000);
-    return () => clearInterval(timer);
-  }, [window]);
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const tick = async () => {
+      if (!document.hidden) await load();
+      if (stopped) return;
+      timer = setTimeout(() => void tick(), delayRef.current);
+    };
+
+    void tick();
+
+    const onVisible = () => {
+      if (!document.hidden) void load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [load]);
 
   useEffect(() => {
     setPage(1);

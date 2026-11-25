@@ -1,6 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { zenUpstream, ZEN_MODELS } from "../src/upstreams/zen";
+import { modelDef } from "../src/upstreams/types";
+
+// no live zen model is on the responses wire right now, the transform still has to handle one
+const responsesModel = modelDef({
+  id: "synthetic-responses-free",
+  name: "Synthetic Responses",
+  source: "zen",
+  reasoning: false,
+  contextWindow: 200_000,
+  maxTokens: 32_000,
+  input: ["text", "pdf"],
+  compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
+  wireApi: "responses",
+});
 
 test("zenUpstream requestHeaders generates valid OpenCode v2 spoofing headers", () => {
   const model = ZEN_MODELS[0]!;
@@ -58,7 +72,7 @@ test("zenUpstream transformRequestBody enforces streaming and injects required t
 });
 
 test("zenUpstream transformRequestBody handles responses wire models", () => {
-  const model = ZEN_MODELS.find((m) => m.wireApi === "responses")!;
+  const model = responsesModel;
 
   const body = zenUpstream.transformRequestBody!({
     model: model.id,
@@ -76,7 +90,7 @@ test("zenUpstream transformRequestBody handles responses wire models", () => {
 
 test("spoof tools are injected on both chat and responses wire", () => {
   const chat = ZEN_MODELS.find((m) => m.wireApi !== "responses")!;
-  const responses = ZEN_MODELS.find((m) => m.wireApi === "responses")!;
+  const responses = responsesModel;
   const body = { model: "x", messages: [{ role: "user", content: "hi" }] };
 
   const onChat = zenUpstream.transformRequestBody!(body, chat);
@@ -87,7 +101,7 @@ test("spoof tools are injected on both chat and responses wire", () => {
 });
 
 test("a caller's own tool_choice survives tool injection", () => {
-  const responses = { ...ZEN_MODELS.find((m) => m.wireApi === "responses")!, id: "big-pickle" };
+  const responses = { ...responsesModel, id: "big-pickle" };
   const out = zenUpstream.transformRequestBody!(
     { model: "x", messages: [], tool_choice: "auto", tools: [{ type: "function", name: "grep" }] },
     responses,
@@ -207,7 +221,7 @@ test("a caller's read/shell satisfy the gate and are never renamed or leaked", (
 });
 
 test("fingerprint injection never leaks into the caller's own body", () => {
-  for (const model of [ZEN_MODELS.find((m) => m.wireApi !== "responses")!, ZEN_MODELS.find((m) => m.wireApi === "responses")!]) {
+  for (const model of [ZEN_MODELS.find((m) => m.wireApi !== "responses")!, responsesModel]) {
     const tools = [{ type: "function", function: { name: "exec_command", parameters: { type: "object" } } }];
     const body = { model: model.id, messages: [{ role: "user", content: "hi" }], tools };
     const out = zenUpstream.transformRequestBody!(body, model);

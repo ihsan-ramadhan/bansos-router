@@ -7,26 +7,6 @@ export const LLM7_ALIASES = ["default", "fast"] as const;
 
 export const LLM7_MODELS: ModelDef[] = [
   modelDef({
-    id: "DeepSeek-V4-Flash-0731",
-    name: "DeepSeek-V4-Flash-0731",
-    source: "llm7",
-    reasoning: true,
-    contextWindow: 400_000,
-    maxTokens: 16_384,
-    input: ["text"],
-    compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
-  }),
-  modelDef({
-    id: "GLM-5.3-Flash",
-    name: "GLM-5.3-Flash",
-    source: "llm7",
-    reasoning: true,
-    contextWindow: 400_000,
-    maxTokens: 16_384,
-    input: ["text"],
-    compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
-  }),
-  modelDef({
     id: "codestral-latest",
     name: "Codestral Latest",
     source: "llm7",
@@ -47,16 +27,6 @@ export const LLM7_MODELS: ModelDef[] = [
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
   }),
   modelDef({
-    id: "minimax-m2.7",
-    name: "MiniMax M2.7",
-    source: "llm7",
-    reasoning: true,
-    contextWindow: 180_000,
-    maxTokens: 32_768,
-    input: ["text"],
-    compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
-  }),
-  modelDef({
     id: "mistral-Nemo-Instruct-2407",
     name: "Mistral Nemo Instruct",
     source: "llm7",
@@ -66,16 +36,6 @@ export const LLM7_MODELS: ModelDef[] = [
     input: ["text"],
     compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
     supportsTools: false,
-  }),
-  modelDef({
-    id: "nemotron-3-nano:30b",
-    name: "nemotron-3-nano:30b",
-    source: "llm7",
-    reasoning: true,
-    contextWindow: 1_000_000,
-    maxTokens: 16_384,
-    input: ["text"],
-    compat: { supportsReasoningEffort: false, supportsDeveloperRole: false },
   }),
   modelDef({
     id: "default",

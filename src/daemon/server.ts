@@ -547,11 +547,13 @@ function sendJson(
   res: http.ServerResponse,
   status: number,
   body: unknown,
+  headers: Record<string, string> = {},
 ): void {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
     "content-type": "application/json",
     "content-length": Buffer.byteLength(payload),
+    ...headers,
     ...corsFor(res),
   });
   res.end(payload);
@@ -2207,9 +2209,14 @@ export function createServer(opts: ServerOptions): http.Server {
     const ip = req.socket.remoteAddress ?? "unknown";
     const method = req.method ?? "";
 
-    if (!rateLimiter.check(ip)) {
-      log.warn("rate limit exceeded", { ip });
-      sendJson(res, 429, { error: { message: "rate limit exceeded" } });
+    const rawUrl = req.url ?? "/";
+    // agent traffic and dashboard polling both arrive from loopback, so each gets its own budget
+    const bucket = rawUrl.startsWith("/v1/") ? "api" : "ui";
+    const limiterKey = `${bucket}:${ip}`;
+    if (!rateLimiter.check(limiterKey)) {
+      const retryAfter = Math.max(1, Math.ceil(rateLimiter.retryAfterMs(limiterKey) / 1000));
+      log.warn("rate limit exceeded", { ip, bucket });
+      sendJson(res, 429, { error: { message: "rate limit exceeded" } }, { "retry-after": String(retryAfter) });
       return;
     }
 
@@ -2236,7 +2243,6 @@ export function createServer(opts: ServerOptions): http.Server {
       return;
     }
 
-    const rawUrl = req.url ?? "/";
     if (!validatePath(rawUrl)) {
       sendJson(res, 403, { error: { message: "forbidden" } });
       return;

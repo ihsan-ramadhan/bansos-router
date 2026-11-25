@@ -246,10 +246,7 @@ test("responsesToChatStream marks a truncated response as finish_reason length",
   assert.equal(chunks[chunks.length - 1].choices[0].finish_reason, "length");
 });
 
-test("crouton alpha is seeded on the responses wire", () => {
-  const crouton = SEEDED_MODELS.find((m) => m.id === "crouton-alpha-free");
-  assert.ok(crouton, "crouton-alpha-free must be seeded");
-  assert.equal(crouton.wireApi, "responses");
+test("the smart default follows the seeded preference order", () => {
   assert.equal(pickSmartDefaultModel(SEEDED_MODELS), "deepseek-v4.1-flash-free");
 });
 

@@ -111,9 +111,29 @@ export async function pingModel(
   }
 }
 
+export class HttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly retryAfterMs: number,
+  ) {
+    super(message);
+    this.name = "HttpError";
+  }
+}
+
+function httpError(res: Response, fallback: string): HttpError {
+  const seconds = Number(res.headers.get("retry-after"));
+  return new HttpError(
+    `HTTP ${res.status}: ${fallback}`,
+    res.status,
+    Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 0,
+  );
+}
+
 export async function fetchUsage(window: "today" | "7d" | "30d" | "60d" | "all" = "all"): Promise<UsageStats> {
   const res = await fetch(`${BASE_URL}/bansos/usage?window=${window}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch usage`);
+  if (!res.ok) throw httpError(res, "Failed to fetch usage");
   return res.json();
 }
 
@@ -124,7 +144,7 @@ export interface EventsData {
 
 export async function fetchEvents(limit = 100, window: "today" | "7d" | "30d" | "60d" | "all" = "all"): Promise<EventsData> {
   const res = await fetch(`${BASE_URL}/bansos/events?limit=${limit}&window=${window}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch events`);
+  if (!res.ok) throw httpError(res, "Failed to fetch events");
   const body = (await res.json()) as { events?: ActivityEvent[]; inFlight?: InFlightRequest[] };
   return {
     events: body.events ?? [],

@@ -104,7 +104,7 @@ Set variables in the environment; the dashboard's Settings tab edits the rest.
 | --- | --- |
 | `BANSOS_DIR` | state, config and logs instead of `~/.bansos` |
 | `BANSOS_LOG=json` | JSON log lines instead of text |
-| `BANSOS_RATE_LIMIT` | requests per minute per client IP (default 300) |
+| `BANSOS_RATE_LIMIT` | requests per minute per client IP, split into `/v1/*` and dashboard buckets (default 300) |
 | `NO_UPDATE_NOTIFIER=1` | turn off the daily npm update check |
 
 One knob lives outside the environment: `maxBodyBytes` caps an inbound request body (default 10 MB, clamped to 1 MB–256 MB) and takes a restart. Set it under Settings → Daemon, or as `"maxBodyBytes"` in `~/.bansos/config.json`, when a harness sends base64 screenshots or PDFs and the daemon answers `413`.

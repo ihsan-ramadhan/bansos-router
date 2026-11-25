@@ -399,3 +399,25 @@ test("a cross-site POST cannot repoint the relay", async () => {
     await close();
   }
 });
+
+test("rate limit buckets keep agent traffic from starving the dashboard", async () => {
+  const log = createLogger({ level: "error" });
+  const catalog = new RuntimeCatalog([], log);
+  const rateLimiter = new RateLimiter({ limit: 2, windowMs: 60_000 });
+  const server = createServer({ catalog, rateLimiter, port: 0, log, startedAt: Date.now() });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const addr = server.address() as { port: number };
+  const baseUrl = `http://127.0.0.1:${addr.port}`;
+  try {
+    assert.equal((await fetch(`${baseUrl}/v1/models`)).status, 200);
+    assert.equal((await fetch(`${baseUrl}/v1/models`)).status, 200);
+
+    const blocked = await fetch(`${baseUrl}/v1/models`);
+    assert.equal(blocked.status, 429);
+    assert.ok(Number(blocked.headers.get("retry-after")) >= 1, "429 carries Retry-After");
+
+    assert.equal((await fetch(`${baseUrl}/bansos/status`)).status, 200);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});

@@ -333,6 +333,9 @@ larger winning.
 - Per-IP sliding window on inbound requests, 300 per minute by default:
   protects the loopback socket if the user binds LAN, not a real abuse
   defense for public exposure (which we don't support).
+- Two buckets per IP: `/v1/*` (agents) and everything else (dashboard). They
+  never share a counter, so a chatty dashboard cannot 429 an agent and a
+  retrying agent cannot 429 the dashboard. Rejections carry `Retry-After`.
 - Set the limit with the `BANSOS_RATE_LIMIT` env var; `0` or an invalid value
   falls back to the default.
 

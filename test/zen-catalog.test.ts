@@ -19,11 +19,8 @@ test("a model is built from the index with sane defaults", () => {
   assert.equal(m.wireApi, undefined);
 });
 
-test("pdf survives only on the wire that can carry it", () => {
+test("pdf never reaches a chat-wire model", () => {
   const rich = { modalities: { input: ["text", "image", "audio", "video", "pdf"] } };
-
-  const onResponses = zenModelFromIndex("crouton-alpha-free", rich);
-  assert.deepEqual(onResponses.input, ["text", "image", "pdf"]);
 
   const onChat = zenModelFromIndex("mimo-v2.6-flash-free", rich);
   assert.deepEqual(onChat.input, ["text", "image"], "zen answers 500 for a file part here");
@@ -49,20 +46,19 @@ test("reasoning effort is never derived from the index", () => {
   );
 });
 
-test("the wire api is carried over from the seed, the rest comes from the index", () => {
-  const m = zenModelFromIndex("crouton-alpha-free", {
-    limit: { context: 1_048_576, output: 270_000 },
-    modalities: { input: ["text", "image", "pdf"] },
+test("the wire api is never invented from the index", () => {
+  const m = zenModelFromIndex("iceman-free", {
+    limit: { context: 262_144, output: 131_072 },
+    modalities: { input: ["text"] },
   });
 
-  assert.equal(m.wireApi, "responses", "no index carries this, only the seed does");
-  assert.equal(m.contextWindow, 1_048_576, "the published figure is used as-is");
-  assert.equal(m.maxTokens, 270_000);
-  assert.deepEqual(m.input, ["text", "image", "pdf"]);
+  assert.equal(m.wireApi, undefined, "only a seed can put a model on the responses wire");
+  assert.equal(m.contextWindow, 262_144, "the published figure is used as-is");
+  assert.equal(m.maxTokens, 131_072);
 });
 
 test("an index entry missing its limits keeps the seeded figures", () => {
-  const seeded = ZEN_MODELS.find((m) => m.id === "crouton-alpha-free")!;
+  const seeded = ZEN_MODELS.find((m) => m.id === "iceman-free")!;
   const m = zenModelFromIndex(seeded.id, { modalities: { input: ["text"] } });
 
   assert.equal(m.name, seeded.name);
@@ -72,7 +68,7 @@ test("an index entry missing its limits keeps the seeded figures", () => {
 });
 
 test("an index entry missing its modalities keeps the seeded ones", () => {
-  const seeded = ZEN_MODELS.find((m) => m.id === "crouton-alpha-free")!;
+  const seeded = ZEN_MODELS.find((m) => m.id === "iceman-free")!;
   const m = zenModelFromIndex(seeded.id, {});
   assert.deepEqual(m.input, seeded.input);
 });
