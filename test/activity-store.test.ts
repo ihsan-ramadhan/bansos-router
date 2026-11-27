@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ActivityStore, ACTIVITY_DIR, type ActivityEvent } from "../src/daemon/activity";
 import { BANSOS_DIR } from "../src/daemon/state";
-import { clampMaxTokens } from "../src/daemon/server";
+import { MIN_REASONING_MAX_TOKENS, clampMaxTokens } from "../src/daemon/server";
 
 const sample = (over: Partial<ActivityEvent> = {}): ActivityEvent => ({
   id: 0,
@@ -104,4 +104,22 @@ test("clampMaxTokens caps both chat and responses token fields to the target mod
   assert.equal(kept.max_tokens, 1000);
   const untouched = clampMaxTokens({ temperature: 0.2 }, { maxTokens: 8192 });
   assert.deepEqual(untouched, { temperature: 0.2 });
+});
+
+test("a reasoning model gets a floor on the output budget so the answer is not all thinking", () => {
+  const floored = clampMaxTokens({ max_tokens: 48, max_completion_tokens: 48 }, { maxTokens: 131072, reasoning: true });
+  assert.equal(floored.max_tokens, MIN_REASONING_MAX_TOKENS);
+  assert.equal(floored.max_completion_tokens, MIN_REASONING_MAX_TOKENS);
+
+  const generous = clampMaxTokens({ max_tokens: 2000 }, { maxTokens: 131072, reasoning: true });
+  assert.equal(generous.max_tokens, 2000, "a cap above the floor is left alone");
+
+  const nonReasoning = clampMaxTokens({ max_tokens: 48 }, { maxTokens: 8192, reasoning: false });
+  assert.equal(nonReasoning.max_tokens, 48, "a plain model keeps the caller's cap");
+
+  const smallModel = clampMaxTokens({ max_tokens: 48 }, { maxTokens: 256, reasoning: true });
+  assert.equal(smallModel.max_tokens, 256, "the floor never exceeds what the model can emit");
+
+  const absent = clampMaxTokens({ temperature: 0.2 }, { maxTokens: 131072, reasoning: true });
+  assert.deepEqual(absent, { temperature: 0.2 }, "no cap means the upstream default, not a guess");
 });

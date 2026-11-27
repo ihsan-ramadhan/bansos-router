@@ -90,17 +90,19 @@ const ALLOWED_METHODS = new Set(["GET", "POST", "OPTIONS"]);
 export const DEFAULT_BODY_CAP_BYTES = 10 * 1024 * 1024;
 let bodyCapBytes = DEFAULT_BODY_CAP_BYTES;
 
-// a fallback model may cap output lower than the caller asked for
+export const MIN_REASONING_MAX_TOKENS = 512;
+
 export function clampMaxTokens(
   body: Record<string, unknown>,
-  model: { maxTokens: number },
+  model: { maxTokens: number; reasoning?: boolean },
 ): Record<string, unknown> {
   if (!Number.isFinite(model.maxTokens) || model.maxTokens <= 0) return body;
-  if (typeof body.max_completion_tokens === "number" && body.max_completion_tokens > model.maxTokens) {
-    body.max_completion_tokens = model.maxTokens;
-  }
-  if (typeof body.max_tokens === "number" && body.max_tokens > model.maxTokens) {
-    body.max_tokens = model.maxTokens;
+  const floor = model.reasoning ? Math.min(MIN_REASONING_MAX_TOKENS, model.maxTokens) : 0;
+  for (const field of ["max_completion_tokens", "max_tokens"] as const) {
+    const value = body[field];
+    if (typeof value !== "number") continue;
+    if (value > model.maxTokens) body[field] = model.maxTokens;
+    else if (value > 0 && value < floor) body[field] = floor;
   }
   return body;
 }
@@ -678,7 +680,13 @@ function findUsageObject(tail: string): Record<string, unknown> | null {
 }
 
 // fold reasoning into content when a model streams reasoning_content but no content (C5)
-type ChatFoldState = { sawContent: boolean; sawToolCalls: boolean; reasoning: string; envelope: Record<string, unknown> };
+type ChatFoldState = {
+  sawContent: boolean;
+  sawToolCalls: boolean;
+  reasoning: string;
+  envelope: Record<string, unknown>;
+  finishReason: string | null;
+};
 
 function inspectChatFrame(frame: string, state: ChatFoldState): { finished: boolean } {
   let finished = false;
@@ -696,7 +704,10 @@ function inspectChatFrame(frame: string, state: ChatFoldState): { finished: bool
       state.envelope = { id: json.id, model: json.model, created: json.created };
     }
     const choice = json?.choices?.[0];
-    if (choice?.finish_reason) finished = true;
+    if (choice?.finish_reason) {
+      finished = true;
+      state.finishReason = choice.finish_reason;
+    }
     const delta = choice?.delta;
     if (!delta || typeof delta !== "object") continue;
     if (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0) state.sawToolCalls = true;
@@ -722,6 +733,26 @@ function foldedContentFrame(state: { reasoning: string; envelope: Record<string,
     created: state.envelope.created ?? Math.floor(Date.now() / 1000),
     model: state.envelope.model ?? "",
     choices: [{ index: 0, delta: { role: "assistant", content: state.reasoning }, finish_reason: null }],
+  })}\n\n`;
+}
+
+export function budgetExhaustedFrame(state: {
+  reasoning: string;
+  envelope: Record<string, unknown>;
+}): string {
+  return `data: ${JSON.stringify({
+    id: state.envelope.id ?? "chatcmpl-reasoning-budget",
+    object: "chat.completion.chunk",
+    created: state.envelope.created ?? Math.floor(Date.now() / 1000),
+    model: state.envelope.model ?? "",
+    error: {
+      message:
+        `model spent its whole output budget on reasoning and returned no answer ` +
+        `(max_tokens reached after ${state.reasoning.length} reasoning characters). ` +
+        `raise max_tokens or pick a model without reasoning`,
+      type: "reasoning_budget_exhausted",
+      code: "reasoning_budget_exhausted",
+    },
   })}\n\n`;
 }
 
@@ -840,16 +871,33 @@ export function filterInjectedToolCallsTransform(callerTools: CallerTools): Tran
   });
 }
 
-export function reasoningToContentTransform(): Transform {
+export function reasoningToContentTransform(
+  opts: { onBudgetExhausted?: (info: { model: string; reasoningChars: number }) => void } = {},
+): Transform {
   const splitter = createSseFrameSplitter();
   let folded = false;
-  const state: ChatFoldState = { sawContent: false, sawToolCalls: false, reasoning: "", envelope: {} };
+  const state: ChatFoldState = {
+    sawContent: false,
+    sawToolCalls: false,
+    reasoning: "",
+    envelope: {},
+    finishReason: null,
+  };
 
   // promote reasoning to the answer only when nothing else came, and before the finish frame
   const foldIfNothingElse = (push: (frame: string) => void) => {
     if (folded) return;
     folded = true;
-    if (!state.sawContent && !state.sawToolCalls && state.reasoning.length > 0) push(foldedContentFrame(state));
+    if (state.sawContent || state.sawToolCalls || state.reasoning.length === 0) return;
+    if (state.finishReason === "length") {
+      opts.onBudgetExhausted?.({
+        model: typeof state.envelope.model === "string" ? state.envelope.model : "",
+        reasoningChars: state.reasoning.length,
+      });
+      push(budgetExhaustedFrame(state));
+      return;
+    }
+    push(foldedContentFrame(state));
   };
 
   return new Transform({
@@ -1727,7 +1775,10 @@ async function handleChat(
         client,
       });
     });
-    src.pipe(reasoningToContentTransform()).pipe(filterTx).pipe(usageTx).pipe(res);
+    src.pipe(reasoningToContentTransform({
+      onBudgetExhausted: ({ model, reasoningChars }) =>
+        log.warn("reasoning budget exhausted", { model, reasoningChars }),
+    })).pipe(filterTx).pipe(usageTx).pipe(res);
   } else {
     res.end();
   }

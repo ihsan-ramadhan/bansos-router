@@ -328,6 +328,15 @@ are preferred as a group, ranked among themselves by the smallest surplus, and
 the band is only reached for when nothing covers it. `maxTokens` breaks a tie,
 larger winning.
 
+The caller's `max_tokens` is capped at the target model's own limit and raised to
+`MIN_REASONING_MAX_TOKENS` (512) on a model that declares `reasoning`, because
+the thinking stream is billed against the same budget and a small cap can be
+spent before the answer starts. When the budget still runs out mid-thought and
+no content was ever produced, the daemon ends the stream with
+`finish_reason: "length"` plus one `error` frame (`reasoning_budget_exhausted`)
+instead of folding the cut thought into content, and logs the model and the
+reasoning length.
+
 ## 5. Rate limiting (daemon-local)
 
 - Per-IP sliding window on inbound requests, 300 per minute by default:
